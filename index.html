@@ -177,9 +177,16 @@ tr.hi td{background:rgba(47,129,247,.1)}
 .room-plan-viewport{overflow:auto;max-height:min(72vh,760px);overscroll-behavior:contain;background:var(--svg-bg)}
 .room-plan-canvas{width:100%;min-width:100%}
 .room-plan-workspace:fullscreen,.room-plan-workspace.room-plan-maximized{
-  display:flex;position:fixed;inset:0;z-index:1000;flex-direction:column;padding:12px;border:0;border-radius:0;background:var(--bg)}
+  display:grid;position:fixed;inset:0;z-index:1000;grid-template-columns:minmax(0,1fr) clamp(250px,28vw,340px);
+  grid-template-rows:auto minmax(0,1fr);gap:12px;padding:12px;border:0;border-radius:0;background:var(--bg)}
+.room-plan-workspace:fullscreen .room-plan-toolbar,.room-plan-workspace.room-plan-maximized .room-plan-toolbar{
+  grid-column:1/-1;grid-row:1}
 .room-plan-workspace:fullscreen .room-plan-viewport,.room-plan-workspace.room-plan-maximized .room-plan-viewport{
-  flex:1;min-height:0;max-height:none;border:1px solid var(--line)}
+  grid-column:1;grid-row:2;min-height:0;max-height:none;border:1px solid var(--line)}
+.room-plan-workspace:fullscreen>.component-pane,.room-plan-workspace.room-plan-maximized>.component-pane{
+  grid-column:2;grid-row:2;position:static;top:auto;align-self:stretch;height:100%;min-height:0;max-height:none;overflow-y:auto}
+.room-plan-workspace:fullscreen>.component-pane .card,.room-plan-workspace.room-plan-maximized>.component-pane .card{
+  margin-bottom:0}
 body.room-plan-lock{overflow:hidden}
 .room-furniture-group .room-delete,.room-furniture-group .room-rotate{opacity:.72;transition:opacity .16s ease-out}
 .room-furniture-group:hover .room-delete,.room-furniture-group:focus .room-delete,.room-delete:focus,
@@ -757,7 +764,7 @@ body.room-plan-lock{overflow:hidden}
                 <label>Clear width (ft)<input id="liftW" type="number" min="3" step="0.5" value="5"></label>
                 <label>Clear depth (ft)<input id="liftD" type="number" min="3" step="0.5" value="5.5"></label>
               </div>
-              <div class="library-note">Always placed in the external service bay with its door opening to the side corridor.</div>
+              <div class="library-note">Placed over the side-corridor band instead of in a separate bay. Keep a compliant unobstructed route around it during architectural detailing.</div>
             </div>
           </details>
 
@@ -774,6 +781,7 @@ body.room-plan-lock{overflow:hidden}
                 <label>Block depth (ft)<input id="stairD" type="number" min="6" step="0.5" value="10"></label>
               </div>
               <div class="library-note" id="stairWidthEcho">Two 2.5 ft flights = 5.0 ft total stair-block width.</div>
+              <div class="library-note">The stair block overlays an end of the side-corridor band and opens to the remaining external corridor.</div>
             </div>
           </details>
 
@@ -1815,14 +1823,15 @@ function deriveRoomGeometry(plate,cfg,warnings){
     ...Array(cfg.counts.lift).fill(cfg.lift),
     ...Array(cfg.counts.staircase).fill(cfg.staircase)
   ];
-  const serviceBayWidth=serviceRanges.reduce((max,r)=>{
+  const serviceBandWidth=serviceRanges.reduce((max,r)=>{
     const w=(r.minW+r.maxW)/2+INT_WALL,h=(r.minD+r.maxD)/2+INT_WALL;
     return Math.max(max,Math.min(w,h));
   },0);
   let S=cfg.corridors.side;
-  if(serviceRanges.length&&S<ROOM_PASSAGE_MIN){
-    S=ROOM_PASSAGE_MIN;
-    warnings.push(`The side corridor was raised to ${f1(S/FT)} ft so the external lift / stair doors retain a usable approach.`);
+  const requiredServiceBand=serviceRanges.length?Math.max(ROOM_PASSAGE_MIN,serviceBandWidth):0;
+  if(serviceRanges.length&&S<requiredServiceBand){
+    S=requiredServiceBand;
+    warnings.push(`The side-corridor band was raised to ${f1(S/FT)} ft so lift / stair blocks fit within it instead of consuming a separate service bay.`);
   }
   const projectionEdge='N';
   const localSetback=Math.max(0,plate.localSetbacks&&plate.localSetbacks[projectionEdge]||0);
@@ -1836,24 +1845,22 @@ function deriveRoomGeometry(plate,cfg,warnings){
     warnings.push(`Balcony depth was capped at ${f1(maxBalconyDepth/FT)} ft: ${f1(F/FT)} ft remains over the within-envelope front band and no more than ${f1(maxProjection/FT)} ft projects under Rule 7(a)(xiv).`);
   if (!(W>ROOM_EPS && D>ROOM_EPS)) return {error:'The selected plot has no valid buildable floor plate.'};
   if (F+B >= D-ROOM_EPS) return {error:'Front and rear corridors consume the full floor-plate depth.'};
-  if (S+serviceBayWidth >= W-ROOM_EPS)
-    return {error:'The external service bay and side corridor consume the full floor-plate width.'};
+  if (S >= W-ROOM_EPS)
+    return {error:'The side corridor and its lift / stair overlays consume the full floor-plate width.'};
   if(F+B+balconyReserve>=D-ROOM_EPS)
     return {error:'The front balcony reserve and external corridors consume the full floor-plate depth.'};
-  const outerW=W-S-serviceBayWidth, outerD=D-F-B-balconyReserve;
+  const outerW=W-S, outerD=D-F-B-balconyReserve;
   const coreW=outerW-2*EXT_WALL, coreD=outerD-2*EXT_WALL;
   if (coreW<=ROOM_EPS || coreD<=ROOM_EPS) return {error:`No room core remains after corridors and ${f1(EXT_WALL/IN)}-inch external walls.`};
-  const outerX=cfg.side==='left'?serviceBayWidth+S:0, outerY=F+balconyReserve;
+  const outerX=cfg.side==='left'?S:0, outerY=F+balconyReserve;
   const coreX=outerX+EXT_WALL, coreY=outerY+EXT_WALL;
-  const serviceBay=serviceBayWidth>ROOM_EPS?{
-    x:cfg.side==='left'?0:W-serviceBayWidth,y:F,w:serviceBayWidth,h:D-F-B,
-    side:cfg.side,label:'External lift / stair bay'
-  }:null;
   const corridors=[];
   if (F>ROOM_EPS) corridors.push({type:'corridor',label:'Front corridor',x:0,y:0,w:W,h:F});
   if (B>ROOM_EPS) corridors.push({type:'corridor',label:'Rear corridor',x:0,y:D-B,w:W,h:B});
-  if (S>ROOM_EPS) corridors.push({type:'corridor',label:'Side corridor',
-    x:cfg.side==='left'?serviceBayWidth:W-serviceBayWidth-S,y:F,w:S,h:D-F-B});
+  const sideCorridor=S>ROOM_EPS?{type:'corridor',label:'Side corridor',
+    x:cfg.side==='left'?0:W-S,y:F,w:S,h:D-F-B,side:cfg.side,serviceOverlay:serviceRanges.length>0}:null;
+  if(sideCorridor)corridors.push(sideCorridor);
+  const serviceZone=serviceRanges.length?sideCorridor:null;
 
   const balconies=[];
   const balconyZone=maxBalconyDepth>ROOM_EPS?{
@@ -1886,7 +1893,7 @@ function deriveRoomGeometry(plate,cfg,warnings){
   ];
   return {W,D,F,S,B,frontEdge:plate.frontEdge,outerX,outerY,outerW,outerD,coreX,coreY,coreW,coreD,
           core:{x:coreX,y:coreY,w:coreW,h:coreD},corridors,balconies,externalWalls,
-          serviceBay,serviceBayWidth,balconyPolicy:{allowed:projectionAllowed,edge:projectionEdge,
+          serviceZone,balconyPolicy:{allowed:projectionAllowed,edge:projectionEdge,
             globalEdge:roomLocalEdgeGlobal(projectionEdge,plate.frontEdge),maxDepth:maxBalconyDepth,maxProjection,
             depth:balconyDepth,zone:balconyZone,floorElevation:plate.floorElevation},
           corridorArea,outerArea,coreArea,externalWallArea:Math.max(0,outerArea-coreArea)};
@@ -2166,7 +2173,7 @@ function roomOrder(requests,mode){
 }
 
 function roomCornerModule(w,h,corner,g,zone='core'){
-  const bounds=zone==='service'?g.serviceBay:zone==='plate'?{x:0,y:0,w:g.W,h:g.D}:g.core;
+  const bounds=zone==='service'?g.serviceZone:zone==='plate'?{x:0,y:0,w:g.W,h:g.D}:g.core;
   return {
     x:corner.endsWith('W')?bounds.x:bounds.x+bounds.w-w,
     y:corner.startsWith('N')?bounds.y:bounds.y+bounds.h-h,
@@ -2175,19 +2182,40 @@ function roomCornerModule(w,h,corner,g,zone='core'){
 }
 
 function roomServiceCorners(g){
-  return g.serviceBay&&g.serviceBay.side==='left'?['NE','SE']:['NW','SW'];
+  return g.serviceZone&&g.serviceZone.side==='left'?['NE','SE']:['NW','SW'];
+}
+
+function roomServiceCorridorOpenings(module,g,width=ROOM_DOOR_WIDTH,minWidth=ROOM_DOOR_MIN){
+  const zone=g.serviceZone;
+  if(!zone||!roomRectInside(module,zone))return [];
+  const out=[],push=(edge,label)=>{
+    const span=(edge==='N'||edge==='S')?module.w:module.h;
+    const actual=Math.min(width,span-.16);
+    if(actual>=minWidth-ROOM_EPS&&!out.some(o=>o.edge===edge&&o.targetLabel===label))
+      out.push({edge,width:actual,available:span,targetType:'corridor',targetLabel:label,
+        segment:roomEdgeSegment(module,edge,actual)});
+  };
+  const northGap=module.y-zone.y,southGap=zone.y+zone.h-module.y-module.h;
+  const westGap=module.x-zone.x,eastGap=zone.x+zone.w-module.x-module.w;
+  if(Math.abs(northGap)<=ROOM_EPS&&g.F>ROOM_EPS)push('N','Front corridor');
+  if(northGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('N','Side corridor');
+  if(Math.abs(southGap)<=ROOM_EPS&&g.B>ROOM_EPS)push('S','Rear corridor');
+  if(southGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('S','Side corridor');
+  if(westGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('W','Side corridor');
+  if(eastGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('E','Side corridor');
+  return out;
 }
 
 function roomServiceTouchesCorridor(module,g){
-  return !!roomCorridorOpenings(module,g,.9,ROOM_DOOR_MIN).find(o=>o.targetLabel==='Side corridor');
+  return roomServiceCorridorOpenings(module,g,.9,ROOM_DOOR_MIN).length>0;
 }
 
 function roomStairAnchorOf(module,g){
-  if(!g.serviceBay)return null;
+  if(!g.serviceZone)return null;
   let best=null;
   roomServiceCorners(g).forEach(corner=>{
     const zone='service',snapped=roomCornerModule(module.w,module.h,corner,g,zone);
-    if(!roomRectInside(snapped,g.serviceBay)||!roomServiceTouchesCorridor(snapped,g))return;
+    if(!roomRectInside(snapped,g.serviceZone)||!roomServiceTouchesCorridor(snapped,g))return;
     const distance=Math.hypot(module.x-snapped.x,module.y-snapped.y);
     if(!best||distance<best.distance)best={corner,zone,module:snapped,distance};
   });
@@ -2204,9 +2232,9 @@ function roomCornerAnchored(module,g){
   return !!anchor&&anchor.distance<ROOM_EPS;
 }
 
-function roomPlaceExternalServices(g,requests){
+function roomPlaceCorridorServices(g,requests){
   const placed=[],unmet=[];
-  let free=g.serviceBay?[{...g.serviceBay}]:[];
+  let free=g.serviceZone?[{...g.serviceZone}]:[];
   let totalDeviation=0;
   requests.slice().sort((a,b)=>(a.type==='staircase'?0:1)-(b.type==='staircase'?0:1)||a.seq-b.seq).forEach(req=>{
     let best=null;
@@ -2217,7 +2245,7 @@ function roomPlaceExternalServices(g,requests){
       const cw=(minW+maxW)/2,cd=(minD+maxD)/2,mw=cw+INT_WALL,md=cd+INT_WALL;
       free.forEach(fr=>{
         if(mw>fr.w+ROOM_EPS||md>fr.h+ROOM_EPS)return;
-        const x=g.serviceBay.side==='left'?g.serviceBay.x+g.serviceBay.w-mw:g.serviceBay.x;
+        const x=g.serviceZone.side==='left'?g.serviceZone.x+g.serviceZone.w-mw:g.serviceZone.x;
         const ys=[fr.y,fr.y+fr.h-md];
         ys.forEach(y=>{
           const module={x,y,w:mw,h:md};
@@ -2226,12 +2254,12 @@ function roomPlaceExternalServices(g,requests){
           if(req.type==='staircase'&&!roomCornerAnchored(module,g))return;
           const carpet={x:module.x+INT_WALL/2,y:module.y+INT_WALL/2,w:cw,h:cd};
           const dev=0;
-          const endPenalty=Math.min(y-g.serviceBay.y,g.serviceBay.y+g.serviceBay.h-y-md);
+          const endPenalty=Math.min(y-g.serviceZone.y,g.serviceZone.y+g.serviceZone.h-y-md);
         const role=roomRolePenalty(req,module.x,module.y,module.w,module.h,g);
           const score=[endPenalty,role,module.y,module.x,rotated?1:0];
         if(roomScoreLess(score,best&&best.score))
           best={req,module,carpet,x:module.x,y:module.y,mw,md,cw,cd,rotated,
-              minW,minD,maxW,maxD,dev,anchorZone:'service',externalService:true,score};
+              minW,minD,maxW,maxD,dev,anchorZone:'service',corridorService:true,score};
         });
       });
     });
@@ -2245,7 +2273,7 @@ function roomPlaceExternalServices(g,requests){
 
 function roomPackAttempt(g,requests,sizeMode,orderMode,index){
   let free=[{...g.core}];
-  const services=roomPlaceExternalServices(g,requests.filter(r=>r.type==='staircase'||r.type==='lift'));
+  const services=roomPlaceCorridorServices(g,requests.filter(r=>r.type==='staircase'||r.type==='lift'));
   const overflow=requests.filter(r=>r.type==='bathroom'&&r.accessMode==='overflow');
   const placed=services.placed.slice(),unmet=services.unmet.concat(overflow);
   const order=roomOrder(requests.filter(r=>r.type!=='staircase'&&r.type!=='lift'&&r.accessMode!=='overflow'),orderMode);
@@ -2438,7 +2466,7 @@ function roomBalconyInside(rect,g){
 
 function roomModuleInside(module,g,req){
   if(req&&(req.type==='lift'||req.type==='staircase')){
-    if(!g.serviceBay||!roomRectInside(module,g.serviceBay)||!roomServiceTouchesCorridor(module,g))return false;
+    if(!g.serviceZone||!roomRectInside(module,g.serviceZone)||!roomServiceTouchesCorridor(module,g))return false;
     return req.type!=='staircase'||roomCornerAnchored(module,g);
   }
   return roomRectInside(module,g.core);
@@ -2645,7 +2673,7 @@ function roomSharedOpening(a,b,width,minWidth=ROOM_DOOR_MIN,maxGap=INT_WALL+.001
 }
 
 function roomCorridorOpenings(rect,g,width=ROOM_DOOR_WIDTH,minWidth=ROOM_DOOR_MIN){
-  const out=[],push=(edge,label)=>{
+  const out=roomServiceCorridorOpenings(rect,g,width,minWidth),push=(edge,label)=>{
     const span=(edge==='N'||edge==='S')?rect.w:rect.h;
     const actual=Math.min(width,span-.16);
     if(actual>=minWidth-ROOM_EPS)out.push({edge,width:actual,available:span,
@@ -3907,12 +3935,12 @@ function roomCommitManual(ctx,p,carpet,fullRender=false,persist=true){
   let module=roomCarpetModule(carpet);
   if(p.req.type==='staircase'){
     const anchor=roomStairAnchorOf(module,ctx.g);
-    if(!anchor)return roomEditBlocked(ctx,`${p.req.label} needs an available external service-bay corner.`);
+    if(!anchor)return roomEditBlocked(ctx,`${p.req.label} needs an available end of the side-corridor band.`);
     module=anchor.module;
     carpet={x:module.x+INT_WALL/2,y:module.y+INT_WALL/2,w:carpet.w,h:carpet.h};
   }
   if (!roomModuleClear(module,p.req.id,p.req,ctx.plan,ctx.g))
-    return roomEditBlocked(ctx,`${p.req.label} must remain in its ${p.req.type==='lift'||p.req.type==='staircase'?'external service bay':'rectangular dwelling'} without overlapping another space or the prohibited pooja–bathroom wall.`);
+    return roomEditBlocked(ctx,`${p.req.label} must remain ${p.req.type==='lift'||p.req.type==='staircase'?'within the side-corridor band with corridor access':'in the rectangular dwelling'} without overlapping another space or the prohibited pooja–bathroom wall.`);
   ctx.editError='';
   p.carpet=carpet;p.module=module;
   roomAssignBalconies(ctx.plan,ctx.g,false);
@@ -4038,7 +4066,7 @@ function roomMoveCandidate(item,start,dx,dy,g){
       y:horizontal?start.y:roomClamp(start.y+dy,zone.y,zone.y+zone.h-start.h)},g);
   }
   if(item.kind==='room'&&item.room.req.type==='lift'){
-    const bounds=g.serviceBay,pad=INT_WALL;
+    const bounds=g.serviceZone,pad=INT_WALL;
     const x=bounds.side==='left'?bounds.x+bounds.w-start.w-pad/2:bounds.x+pad/2;
     const y=roomClamp(start.y+dy,bounds.y+pad/2,bounds.y+bounds.h-start.h-pad/2);
     return {x,y,w:start.w,h:start.h};
@@ -4090,14 +4118,14 @@ function roomResizeCandidate(item,start,dx,dy,g,edge){
     if(!anchor)return {...start};
     const corner=anchor.corner;
     const horizontal=edge==='E'||edge==='W',delta=edge==='E'?dx:edge==='W'?-dx:edge==='S'?dy:-dy;
-    const w=horizontal?roomClamp(start.w+delta,minW,g.serviceBay.w-INT_WALL):start.w;
-    const h=horizontal?start.h:roomClamp(start.h+delta,minH,g.serviceBay.h-INT_WALL);
+    const w=horizontal?roomClamp(start.w+delta,minW,g.serviceZone.w-INT_WALL):start.w;
+    const h=horizontal?start.h:roomClamp(start.h+delta,minH,g.serviceZone.h-INT_WALL);
     const anchored=roomCornerModule(w+INT_WALL,h+INT_WALL,corner,g,anchor.zone);
     return {x:anchored.x+INT_WALL/2,y:anchored.y+INT_WALL/2,w,h};
   }
   const pad=item.kind==='room'?INT_WALL:0;
   const service=item.kind==='room'&&(item.room.req.type==='lift'||item.room.req.type==='staircase');
-  const bounds=item.kind==='furniture'?item.parent.carpet:service?g.serviceBay:g.core;
+  const bounds=item.kind==='furniture'?item.parent.carpet:service?g.serviceZone:g.core;
   const leftBound=bounds.x+pad/2,topBound=bounds.y+pad/2;
   const rightBound=bounds.x+bounds.w-pad/2,bottomBound=bounds.y+bounds.h-pad/2;
   const next={...start};
@@ -4115,7 +4143,7 @@ function roomResizeCandidate(item,start,dx,dy,g,edge){
     next.y=top;next.h=start.y+start.h-top;
   }
   if(item.kind==='room'&&item.room.req.type==='lift')
-    next.x=g.serviceBay.side==='left'?g.serviceBay.x+g.serviceBay.w-next.w-pad/2:g.serviceBay.x+pad/2;
+    next.x=g.serviceZone.side==='left'?g.serviceZone.x+g.serviceZone.w-next.w-pad/2:g.serviceZone.x+pad/2;
   return next;
 }
 
@@ -4267,9 +4295,26 @@ function roomSetZoom(value,anchor=null,fit=false){
   });
 }
 
+let roomComponentPaneHome=null;
+
+function roomDockComponentPane(){
+  const workspace=$('roomPlanWorkspace'),pane=document.querySelector('.component-pane');
+  if(!pane||pane.parentNode===workspace)return;
+  roomComponentPaneHome={parent:pane.parentNode,next:pane.nextSibling};
+  workspace.appendChild(pane);
+}
+
+function roomRestoreComponentPane(){
+  const pane=document.querySelector('.component-pane'),home=roomComponentPaneHome;
+  if(!pane||!home||pane.parentNode===home.parent)return;
+  home.parent.insertBefore(pane,home.next&&home.next.parentNode===home.parent?home.next:null);
+  roomComponentPaneHome=null;
+}
+
 function roomUpdateFullscreenControl(){
   const workspace=$('roomPlanWorkspace');
   const active=document.fullscreenElement===workspace||workspace.classList.contains('room-plan-maximized');
+  if(active)roomDockComponentPane();else roomRestoreComponentPane();
   $('roomFullscreen').textContent=active?'Exit fullscreen':'Fullscreen';
   $('roomFullscreen').setAttribute('aria-pressed',String(active));
 }
@@ -4287,6 +4332,7 @@ async function roomToggleFullscreen(){
     await document.exitFullscreen();
     return;
   }
+  roomDockComponentPane();
   if(workspace.requestFullscreen){
     try{await workspace.requestFullscreen();return;}catch(e){}
   }
@@ -4406,8 +4452,10 @@ function roomSvgPlan(plate,g,plan){
     out+=label(balconyZone,'Permitted projection',showDims?`max ${f1(g.balconyPolicy.maxDepth/FT)} ft`:'','#39c5cf');
   }
   out+=rect(outer,'var(--svg-surface)','var(--svg-line-strong)','stroke-width="1.5"');
-  if(g.serviceBay)out+=rect(g.serviceBay,'var(--svg-panel)','var(--svg-muted)','stroke-width="1.2" stroke-dasharray="4 3"');
-  g.corridors.forEach(c=>{ out+=rect(c,ROOM_COLORS.corridor,'var(--svg-line-strong)'); out+=corridorLabel(c,c.label,showDims?`${f1(Math.min(c.w,c.h)/FT)} ft clear`:''); });
+  g.corridors.forEach(c=>{
+    const dimension=showDims?`${f1(Math.min(c.w,c.h)/FT)} ft ${c.serviceOverlay?'band · service overlay':'clear'}`:'';
+    out+=rect(c,ROOM_COLORS.corridor,'var(--svg-line-strong)');out+=corridorLabel(c,c.label,dimension);
+  });
   out+=rect(building,'var(--svg-wall)','var(--svg-muted)','stroke-width="1.3"');
   out+=rect(g.core,'var(--svg-deep)','var(--svg-line-strong)');
   if(plan.placed.length||g.balconies.length){
@@ -4568,7 +4616,7 @@ function renderRoomPlanner(r){
 
   const alerts=[];
   if(!requestedTotal)alerts.push(`<div class="verdict v-info"><b>The floor plate is empty.</b> Drag only the rooms and services you need from the right sidebar; each collapsed row shows its current dimensions.</div>`);
-  else if (allFit) alerts.push(`<div class="verdict v-ok"><b>The requested program fits in this deterministic schematic.</b> The dwelling is rectangular, lift / stair access is external, and every balcony follows the selected floor's projection rule.</div>`);
+  else if (allFit) alerts.push(`<div class="verdict v-ok"><b>The requested program fits in this deterministic schematic.</b> The dwelling is rectangular, lift / stair access stays on the external corridor, and every balcony follows the selected floor's projection rule.</div>`);
   if(cfg.counts.balcony)alerts.push(`<div class="verdict v-info"><b>Balcony rule for floor ${plate.floorIndex}:</b> ${g.balconyPolicy.allowed
     ? `high-rise projection is active from ${f1(plate.floorElevation)} m; depth is capped at ${f1(g.balconyPolicy.maxDepth/FT)} ft on the ${DIRNAME[g.balconyPolicy.globalEdge].toLowerCase()} side.`
     : 'setback projection is not allowed; balconies remain between the rectangular dwelling facade and the statutory envelope.'}</div>`);
@@ -4585,7 +4633,7 @@ function renderRoomPlanner(r){
   if(balconyIssues.length)
     alerts.push(`<div class="verdict v-warn"><b>${balconyIssues.length} balcony${balconyIssues.length===1?' is':'ies are'} temporarily detached.</b> Room movement is preserved instead of locking the layout; move the balcony along its facade until it aligns with living/dining, a bedroom or the kitchen.</div>`);
   if(plan.serviceCorridorOverlap>ROOM_EPS)
-    alerts.push(`<div class="verdict v-warn"><b>Corner stair uses ${f0(plan.serviceCorridorOverlap*M2SF)} sq ft of corridor area.</b> The overlap is counted once in the metrics; an architect must still preserve the required unobstructed escape and circulation width.</div>`);
+    alerts.push(`<div class="verdict v-warn"><b>Lift / stair blocks overlay ${f0(plan.serviceCorridorOverlap*M2SF)} sq ft of corridor area.</b> The overlap is counted once in the metrics; an architect must still preserve the required unobstructed escape and circulation width.</div>`);
   if(plan.furnitureUnmet.length)
     alerts.push(`<div class="verdict v-warn"><b>${plan.furnitureUnmet.length} bedroom furniture placeholder${plan.furnitureUnmet.length===1?' does':'s do'} not fit.</b> ${plan.furnitureUnmet.join(', ')}. Resize the room, choose a smaller bed, or shorten the cupboard.</div>`);
   if (plate.deducted>ROOM_EPS)
@@ -4597,7 +4645,7 @@ function renderRoomPlanner(r){
   $('roomStats').innerHTML=`
     <div class="stat"><div class="k">Statutory floor envelope</div><div class="v">${f0(plate.area*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">rectangular dwelling ${f1(g.outerW)} × ${f1(g.outerD)} m</div></div>
     <div class="stat"><div class="k">Room carpet</div><div class="v" style="color:var(--ok)">${f0(plan.habitableCarpetArea*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">occupied rooms, excluding lift / stair</div></div>
-    <div class="stat"><div class="k">Circulation + service</div><div class="v">${f0(circulation*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.corridorArea*M2SF)} external corridor · ${f0(plan.unassigned*M2SF)} internal flex · ${f0(plan.balconyArea*M2SF)} balcony · ${f0(plan.serviceArea*M2SF)} external lift / stair</div></div>
+    <div class="stat"><div class="k">Circulation + service</div><div class="v">${f0(circulation*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.corridorArea*M2SF)} external corridor · ${f0(plan.unassigned*M2SF)} internal flex · ${f0(plan.balconyArea*M2SF)} balcony · ${f0(plan.serviceArea*M2SF)} corridor-overlaid lift / stair</div></div>
     <div class="stat"><div class="k">Wall footprint</div><div class="v">${f0(walls*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.externalWallArea*M2SF)} external · ${f0(internalWall*M2SF)} internal</div></div>
     <div class="stat"><div class="k">Carpet efficiency</div><div class="v" style="color:${efficiency>=55?'var(--ok)':'var(--warn)'}">${f1(efficiency)}%</div><div class="s">room carpet ÷ gross floor plate</div></div>
     <div class="stat"><div class="k">Across permitted floors</div><div class="v">${f0(repeatable*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${plate.floors} floor${plate.floors===1?'':'s'} if this plate repeats</div></div>`;
@@ -4637,8 +4685,8 @@ function renderRoomPlanner(r){
     rows.push(`<tr><td><b>Balcony ${i+1}</b></td><td class="n">—</td><td class="n">—</td><td class="mini">${f1(cfg.balconyDepth/FT)} ft depth</td><td class="mini">—</td><td><span class="badge b-bad">Not placed</span></td></tr>`);
   const scheduleRows=rows.length?rows.join(''):'<tr><td colspan="6" class="mini">No rooms or services requested yet. Add them from the right sidebar.</td></tr>';
   $('roomTable').innerHTML=`<tr><th>Space</th><th class="n">Actual clear size</th><th class="n">Carpet area</th><th>Requested range</th><th>Openings</th><th>Status</th></tr>${scheduleRows}`;
-  $('roomNote').innerHTML=`Front / side / rear external corridors are <b>${f1(g.F/FT)} / ${f1(g.S/FT)} / ${f1(g.B/FT)} ft</b> clear and remain inside the statutory envelope. `+
-    `Internal flex / circulation after room expansion: <b>${f0(plan.unassigned*M2SF)} sq ft</b>. ${cfg.counts.living?'Living/dining receives the dwelling entry. ':'When no living room is requested, rooms connect to an internal passage reached from the dwelling entry. '}The common bathroom opens only to reachable internal flex / passage; each other bathroom is assigned to one bedroom, with no bedroom receiving more than one ensuite. Lift and stair doors open only to the external side corridor and never through the home. Rooms without the required access are flagged rather than given an exterior detour or a fake opening through another room. Pooja rooms and bathrooms are prevented from sharing a wall. External walls use <b>${f1(cfg.walls.external/IN)} in</b>; internal wall modules reserve <b>${f1(cfg.walls.internal/IN)} in</b>. `+
+  $('roomNote').innerHTML=`Front / side / rear external corridor bands are <b>${f1(g.F/FT)} / ${f1(g.S/FT)} / ${f1(g.B/FT)} ft</b> and remain inside the statutory envelope. Lift and stair blocks overlay the side band, so its configured width is not an unobstructed-clear-width claim where they sit. `+
+    `Internal flex / circulation after room expansion: <b>${f0(plan.unassigned*M2SF)} sq ft</b>. ${cfg.counts.living?'Living/dining receives the dwelling entry. ':'When no living room is requested, rooms connect to an internal passage reached from the dwelling entry. '}The common bathroom opens only to reachable internal flex / passage; each other bathroom is assigned to one bedroom, with no bedroom receiving more than one ensuite. Lift and stair doors open only to the remaining external corridor and never through the home. Rooms without the required access are flagged rather than given an exterior detour or a fake opening through another room. Pooja rooms and bathrooms are prevented from sharing a wall. External walls use <b>${f1(cfg.walls.external/IN)} in</b>; internal wall modules reserve <b>${f1(cfg.walls.internal/IN)} in</b>. `+
     `The enclosed dwelling shell is rectangular; balconies remain outside it and may cross the statutory envelope only when the selected high-rise floor is at least 6 m above ground, capped at 2 m and the available setback. `+
     `Wall figures are plan-footprint estimates, not vertical wall surface area.<br><br>`+
     `<b>Planning limit.</b> This is a deterministic packing heuristic, not an architectural, structural, fire-safety, accessibility, cultural-guidance or sanction drawing. Structural columns, stair rise/run and landing calculations, lift machinery/pits, ducts, plumbing stacks, detailed door swings, parking and escape-path widths still need an architect and engineer.`;

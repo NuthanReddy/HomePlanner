@@ -15,8 +15,10 @@ The planner creates an access graph after room placement:
 - A bedroom receives at most one ensuite.
 - Requests above one common bathroom plus one per bedroom remain unplaced and
   are reported.
-- Lifts and stairs open to the external side/front corridor, never through the
-  home.
+- Lifts and stairs overlay the side-corridor band and open to its remaining
+  side/front/rear circulation, never through the home. Their occupied area is
+  deducted from corridor/service totals once; compliant unobstructed widths
+  still require professional design.
 
 Shared-wall openings use the actual overlap segment. Small gaps up to one
 internal-wall thickness may be bridged when packing has left a wall module
@@ -87,4 +89,3 @@ group. Exterior walls cannot be removed.
 
 "Clear added components" removes custom furniture, doors, windows, and wall
 openings while leaving the requested room program available for regeneration.
-

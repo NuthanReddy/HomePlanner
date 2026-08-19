@@ -10,9 +10,11 @@ the user adds only the rooms and services required.
 
 1. Read the selected legal floor plate from the Plot Optimizer.
 2. Convert configurable front, side, and rear external corridors to metres.
-3. Reserve an external service bay for lifts and stairs.
-4. Keep a side corridor between that service bay and the dwelling.
-5. Build a rectangular dwelling shell.
+3. Widen the side-corridor band when needed to contain requested lifts and
+   stairs.
+4. Overlay lift and stair blocks at the ends of that corridor band rather than
+   reserving a separate service bay.
+5. Build a rectangular dwelling shell beside the corridor.
 6. Subtract configurable external-wall thickness to obtain the room core.
 7. Pack requested rooms and reserve internal-wall modules.
 8. Derive flex/passages, circulation openings, windows, furniture, and
@@ -44,9 +46,9 @@ The automatic planner uses deterministic rectangle packing with scoring for:
 - Vastu preferences only when explicitly enabled.
 
 Rooms can be moved and resized from all four edges. Balconies move along the
-facade. Lifts and stairs remain in the external service bay; stair movement is
-corner-snapped. Manual edits enforce boundaries, room/component collisions,
-wall modules, pooja-bathroom separation, and relevant service constraints.
+facade. Lifts and stairs remain over the side-corridor band; stair movement is
+end-snapped. Manual edits enforce boundaries, room/component collisions, wall
+modules, pooja-bathroom separation, and relevant service constraints.
 
 Circulation failures caused by a multi-step manual edit are reported instead
 of always blocking the first intermediate move. This lets the user rearrange
@@ -67,13 +69,15 @@ The light/dark theme is the exception: it is persisted in browser
 - Non-high-rise balconies remain inside the statutory envelope.
 - An eligible high-rise floor at least 6 m above ground may use the modelled
   Rule 7(a)(xiv) projection, capped at 2 m and the available setback.
-- Lift and staircase doors open only to the external corridor.
-- The service bay is excluded from the enclosed rectangular home.
+- Lift and staircase doors open only to the remaining external corridor.
+- Lift and stair areas overlap the corridor metric and are counted once.
+- The displayed corridor-band width is not a claim that the full width remains
+  unobstructed beside a service block.
 
 ## Viewport
 
 The SVG plan supports 50-300 percent zoom, Fit, Ctrl+wheel zoom, scrolling,
-keyboard zoom, and fullscreen with a maximized fallback. Geometry remains in a
-fixed viewBox; screen coordinates are transformed back to plan coordinates for
-accurate dragging at every zoom level.
-
+keyboard zoom, and fullscreen with a maximized fallback. Fullscreen keeps the
+same live Rooms & Services / Components pane docked on the right. Geometry
+remains in a fixed viewBox; screen coordinates are transformed back to plan
+coordinates for accurate dragging at every zoom level.

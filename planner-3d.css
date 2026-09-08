@@ -1,0 +1,158 @@
+#planner3d.hp3d {
+  color: var(--txt);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  min-width: 0;
+}
+#planner3d [hidden] { display: none !important; }
+#planner3d .hp3d-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+#planner3d h3 { margin: 0 0 6px; font-size: 16px; line-height: 1.5; }
+#planner3d p { margin: 8px 0; line-height: 1.55; font-size: 12px; overflow-wrap: anywhere; }
+#planner3d .hp3d-heading p { margin: 0; color: var(--dim); }
+#planner3d .hp3d-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 500;
+}
+#planner3d .hp3d-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#planner3d button {
+  appearance: none;
+  background: var(--panel2);
+  color: var(--txt);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 11px;
+  min-height: 36px;
+  margin: 0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#planner3d button[data-hp3d="open"] { border-color: var(--acc); color: var(--acc); font-weight: 600; }
+#planner3d button:hover:not(:disabled) { border-color: var(--acc); }
+#planner3d button:disabled { cursor: wait; opacity: 0.65; }
+#planner3d button:focus-visible,
+#planner3d summary:focus-visible,
+#planner3d input:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+#planner3d .hp3d-status { color: var(--dim); }
+#planner3d .hp3d-status.hp3d-error {
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 7px;
+  padding: 10px;
+  background: var(--bg);
+}
+#planner3d .hp3d-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 10px 0;
+}
+#planner3d .hp3d-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--txt);
+  font-size: 12px;
+  cursor: pointer;
+}
+#planner3d .hp3d-toolbar input {
+  appearance: auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--acc);
+}
+#planner3d .hp3d-viewport {
+  position: relative;
+  height: clamp(300px, 55vh, 640px);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+}
+#planner3d .hp3d-viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+#planner3d .hp3d-viewport canvas:focus-visible { outline: 2px solid var(--acc); outline-offset: -3px; }
+#planner3d .hp3d-compass {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 68px;
+  height: 78px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--txt);
+  background: var(--panel);
+  pointer-events: none;
+  user-select: none;
+}
+#planner3d .hp3d-needle {
+  display: block;
+  width: 36px;
+  height: 46px;
+  text-align: center;
+  color: var(--acc);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 20px;
+  transform-origin: 50% 50%;
+}
+#planner3d .hp3d-compass small { font-size: 9px; color: var(--dim); }
+#planner3d .hp3d-help,
+#planner3d .hp3d-light,
+#planner3d .hp3d-diagnostics { color: var(--dim); }
+#planner3d .hp3d-selection {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel2);
+  padding: 7px 10px;
+}
+#planner3d .hp3d-assumptions {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  color: var(--dim);
+  font-size: 12px;
+}
+#planner3d .hp3d-assumptions summary { color: var(--warn); cursor: pointer; line-height: 1.5; }
+@media (max-width: 640px) {
+  #planner3d.hp3d { padding: 12px; }
+  #planner3d .hp3d-heading { flex-wrap: wrap; }
+  #planner3d .hp3d-toolbar { align-items: flex-start; }
+  #planner3d .hp3d-toolbar .hp3d-actions { width: 100%; }
+  #planner3d .hp3d-viewport { height: 360px; }
+  #planner3d .hp3d-badge { margin-left: 0; }
+}
+@media print {
+  #planner3d .hp3d-viewport,
+  #planner3d .hp3d-toolbar,
+  #planner3d .hp3d-actions { display: none; }
+}

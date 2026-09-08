@@ -68,6 +68,17 @@ test('daily sampling follows civil dates through DST',()=>{
   assert.ok(spring.every(row=>model.dateAt(row.instant,'America/New_York')==='2026-03-08'));
 });
 
+test('daily chart extrema use daylight elevation and do not invent polar-night markers',()=>{
+  const rows=[{altitude:-20},{altitude:2},{altitude:70},{altitude:1},{altitude:-4}];
+  assert.deepEqual(model.daylightExtrema(rows),{min:rows[3],max:rows[2]});
+  assert.equal(model.daylightExtrema([{altitude:-10},{altitude:-2}]),null);
+  assert.equal(model.daylightExtrema([]),null);
+  assert.throws(()=>model.daylightExtrema([{altitude:NaN}]),model.InputError);
+  const actual=model.daylightExtrema(model.dailySamples(base));
+  assert.ok(actual.min.altitude>=0);
+  assert.ok(actual.max.altitude>actual.min.altitude);
+});
+
 test('supports southern/tropical northern sun and polar event absence',()=>{
   const northSun=model.calculate({...base,date:'2026-06-21',time:'12:14'});
   assert.ok(northSun.azimuth<90||northSun.azimuth>270);

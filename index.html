@@ -146,6 +146,7 @@ tr.hi td{background:rgba(47,129,247,.1)}
 .room-wrap>*{min-width:0}
 .room-settings-pane{grid-area:settings}
 .room-output-pane{grid-area:plan}
+.planner-extension:empty{display:none}
 .room-range{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .room-range label{margin-top:6px}
 .wall-specs{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
@@ -287,6 +288,12 @@ body.room-plan-lock{overflow:hidden}
 }
 </style>
 <link rel="stylesheet" href="sun-planner.css">
+<link rel="stylesheet" href="planner-3d.css">
+<link rel="stylesheet" href="planner-editor.css">
+<link rel="stylesheet" href="planner-persistence.css">
+<script type="importmap">
+{"imports":{"three":"./vendor/three/three.module.min.js"}}
+</script>
 </head>
 <body>
 <header>
@@ -308,6 +315,8 @@ body.room-plan-lock{overflow:hidden}
   <button data-page="optimizer" class="on">Plot Optimizer</button>
   <button data-page="rooms">Room Planner</button>
   <button data-page="sun">Sun Path</button>
+  <button data-page="environment">Environment</button>
+  <button data-page="electrical">Electrical</button>
 </div>
 
 <div class="app-page on" id="page-optimizer">
@@ -489,7 +498,7 @@ body.room-plan-lock{overflow:hidden}
       <svg id="dia" viewBox="0 0 660 470" preserveAspectRatio="xMidYMid meet"></svg>
       <div id="splitBox" style="display:none;margin-top:12px">
         <label>Split position <span class="mini">— or drag the amber line on the plan</span></label>
-        <input id="splitPos" type="range" min="15" max="85" value="50" step="0.1" style="padding:0">
+        <input id="splitPos" type="range" min="15" max="85" value="50" step="any" style="padding:0">
         <div class="split-snaps" id="splitSnaps"></div>
         <div class="row" style="margin-top:6px">
           <div><label style="margin-top:2px">Plot A frontage</label><input id="splitA" type="number" step="0.1"></div>
@@ -611,7 +620,7 @@ body.room-plan-lock{overflow:hidden}
         <h2>Floor Plate</h2>
         <div class="room-range">
           <div><label>Plan for</label><select id="roomTarget"><option value="whole">Whole plot</option></select></div>
-          <div><label>Habitable floor</label><select id="roomFloor"><option value="1">Ground floor</option></select></div>
+          <div><label>Regulatory floor (balcony rules)</label><select id="roomFloor"><option value="1">Ground floor</option></select></div>
         </div>
         <div class="mini" id="roomSourceHint" style="margin-top:8px"></div>
         <div class="mini" id="roomBalconyRuleHint" style="margin-top:8px"></div>
@@ -642,6 +651,7 @@ body.room-plan-lock{overflow:hidden}
     </div>
 
     <aside class="component-pane">
+      <section class="card planner-extension" id="plannerInspector" aria-label="Selected object properties"></section>
       <div class="card">
         <h2>Rooms &amp; Services <span class="mini">— add as needed</span></h2>
         <div class="mini">The plan starts empty. Drag a room row by its grip onto the plan, or open it to set quantity and dimensions.</div>
@@ -937,6 +947,9 @@ body.room-plan-lock{overflow:hidden}
     </aside>
 
     <div class="room-output-pane">
+      <section class="card planner-extension" id="plannerPersistence" aria-label="Local projects and backups"></section>
+      <section class="card planner-extension" id="plannerProjectTools" aria-label="Floor selection and edit history"></section>
+      <div class="mini" id="plannerBridgeStatus" role="status"></div>
       <div id="roomAlerts"></div>
       <div class="card">
         <div class="room-plan-head">
@@ -967,6 +980,8 @@ body.room-plan-lock{overflow:hidden}
         <div class="mini" id="roomEditHint" style="margin-top:8px">Drag rooms, services, balconies and furniture. Cupboards and kitchen counters resize from any edge. Rotate with the blue control or R; delete with the red × or Delete. Zoom changes only the view.</div>
         <div class="room-legend" id="roomLegend"></div>
       </div>
+
+      <section class="card planner-extension" id="planner3d" aria-label="Three-dimensional floor inspection"></section>
 
       <div class="card">
         <h2>Room Schedule</h2>
@@ -1011,17 +1026,22 @@ body.room-plan-lock{overflow:hidden}
   </div>
 </div><!-- /page-rooms -->
 
+<div class="app-page" id="page-environment"><div id="environmentWorkspace"></div></div>
+<div class="app-page" id="page-electrical"><div id="electricalWorkspace"></div></div>
+
 <div class="app-page" id="page-sun">
   <div class="wrap sun-layout">
     <form class="card sun-controls" id="sunForm" novalidate>
       <h2>Sun Path</h2>
-      <p class="mini">Calculate sun angles locally from a date and location. No weather service or location permission is used.</p>
+      <p class="mini">Calculate sun angles locally from a date and location. No weather service is used. Device location is optional.</p>
       <fieldset>
         <div class="row">
           <div><label for="sunLatitude">Latitude (&deg; N)</label><input id="sunLatitude" type="number" min="-90" max="90" step="any" value="17.385" required></div>
           <div><label for="sunLongitude">Longitude (&deg; E)</label><input id="sunLongitude" type="number" min="-180" max="180" step="any" value="78.4867" required></div>
         </div>
         <p class="sun-example">Example coordinates: Hyderabad, not a detected site. Use negative values for south or west.</p>
+        <div class="split-snaps"><button type="button" id="sunLocate">Detect current location</button></div>
+        <p class="mini" id="sunLocationStatus" role="status">Optional: ask the browser for this device's coordinates. Check that they describe the building site.</p>
         <label for="sunTimeZone">Time zone (IANA name)</label>
         <input id="sunTimeZone" type="text" value="Asia/Kolkata" list="sunTimeZones" spellcheck="false" required aria-describedby="sunZoneHint">
         <datalist id="sunTimeZones"><option value="Asia/Kolkata"></option><option value="UTC"></option><option value="America/New_York"></option><option value="Europe/London"></option><option value="Australia/Sydney"></option></datalist>
@@ -1082,7 +1102,7 @@ body.room-plan-lock{overflow:hidden}
   </div>
 </div>
 
-<div class="foot">
+<div class="foot" id="plotSources">
   <b>Sources.</b> G.O.Ms.No.168 MA&amp;UD dt. 07.04.2012 — Rule 2(f) definitions, Rule 4 &amp; Table II (approach road), Rule 5 &amp; Table III (setbacks &amp; height), Rule 6 (projections), Rule 7 &amp; Table IV (high-rise), Rule 13 &amp; Table V (parking), Rule 26 (occupancy certificate &amp; compounding), Rule 27 (enforcement).
   G.O.Ms.No.95 MA&amp;UD dt. 21.03.2026 — Rule 2(f) substituted, Rule 17(d)(viii)–(xii) inserted, Rule 17(f)(xii) substituted.
   TG-bPASS Act 12 of 2020 s.7 (permission tiers); Telangana Municipalities Act 2019 s.174 (enforcement).
@@ -1998,8 +2018,19 @@ function makeRoomRequests(cfg){
 }
 
 function roomIntersects(a,b){
-  return a.x < b.x+b.w-ROOM_EPS && a.x+a.w > b.x+ROOM_EPS &&
-         a.y < b.y+b.h-ROOM_EPS && a.y+a.h > b.y+ROOM_EPS;
+  const overlap=a.x < b.x+b.w-ROOM_EPS && a.x+a.w > b.x+ROOM_EPS &&
+    a.y < b.y+b.h-ROOM_EPS && a.y+a.h > b.y+ROOM_EPS;
+  if(!overlap)return false;
+  const sector=a.doorSector||b.doorSector;
+  if(!sector)return true;
+  const left=Math.max(a.x,b.x),right=Math.min(a.x+a.w,b.x+b.w);
+  const top=Math.max(a.y,b.y),bottom=Math.min(a.y+a.h,b.y+b.h);
+  const x=roomClamp(sector.hinge.x,left,right),y=roomClamp(sector.hinge.y,top,bottom);
+  return (x-sector.hinge.x)**2+(y-sector.hinge.y)**2<sector.radiusM**2-ROOM_EPS;
+}
+
+function roomEscapeMarkup(value){
+  return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 }
 
 function roomIntersectionRect(a,b){
@@ -2616,6 +2647,16 @@ function roomOpeningClearance(p,opening,depth,pad=.1){
 function roomFurnitureClearances(plan,p,type){
   const doors=(plan.openings&&plan.openings.doors||[]).filter(o=>o.roomId===p.req.id)
     .map(o=>roomOpeningClearance(p,o,Math.min(.9,Math.max(.7,p.carpet.w*.2)))).filter(Boolean);
+  const passages=(plan.wallOpenings||[]).filter(o=>o.roomId===p.req.id&&o.width>=ROOM_DOOR_MIN)
+    .map(o=>roomOpeningClearance(p,o,.9)).filter(Boolean);
+  doors.push(...passages);
+  (plan.openings?.doors||[]).filter(door=>door.sweep).forEach(door=>{
+    const s=door.sweep;
+    const xs=[s.hinge.x,s.closedEnd.x,s.openEnd.x],ys=[s.hinge.y,s.closedEnd.y,s.openEnd.y];
+    const bounds={x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
+    const clipped=roomIntersectionRect(bounds,p.carpet);
+    if(clipped)doors.push({...clipped,doorSector:{hinge:s.hinge,radiusM:s.radiusM}});
+  });
   if(type!=='cupboard'&&type!=='sofa')return doors;
   const windows=(plan.openings&&plan.openings.windows||[]).filter(o=>o.roomId===p.req.id)
     .map(o=>roomOpeningClearance(p,o,.65,.05)).filter(Boolean);
@@ -2626,10 +2667,13 @@ function roomFurnitureDefaults(p,cfg,plan){
   const room=p.carpet,bed=cfg.furniture.bed;
   const bedClear=roomFurnitureClearances(plan,p,'bed');
   const cupboardClear=roomFurnitureClearances(plan,p,'cupboard');
-  const bedCandidates=[
-    ...roomFurnitureWallCandidates(room,bed.w,bed.d).map(r=>({...r,rotated:false})),
-    ...roomFurnitureWallCandidates(room,bed.d,bed.w).map(r=>({...r,rotated:true}))
-  ].filter(r=>!bedClear.some(c=>roomIntersects(r,c)));
+  const headOrder=['S','W','E','N'].map(global=>
+    ['N','E','S','W'].find(local=>roomLocalEdgeGlobal(local,cfg.frontEdge||'N')===global));
+  const bedCandidates=headOrder.flatMap(headLocal=>{
+    const rotated=headLocal==='E'||headLocal==='W';
+    return roomFurnitureWallCandidates(room,rotated?bed.d:bed.w,rotated?bed.w:bed.d)
+      .map(r=>({...r,rotated,headLocal,pinned:false}));
+  }).filter(r=>!bedClear.some(c=>roomIntersects(r,c)));
   const L=cfg.furniture.cupboardLength,D=cfg.furniture.cupboardDepth;
   const cupboardCandidates=[
     ...roomFurnitureWallCandidates(room,L,D).map(r=>({...r,rotated:false})),
@@ -2668,7 +2712,7 @@ function roomPlanFurniture(plan,cfg,signature){
       const candidate=s?{...f,x:p.carpet.x+s.ox,y:p.carpet.y+s.oy,
         w:Number.isFinite(s.w)&&s.w>ROOM_EPS?s.w:f.w,
         h:Number.isFinite(s.h)&&s.h>ROOM_EPS?s.h:f.h,
-        rotated:!!s.rotated}:f;
+        rotated:!!s.rotated,headLocal:s.headLocal||((s.w||f.w)<=(s.h||f.h)?'N':'W'),pinned:!!s.pinned}:f;
       const clearances=roomFurnitureClearances(plan,p,f.type);
       const valid=roomRectInside(candidate,p.carpet)&&
         !furniture.some(other=>other.roomId===p.req.id&&roomIntersects(candidate,other))&&
@@ -2677,15 +2721,22 @@ function roomPlanFurniture(plan,cfg,signature){
         !furniture.some(other=>other.roomId===p.req.id&&roomIntersects(f,other))&&
         !clearances.some(c=>roomIntersects(f,c));
       if(valid)furniture.push(candidate);
-      else if(fallbackValid)furniture.push(f);
+      else if(fallbackValid&&!s?.pinned)furniture.push(f);
       else unmet.push(`${p.req.label}: ${f.label.toLowerCase()}`);
     });
   });
   Object.values(savedFurniture).filter(s=>s&&s.custom).forEach(s=>{
     const parent=plan.placed.find(p=>p.req.id===s.roomId);
     if(!parent)return;
+    if(typeof s.id!=='string'||!s.id||['__proto__','prototype','constructor'].includes(s.id)||
+      typeof s.label!=='string'||!Object.prototype.hasOwnProperty.call(ROOM_COMPONENTS,s.type)||
+      !ROOM_COMPONENTS[s.type].rooms.includes(parent.req.type)){
+      unmet.push(`${parent.req.label}: unsupported or invalid saved component`);
+      return;
+    }
     const candidate={id:s.id,type:s.type,label:s.label,roomId:s.roomId,custom:true,
-      x:parent.carpet.x+s.ox,y:parent.carpet.y+s.oy,w:s.w,h:s.h,rotated:!!s.rotated};
+      x:parent.carpet.x+s.ox,y:parent.carpet.y+s.oy,w:s.w,h:s.h,rotated:!!s.rotated,
+      headLocal:s.headLocal||(s.w<=s.h?'N':'W'),pinned:!!s.pinned};
     const clearances=roomFurnitureClearances(plan,parent,candidate.type);
     const valid=roomRectInside(candidate,parent.carpet)&&
       !furniture.some(other=>other.roomId===candidate.roomId&&roomIntersects(candidate,other))&&
@@ -2708,7 +2759,8 @@ function roomSaveManualLayout(ctx){
   (ctx.plan.furniture||[]).forEach(f=>{
     const room=ctx.plan.placed.find(p=>p.req.id===f.roomId);
     if(room)saved.furniture[f.id]={id:f.id,type:f.type,label:f.label,roomId:f.roomId,custom:!!f.custom,
-      ox:f.x-room.carpet.x,oy:f.y-room.carpet.y,w:f.w,h:f.h,rotated:!!f.rotated};
+      ox:f.x-room.carpet.x,oy:f.y-room.carpet.y,w:f.w,h:f.h,rotated:!!f.rotated,
+      headLocal:f.headLocal,pinned:!!f.pinned};
   });
   roomManualLayouts.set(ctx.signature,saved);
 }
@@ -2795,7 +2847,7 @@ function roomCirculationAnalysis(g,plan){
       distance:entryNetwork.distance.get(i)||1,index:i}:null;
   }).filter(Boolean).sort((a,b)=>a.distance-b.distance||b.available-a.available):[];
   const livingEntry=entryPassages[0]||directLiving[0]||directOutside[0]||null;
-  const livingAccessible=!!livingEntry;
+  let livingAccessible=!!livingEntry;
   const livingSeeds=livingAccessible&&living
     ? passages.map((r,i)=>roomSharedOpening(living.module,r,ROOM_DOOR_WIDTH)?i:-1).filter(i=>i>=0)
     : [];
@@ -2828,6 +2880,32 @@ function roomCirculationAnalysis(g,plan){
     if(opening)accessByRoom.set(p.req.id,{...opening,targetType:'bedroom',
       targetLabel:bedroom.req.label,target:bedroom});
   });
+  for(let pass=0;pass<plan.placed.length;pass++){
+    let changed=false;
+    (plan.wallOpenings||[]).filter(opening=>opening.width>=ROOM_DOOR_MIN).forEach(opening=>{
+      const room=plan.placed.find(p=>p.req.id===opening.roomId);
+      if(!room||accessByRoom.has(room.req.id))return;
+      const target=opening.targetRoomId&&plan.placed.find(p=>p.req.id===opening.targetRoomId);
+      const passage=!target&&passages.find((rect,i)=>{
+        if(!internalNetwork.reachable.has(i))return false;
+        const shared=roomSharedOpening(room.module,rect,opening.width,ROOM_DOOR_MIN);
+        return shared&&shared.edge===opening.edge&&roomSegmentsOverlap(opening.segment,shared.segment,0);
+      });
+      if((target&&accessByRoom.has(target.req.id))||passage){
+        accessByRoom.set(room.req.id,{edge:opening.edge,width:opening.width,segment:opening.segment,
+          targetType:target?'room':'passage',targetLabel:target?.req.label||'Internal passage',
+          target:target||passage,openConnection:true});
+        changed=true;
+      }
+    });
+    if(living&&accessByRoom.has(living.req.id)&&!livingAccessible){
+      livingAccessible=true;
+      const network=flood(passages.map((rect,i)=>roomSharedOpening(living.module,rect,ROOM_DOOR_WIDTH)?i:-1).filter(i=>i>=0));
+      network.reachable.forEach(i=>{internalNetwork.reachable.add(i);internalNetwork.distance.set(i,network.distance.get(i));});
+      changed=true;
+    }
+    if(!changed)break;
+  }
   const inaccessible=plan.placed.filter(p=>!accessByRoom.has(p.req.id));
   return {accessByRoom,inaccessible,passages,
     reachablePassages:passages.filter((_,i)=>internalNetwork.reachable.has(i)),
@@ -2897,6 +2975,15 @@ function roomBalconyDoor(room,balcony,width=ROOM_BALCONY_SLIDER_PREF){
 
 function roomPlanOpenings(g,plan,cfg){
   const windows=[],doors=[];
+  if(plan.layoutSignature){
+    const saved=roomManualLayouts.get(plan.layoutSignature);
+    plan.wallOpenings=(saved?.wallOpenings||[]).map(record=>{
+      const room=plan.placed.find(p=>p.req.id===record.roomId);
+      const built=room&&roomWallOpeningForRecord(record,room,plan);
+      return built?{...record,...built}:null;
+    }).filter(Boolean);
+  }
+  window.HomePlanner?.preparePartitions(g,plan,cfg);
   const windowTypes=new Set(['living','bedroom','kitchen','bathroom','pooja']);
   const circulation=roomCirculationAnalysis(g,plan);
   plan.circulation=circulation;
@@ -2904,7 +2991,9 @@ function roomPlanOpenings(g,plan,cfg){
   plan.placed.forEach(p=>{
     const access=circulation.accessByRoom.get(p.req.id);
     if(!access)return;
-    doors.push({roomId:p.req.id,label:p.req.label,kind:'access',edge:access.edge,
+    if((plan.wallOpenings||[]).some(opening=>opening.roomId===p.req.id&&opening.width>=ROOM_DOOR_MIN&&
+      roomSegmentsOverlap(opening.segment,access.segment,0)))return;
+    doors.push({id:`door-${p.req.id}-${access.edge}`,roomId:p.req.id,label:p.req.label,kind:'access',edge:access.edge,
       global:roomLocalEdgeGlobal(access.edge,g.frontEdge),width:access.width,
       targetType:access.targetType,targetLabel:access.targetLabel,segment:access.segment});
   });
@@ -2914,7 +3003,7 @@ function roomPlanOpenings(g,plan,cfg){
     if(!p)return;
     const access=roomBalconyDoor(p.module,b);
     if(!access)return;
-    doors.push({roomId:p.req.id,label:`${p.req.label} sliding balcony door`,balconyId:b.id,kind:'balcony-slider',
+    doors.push({id:`door-${b.id}`,roomId:p.req.id,label:`${p.req.label} sliding balcony door`,balconyId:b.id,kind:'balcony-slider',
       edge:access.edge,global:roomLocalEdgeGlobal(access.edge,g.frontEdge),width:access.width,
       targetType:'balcony',targetLabel:b.label,segment:access.segment});
   });
@@ -2942,7 +3031,7 @@ function roomPlanOpenings(g,plan,cfg){
         if(!segment)return;
         const actualWidth=Math.hypot(segment.x2-segment.x1,segment.y2-segment.y1),area=actualWidth*height;
         const wind=ROOM_DIR_ANGLE[cfg.wind]??225;
-        windows.push({roomId:p.req.id,label:p.req.label,edge:e.edge,global:e.global,width:actualWidth,height,
+        windows.push({id:`window-${p.req.id}-${e.edge}`,roomId:p.req.id,label:p.req.label,edge:e.edge,global:e.global,width:actualWidth,height,
           area,openableArea:area*cfg.window.operability,operability:cfg.window.operability,windowType:cfg.window.type,
           role:roomAngleDiff(ROOM_DIR_ANGLE[e.global],wind)<=45?'windward':'leeward',segment});
       });
@@ -3033,6 +3122,8 @@ function roomApplySavedOpenings(g,plan,cfg,signature){
     const built=p&&roomWallOpeningForRecord(record,p,plan);
     return built?{...record,...built,label:record.label||`${p.req.label} open partition`,custom:true}:null;
   }).filter(Boolean);
+  window.HomePlanner?.preparePartitions(g,plan,cfg);
+  window.HomePlanner?.applyOpeningEdits(g,plan,cfg);
   return plan;
 }
 
@@ -3778,16 +3869,22 @@ function roomDropComponent(ctx,type,point){
     status.innerHTML=`<b style="color:var(--bad)">${spec.label} cannot go in ${parent.req.label}.</b> Allowed: ${spec.rooms.join(' / ')}.`;
     return false;
   }
-  const orientations=[{w:spec.w,h:spec.h,rotated:false}];
-  if(Math.abs(spec.w-spec.h)>ROOM_EPS)orientations.push({w:spec.h,h:spec.w,rotated:true});
+  const headOrder=['S','W','E','N'];
+  const orientations=type==='bed'?headOrder.map(global=>{
+    const headLocal=['N','E','S','W'].find(local=>roomLocalEdgeGlobal(local,ctx.g.frontEdge)===global);
+    const rotated=headLocal==='E'||headLocal==='W';
+    return {w:rotated?spec.h:spec.w,h:rotated?spec.w:spec.h,rotated,headLocal};
+  }):[{w:spec.w,h:spec.h,rotated:false}];
+  if(type!=='bed'&&Math.abs(spec.w-spec.h)>ROOM_EPS)orientations.push({w:spec.h,h:spec.w,rotated:true});
   const candidates=[];
   orientations.forEach(o=>{
     if(o.w>parent.carpet.w+ROOM_EPS||o.h>parent.carpet.h+ROOM_EPS)return;
     const dropped={x:roomClamp(point.x-o.w/2,parent.carpet.x,parent.carpet.x+parent.carpet.w-o.w),
-      y:roomClamp(point.y-o.h/2,parent.carpet.y,parent.carpet.y+parent.carpet.h-o.h),w:o.w,h:o.h,rotated:o.rotated};
-    candidates.push(dropped,...roomFurnitureWallCandidates(parent.carpet,o.w,o.h).map(r=>({...r,rotated:o.rotated})));
+      y:roomClamp(point.y-o.h/2,parent.carpet.y,parent.carpet.y+parent.carpet.h-o.h),w:o.w,h:o.h,rotated:o.rotated,headLocal:o.headLocal};
+    candidates.push(dropped,...roomFurnitureWallCandidates(parent.carpet,o.w,o.h).map(r=>({...r,rotated:o.rotated,headLocal:o.headLocal})));
   });
-  candidates.sort((a,b)=>Math.hypot(a.x+a.w/2-point.x,a.y+a.h/2-point.y)-
+  const rank=c=>type==='bed'?headOrder.indexOf(roomLocalEdgeGlobal(c.headLocal,ctx.g.frontEdge)):0;
+  candidates.sort((a,b)=>rank(a)-rank(b)||Math.hypot(a.x+a.w/2-point.x,a.y+a.h/2-point.y)-
     Math.hypot(b.x+b.w/2-point.x,b.y+b.h/2-point.y));
   const rect=candidates.find(c=>roomFurnitureCandidateValid(ctx.plan,parent,{...c,type:spec.type}));
   if(!rect){
@@ -4000,7 +4097,7 @@ function roomManualHint(){
 
 function roomEditBlocked(ctx,message){
   ctx.editError=message;
-  $('roomEditHint').innerHTML=`<b style="color:var(--bad)">Move blocked.</b> ${message}`;
+  $('roomEditHint').innerHTML=`<b style="color:var(--bad)">Move blocked.</b> ${roomEscapeMarkup(message)}`;
   return false;
 }
 
@@ -4077,7 +4174,7 @@ function roomDeleteFurniture(ctx,item){
   roomSaveManualLayout(ctx);
   roomManualHint();
   renderRoomPlanner(window.__last);
-  $('componentStatus').innerHTML=`<b style="color:var(--ok)">${f.label} removed.</b> Reset the suggested layout to restore starter furniture.`;
+  $('componentStatus').innerHTML=`<b style="color:var(--ok)">${roomEscapeMarkup(f.label)} removed.</b> Reset the suggested layout to restore starter furniture.`;
   return true;
 }
 
@@ -4099,14 +4196,16 @@ function roomDeleteOpening(ctx,item){
 function roomRotateFurniture(ctx,item){
   if(!item||item.kind!=='furniture')return false;
   const f=item.furniture,parent=item.parent,cx=f.x+f.w/2,cy=f.y+f.h/2;
-  const rect={x:cx-f.h/2,y:cy-f.w/2,w:f.h,h:f.w,rotated:!f.rotated};
+  const heads=['N','E','S','W'],head=f.headLocal||(f.w<=f.h?'N':'W');
+  const rect={x:cx-f.h/2,y:cy-f.w/2,w:f.h,h:f.w,rotated:!f.rotated,
+    headLocal:f.type==='bed'?heads[(heads.indexOf(head)+1)%4]:f.headLocal,pinned:true};
   rect.x=roomClamp(rect.x,parent.carpet.x,parent.carpet.x+parent.carpet.w-rect.w);
   rect.y=roomClamp(rect.y,parent.carpet.y,parent.carpet.y+parent.carpet.h-rect.h);
   if(!roomCommitFurniture(ctx,f,parent,rect,true,true)){
-    $('componentStatus').innerHTML=`<b style="color:var(--bad)">${f.label} cannot rotate here.</b> Move it to a larger clear area first.`;
+    $('componentStatus').innerHTML=`<b style="color:var(--bad)">${roomEscapeMarkup(f.label)} cannot rotate here.</b> Move it to a larger clear area first.`;
     return false;
   }
-  $('componentStatus').innerHTML=`<b style="color:var(--ok)">${f.label} rotated.</b> Width and depth were swapped.`;
+  $('componentStatus').innerHTML=`<b style="color:var(--ok)">${roomEscapeMarkup(f.label)} rotated.</b> Width and depth were swapped.`;
   return true;
 }
 
@@ -4239,7 +4338,7 @@ function roomPointerLocal(svg,ev){
 
 function initRoomEditing(){
   const svg=$('roomPlan');
-  let drag=null,frame=0;
+  let drag=null,frame=0,suppressClick=false;
   const applyPending=()=>{
     frame=0;
     if(!drag||!drag.point)return;
@@ -4263,6 +4362,7 @@ function initRoomEditing(){
     drag.changed=drag.changed||changed;
   };
   svg.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
     const target=ev.target.closest&&ev.target.closest('[data-room-id][data-action]');
     const ctx=window.__roomPlanner,pt=roomPointerLocal(svg,ev);
     if(!target||!ctx||!pt)return;
@@ -4271,18 +4371,28 @@ function initRoomEditing(){
       ev.stopPropagation();
       return;
     }
-    drag={id:item.id,action:target.dataset.action,edge:target.dataset.edge,start:pt,
+    drag={id:item.id,kind:item.kind,action:target.dataset.action,edge:target.dataset.edge,start:pt,
+      screenStart:{x:ev.clientX,y:ev.clientY},threshold:ev.pointerType==='touch'?8:4,activated:false,
       rect:{...item.rect},pointerId:ev.pointerId,point:null,changed:false};
-    svg.classList.add('is-editing');
     try{svg.setPointerCapture(ev.pointerId);}catch(e){}
     ev.preventDefault();
   });
   svg.addEventListener('click',ev=>{
+    if(suppressClick)return;
+    const semantic=ev.target.closest?.('[data-planner-id][data-planner-kind]');
+    if(semantic&&window.HomePlanner&&!ev.target.closest?.('[data-action="delete"],[data-action="rotate"]')){
+      window.HomePlanner.select({kind:semantic.dataset.plannerKind,id:semantic.dataset.plannerId});
+      ev.preventDefault();return;
+    }
     const target=ev.target.closest&&ev.target.closest('[data-room-id][data-action="delete"],[data-room-id][data-action="rotate"]');
     const ctx=window.__roomPlanner;if(!target||!ctx)return;
     const item=roomFindEditable(ctx,target.dataset.roomId);
     if(item){
       if(target.dataset.action==='delete'){
+        if(semantic&&window.HomePlanner&&item.kind==='opening'){
+          window.HomePlanner.execute({type:'delete-opening',id:semantic.dataset.plannerId});
+          ev.preventDefault();ev.stopPropagation();return;
+        }
         if(item.kind==='furniture')roomDeleteFurniture(ctx,item);
         else roomDeleteOpening(ctx,item);
       }
@@ -4292,6 +4402,11 @@ function initRoomEditing(){
   });
   svg.addEventListener('pointermove',ev=>{
     if(!drag||ev.pointerId!==drag.pointerId)return;
+    if(!drag.activated){
+      if(Math.hypot(ev.clientX-drag.screenStart.x,ev.clientY-drag.screenStart.y)<drag.threshold)return;
+      drag.activated=true;svg.classList.add('is-editing');
+      window.HomePlanner?.beginLegacyGesture();
+    }
     const pt=roomPointerLocal(svg,ev);if(!pt)return;
     drag.point=pt;
     if(!frame)frame=requestAnimationFrame(applyPending);
@@ -4299,22 +4414,52 @@ function initRoomEditing(){
   });
   const finish=ev=>{
     if(!drag||ev.pointerId!==drag.pointerId)return;
-    if(frame){cancelAnimationFrame(frame);frame=0;applyPending();}
+    const cancelled=ev.type==='pointercancel'||ev.type==='lostpointercapture';
+    if(frame){cancelAnimationFrame(frame);frame=0;if(!cancelled)applyPending();}
     const ctx=window.__roomPlanner,changed=drag.changed,pointerId=drag.pointerId,error=ctx&&ctx.editError;
+    const ended=drag;
     drag=null;
     svg.classList.remove('is-editing');
     try{svg.releasePointerCapture(pointerId);}catch(e){}
+    if(cancelled){
+      if(window.HomePlanner)window.HomePlanner.endLegacyGesture(true);
+      else if(ended.changed)renderRoomPlanner(window.__last);
+      return;
+    }
     if(changed&&ctx){roomSaveManualLayout(ctx);roomManualHint();}
-    renderRoomPlanner(window.__last);
+    if(ended.activated){
+      renderRoomPlanner(window.__last);window.HomePlanner?.endLegacyGesture();
+      suppressClick=true;setTimeout(()=>{suppressClick=false;},0);
+    }else if(window.HomePlanner){
+      window.HomePlanner.selectSource(ended.kind==='room'?'room':ended.kind==='furniture'?'furniture':ended.kind,ended.id);
+    }
     if(error)$('roomEditHint').innerHTML=`<b style="color:var(--bad)">Move blocked.</b> ${error}`;
   };
   svg.addEventListener('pointerup',finish);
   svg.addEventListener('pointercancel',finish);
+  svg.addEventListener('lostpointercapture',finish);
+  svg.addEventListener('focusin',ev=>{
+    if(!window.HomePlanner)return;
+    const semantic=ev.target.closest?.('[data-planner-id][data-planner-kind]');
+    if(semantic){window.HomePlanner.select({kind:semantic.dataset.plannerKind,id:semantic.dataset.plannerId});return;}
+    const holder=ev.target.closest?.('[data-room-id]'),ctx=window.__roomPlanner;
+    const item=holder&&ctx&&roomFindEditable(ctx,holder.dataset.roomId);
+    if(item)window.HomePlanner.selectSource(item.kind,item.id);
+  });
   svg.addEventListener('keydown',ev=>{
+    const semantic=ev.target.closest?.('[data-planner-id][data-planner-kind]');
+    if(semantic&&(ev.key==='Enter'||ev.key===' ')&&window.HomePlanner){
+      window.HomePlanner.select({kind:semantic.dataset.plannerKind,id:semantic.dataset.plannerId});
+      ev.preventDefault();return;
+    }
+    if(ev.key==='Escape'&&drag){finish({type:'pointercancel',pointerId:drag.pointerId});ev.preventDefault();return;}
     const holder=ev.target.closest&&ev.target.closest('[data-room-id]');
     const ctx=window.__roomPlanner;if(!holder||!ctx)return;
     const item=roomFindEditable(ctx,holder.dataset.roomId);if(!item)return;
     if((ev.key==='Delete'||ev.key==='Backspace')&&['furniture','opening','wall-opening'].includes(item.kind)){
+      if(semantic&&window.HomePlanner&&item.kind==='opening'){
+        window.HomePlanner.execute({type:'delete-opening',id:semantic.dataset.plannerId});ev.preventDefault();return;
+      }
       if(item.kind==='furniture')roomDeleteFurniture(ctx,item);else roomDeleteOpening(ctx,item);
       ev.preventDefault();return;
     }
@@ -4336,6 +4481,7 @@ function initRoomEditing(){
   });
   $('roomReset').addEventListener('click',()=>{
     const ctx=window.__roomPlanner;if(!ctx)return;
+    if(window.HomePlanner){window.HomePlanner.execute({type:'reset-floor-layout'});return;}
     roomManualLayouts.delete(ctx.signature);
     renderRoomPlanner(window.__last);
   });
@@ -4441,6 +4587,8 @@ function initRoomViewport(){
 
 function roomSvgPlan(plate,g,plan){
   const svg=$('roomPlan'), VW=800,VH=560,PAD=72;
+  const focused=svg.contains(document.activeElement)?document.activeElement.closest('[data-planner-id],[data-room-id]'):null;
+  const focusId=focused?.dataset.plannerId,focusSource=focused?.dataset.roomId;
   const showDims=$('showPlanDims')?$('showPlanDims').checked:true;
   if (!g||g.error){
     window.__roomView=null;
@@ -4448,6 +4596,7 @@ function roomSvgPlan(plate,g,plan){
       `<text x="${VW/2}" y="${VH/2}" fill="var(--bad)" text-anchor="middle" font-size="15">${g?g.error:'No floor plate'}</text>`;
     return;
   }
+  const effective=window.HomePlanner?.sceneForRender(plate,g,plan,window.__roomPlanner?.cfg||{});
   const angle={N:0,E:90,S:180,W:-90}[plate.frontEdge]||0;
   const rotated=angle===90||angle===-90;
   const balconyZone=g.balconyPolicy&&g.balconyPolicy.zone;
@@ -4475,6 +4624,7 @@ function roomSvgPlan(plate,g,plan){
     const b=box(r); return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="${fill}" stroke="${stroke}" ${extra}/>`;
   };
   const label=(r,top,bottom,color='var(--svg-on-color)')=>{
+    top=roomEscapeMarkup(top);bottom=roomEscapeMarkup(bottom);
     const b=box(r),x=b.x+b.w/2,y=b.y+b.h/2;
     if (b.w<35||b.h<22) return '';
     const second=showDims&&bottom&&b.w>62&&b.h>38?`<text x="${x}" y="${y+10}" text-anchor="middle" fill="var(--svg-soft-text)" font-size="7.2" pointer-events="none">${bottom}</text>`:'';
@@ -4488,6 +4638,7 @@ function roomSvgPlan(plate,g,plan){
       (second?`<text x="${x}" y="${y+8}" text-anchor="middle" dominant-baseline="middle" fill="var(--svg-soft-text)" font-size="7.2">${second}</text>`:'')+`</g>`;
   };
   const resizeHandles=(r,id,name)=>{
+    id=roomEscapeMarkup(id);name=roomEscapeMarkup(name);
     return ['N','E','S','W'].map(edge=>{
       const edgeLength=(edge==='N'||edge==='S')?r.w:r.h;
       const hit=roomEdgeSegment(r,edge,edgeLength*.86),h1=point(hit.x1,hit.y1),h2=point(hit.x2,hit.y2);
@@ -4496,6 +4647,7 @@ function roomSvgPlan(plate,g,plan){
     }).join('');
   };
   const deleteHandle=(r,id,name)=>{
+    id=roomEscapeMarkup(id);name=roomEscapeMarkup(name);
     const b=box(r),x=b.x+b.w-6,y=b.y+6;
     return `<g class="room-delete" data-room-id="${id}" data-action="delete" role="button" aria-label="Delete ${name}">`+
       `<circle cx="${x}" cy="${y}" r="5" fill="var(--svg-surface)" stroke="var(--bad)" stroke-width="1"/>`+
@@ -4503,6 +4655,7 @@ function roomSvgPlan(plate,g,plan){
       `<title>Delete ${name}</title></g>`;
   };
   const openingDeleteHandle=(segment,id,name)=>{
+    id=roomEscapeMarkup(id);name=roomEscapeMarkup(name);
     const p1=point(segment.x1,segment.y1),p2=point(segment.x2,segment.y2);
     const x=(p1.x+p2.x)/2,y=(p1.y+p2.y)/2;
     return `<g class="room-delete" data-room-id="${id}" data-action="delete" role="button" aria-label="Delete ${name}">`+
@@ -4511,6 +4664,7 @@ function roomSvgPlan(plate,g,plan){
       `<title>Delete ${name}</title></g>`;
   };
   const rotateHandle=(r,id,name)=>{
+    id=roomEscapeMarkup(id);name=roomEscapeMarkup(name);
     const b=box(r),x=b.x+6,y=b.y+6;
     return `<g class="room-rotate" data-room-id="${id}" data-action="rotate" role="button" aria-label="Rotate ${name}">`+
       `<circle cx="${x}" cy="${y}" r="5" fill="var(--svg-surface)" stroke="var(--acc)" stroke-width="1"/>`+
@@ -4555,30 +4709,33 @@ function roomSvgPlan(plate,g,plan){
   });
   plan.placed.forEach(p=>{
     out+=`<g data-room-id="${p.req.id}" tabindex="0" role="group" aria-label="${p.req.label}, draggable and resizable">`;
-    out+=rect(p.module,'var(--svg-deep)','var(--svg-line-strong)',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
+    if(!effective)out+=rect(p.module,'var(--svg-deep)','var(--svg-line-strong)',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
     out+=rect(p.carpet,ROOM_COLORS[p.req.type],'var(--svg-muted)',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
     out+=`<title>${p.req.label}: ${f1(p.carpet.w/FT)} by ${f1(p.carpet.h/FT)} ft. Drag to move.</title>`;
     out+=label(p.carpet,p.req.label,showDims?`${f1(p.carpet.w/FT)} × ${f1(p.carpet.h/FT)} ft`:'');
     out+=resizeHandles(p.carpet,p.req.id,p.req.label);
     out+='</g>';
   });
+  if(effective)out+=window.HomePlanner.renderLayer(effective,point,scale,'walls');
   (plan.furniture||[]).forEach(f=>{
     const parent=plan.placed.find(p=>p.req.id===f.roomId),color=ROOM_COLORS[f.type]||'#d2a8ff';
     const resizable=roomFurnitureResizable(f);
-    out+=`<g class="room-furniture-group" data-room-id="${f.id}" tabindex="0" role="group" aria-label="${f.label}, movable${resizable?' and resizable':''} within ${parent?parent.req.label:'its room'}, deletable">`;
+    out+=`<g class="room-furniture-group" data-room-id="${roomEscapeMarkup(f.id)}" tabindex="0" role="group" aria-label="${roomEscapeMarkup(f.label)}, movable${resizable?' and resizable':''} within ${parent?parent.req.label:'its room'}, deletable">`;
     out+=rect(f,color,color,
-      `class="room-furniture" data-room-id="${f.id}" data-action="move" fill-opacity=".38" stroke-width="1.3"`);
+      `class="room-furniture" data-room-id="${roomEscapeMarkup(f.id)}" data-action="move" fill-opacity=".38" stroke-width="1.3"`);
     if(f.type==='bed'){
-      const pillow=f.w<=f.h
-        ? {x:f.x+f.w*.16,y:f.y+f.h*.06,w:f.w*.68,h:Math.min(f.h*.16,.38)}
-        : {x:f.x+f.w*.06,y:f.y+f.h*.16,w:Math.min(f.w*.16,.38),h:f.h*.68};
+      const head=f.headLocal||(f.w<=f.h?'N':'W');
+      const depth=Math.min((head==='N'||head==='S'?f.h:f.w)*.16,.38);
+      const pillow=head==='N'||head==='S'
+        ? {x:f.x+f.w*.16,y:head==='N'?f.y+f.h*.06:f.y+f.h*.94-depth,w:f.w*.68,h:depth}
+        : {x:head==='W'?f.x+f.w*.06:f.x+f.w*.94-depth,y:f.y+f.h*.16,w:depth,h:f.h*.68};
       out+=rect(pillow,'rgba(255,255,255,.28)',color,'pointer-events="none"');
     }
     out+=label(f,f.label,showDims?`${f1(f.w/FT)} × ${f1(f.h/FT)} ft`:'',color);
     if(resizable)out+=resizeHandles(f,f.id,f.label);
     out+=rotateHandle(f,f.id,f.label);
     out+=deleteHandle(f,f.id,f.label);
-    out+=`<title>${f.label}: ${f1(f.w/FT)} by ${f1(f.h/FT)} ft. Drag within ${parent?parent.req.label:'the room'}${resizable?'; drag any edge to resize':''}; rotate with the blue control or R; delete with the red × or Delete.</title></g>`;
+    out+=`<title>${roomEscapeMarkup(f.label)}: ${f1(f.w/FT)} by ${f1(f.h/FT)} ft. Drag within ${parent?parent.req.label:'the room'}${resizable?'; drag any edge to resize':''}; rotate with the blue control or R; delete with the red × or Delete.</title></g>`;
   });
   const segmentLine=(s,color,width,title)=>{
     const p1=point(s.x1,s.y1),p2=point(s.x2,s.y2);
@@ -4592,19 +4749,19 @@ function roomSvgPlan(plate,g,plan){
       `<line x1="${mx-nx-4*dx/len}" y1="${my-ny-4*dy/len}" x2="${p2.x-nx}" y2="${p2.y-ny}" stroke="${ROOM_COLORS.door}" stroke-width="3" stroke-linecap="round"/>`+
       `<line x1="${mx-3*dy/len}" y1="${my+3*dx/len}" x2="${mx+3*dy/len}" y2="${my-3*dx/len}" stroke="var(--svg-on-color)" stroke-width="1.2"/><title>${d.label}: ${f1(d.width/FT)} ft clear opening</title></g>`;
   };
-  (plan.openings&&plan.openings.windows||[]).forEach(w=>{
+  (!effective&&plan.openings&&plan.openings.windows||[]).forEach(w=>{
     if(w.custom)out+=`<g data-room-id="${w.id}" tabindex="0" role="group" aria-label="${w.label}, deletable">`;
     out+=segmentLine(w.segment,ROOM_COLORS.window,5,`${w.label}: ${f1(w.width/FT)} ft wide, ${w.area.toFixed(2)} m² gross, ${(w.operability*100).toFixed(0)}% openable = ${w.openableArea.toFixed(2)} m² effective`);
     out+=segmentLine(w.segment,'var(--svg-on-color)',1.2,w.label);
     if(w.custom){out+=openingDeleteHandle(w.segment,w.id,w.label);out+='</g>';}
   });
-  (plan.openings&&plan.openings.doors||[]).forEach(d=>{
+  (!effective&&plan.openings&&plan.openings.doors||[]).forEach(d=>{
     if(d.custom)out+=`<g data-room-id="${d.id}" tabindex="0" role="group" aria-label="${d.label} door, deletable">`;
     out+=d.kind==='balcony-slider'?slidingDoor(d):segmentLine(d.segment,ROOM_COLORS.door,4,
       `${d.label} door to ${d.targetLabel}: ${f1(d.width/FT)} ft wide`);
     if(d.custom){out+=openingDeleteHandle(d.segment,d.id,`${d.label} door`);out+='</g>';}
   });
-  (plan.wallOpenings||[]).forEach(o=>{
+  (!effective&&plan.wallOpenings||[]).forEach(o=>{
     out+=`<g data-room-id="${o.id}" tabindex="0" role="group" aria-label="${o.label}, open-plan connection, deletable">`;
     out+=segmentLine(o.segment,o.targetRoomId?'var(--svg-deep)':ROOM_COLORS.corridor,Math.max(7,INT_WALL*scale+4),
       `${o.label}: ${f1(o.width/FT)} ft open connection to ${o.targetLabel}`);
@@ -4613,7 +4770,8 @@ function roomSvgPlan(plate,g,plan){
     out+=openingDeleteHandle(o.segment,o.id,o.label);
     out+='</g>';
   });
-  if(plan.openings&&plan.openings.entrance)
+  if(effective)out+=window.HomePlanner.renderLayer(effective,point,scale,'openings');
+  if(!effective&&plan.openings&&plan.openings.entrance)
     out+=segmentLine(plan.openings.entrance.segment,'#f0b429',7,`Main entrance: ${f1(plan.openings.entrance.width/FT)} ft wide`);
   const a=point(0,0),b=point(g.W,0),m=point(g.W/2,-.62);
   const roadTextAngle=angle===90||angle===-90?angle:0;
@@ -4622,6 +4780,9 @@ function roomSvgPlan(plate,g,plan){
   out+=`<text x="14" y="${VH-14}" fill="var(--svg-muted)" font-size="9.5">${plate.label} · statutory envelope ${f1(g.W/FT)} ft × ${f1(g.D/FT)} ft · rectangular dwelling ${f1(g.outerW/FT)} ft × ${f1(g.outerD/FT)} ft</text>`;
   out+=`<g transform="translate(${VW-38},38)"><circle r="21" fill="var(--svg-surface)" stroke="var(--svg-line)"/><path d="M 0 -15 L 5 3 L 0 -1 L -5 3 Z" fill="var(--bad)"/><text x="0" y="-23" fill="var(--bad)" font-size="9" text-anchor="middle">N</text><text x="0" y="31" fill="var(--svg-muted)" font-size="8" text-anchor="middle">S</text><text x="29" y="4" fill="var(--svg-muted)" font-size="8" text-anchor="middle">E</text><text x="-29" y="4" fill="var(--svg-muted)" font-size="8" text-anchor="middle">W</text></g>`;
   svg.innerHTML=out;
+  const focusTarget=focusId?svg.querySelector(`[data-planner-id="${CSS.escape(focusId)}"]`):
+    focusSource?svg.querySelector(`[data-room-id="${CSS.escape(focusSource)}"][tabindex]`):null;
+  focusTarget?.focus({preventScroll:true});
 }
 
 function roomRangeText(range){
@@ -4633,6 +4794,7 @@ function roomRangeText(range){
 function renderRoomPlanner(r){
   if (!r) return;
   const plate=roomPlateFor(r),cfg=roomPlannerConfig(),warnings=cfg.warnings.slice();
+  cfg.frontEdge=plate.frontEdge;
   roomUpdateLibrarySummaries();
   cfg.floors=Math.max(0,plate.floors||0);
   const g=deriveRoomGeometry(plate,cfg,warnings);
@@ -4666,11 +4828,16 @@ function renderRoomPlanner(r){
   const signature=roomPlanSignature(plate,cfg);
   roomApplySavedBalconies(g,signature);
   const plan=roomApplyManualLayout(roomPackProgram(g,cfg),g,signature);
+  plan.layoutSignature=signature;
   plan.openings=roomPlanOpenings(g,plan,cfg);
   roomApplySavedOpenings(g,plan,cfg,signature);
   roomPlanFurniture(plan,cfg,signature);
   const manualActive=roomManualLayouts.has(signature);
   window.__roomPlanner={plate,g,plan,cfg,signature};
+  if(window.HomePlanner){
+    const scene=window.HomePlanner.sceneForRender(plate,g,plan,cfg);
+    if(scene)plan.wallFootprint=scene.metrics.wallFootprintM2;
+  }
   $('roomReset').disabled=!manualActive;
   $('roomEditHint').innerHTML=manualActive
     ? `<b style="color:var(--warn)">Manual layout active.</b> Drag rooms, services, balconies and furniture. Openings and open-plan connections can be restored with their red ×. Cupboards and kitchen counters resize from any edge.`
@@ -4708,7 +4875,7 @@ function renderRoomPlanner(r){
   if(plan.serviceCorridorOverlap>ROOM_EPS)
     alerts.push(`<div class="verdict v-warn"><b>Lift / stair blocks overlay ${f0(plan.serviceCorridorOverlap*M2SF)} sq ft of corridor area.</b> The overlap is counted once in the metrics; an architect must still preserve the required unobstructed escape and circulation width.</div>`);
   if(plan.furnitureUnmet.length)
-    alerts.push(`<div class="verdict v-warn"><b>${plan.furnitureUnmet.length} bedroom furniture placeholder${plan.furnitureUnmet.length===1?' does':'s do'} not fit.</b> ${plan.furnitureUnmet.join(', ')}. Resize the room, choose a smaller bed, or shorten the cupboard.</div>`);
+    alerts.push(`<div class="verdict v-warn"><b>${plan.furnitureUnmet.length} bedroom furniture placeholder${plan.furnitureUnmet.length===1?' does':'s do'} not fit.</b> ${roomEscapeMarkup(plan.furnitureUnmet.join(', '))}. Resize the room, choose a smaller bed, or shorten the cupboard.</div>`);
   if (plate.deducted>ROOM_EPS)
     warnings.push(`${f0(plate.deducted*M2SF)} sq ft was conservatively deducted from the rectangular envelope for the applicable tot-lot/open-space requirement.`);
   if (warnings.length)
@@ -4734,9 +4901,11 @@ function renderRoomPlanner(r){
     const s=status(p);
     const wins=plan.openings.windows.filter(w=>w.roomId===p.req.id);
     const doors=plan.openings.doors.filter(d=>d.roomId===p.req.id);
+    const passages=(plan.wallOpenings||[]).filter(o=>o.roomId===p.req.id&&o.width>=ROOM_DOOR_MIN);
     const openings=(wins.length?wins.map(w=>`${w.global} window ${w.area.toFixed(2)} m² gross · ${(w.operability*100).toFixed(0)}% = ${w.openableArea.toFixed(2)} m² openable`).join(' + '):'no exterior window')+
       (doors.length?` · ${doors.map(d=>d.kind==='balcony-slider'?`${d.global} ${f1(d.width/FT)} ft sliding balcony door`:
-        `${d.global} ${f1(d.width/FT)} ft door → ${d.targetLabel}`).join(' + ')}`:' · no circulation door');
+        `${d.global} ${f1(d.width/FT)} ft door → ${roomEscapeMarkup(d.targetLabel)}`).join(' + ')}`:passages.length?'':' · no access opening')+
+      (passages.length?` · ${passages.map(o=>`${f1(o.width/FT)} ft open connection to ${roomEscapeMarkup(o.targetLabel||'passage')}`).join(' + ')}`:'');
     return `<tr><td><b>${p.req.label}</b></td><td class="n">${f1(p.carpet.w/FT)} × ${f1(p.carpet.h/FT)} ft</td>`+
       `<td class="n">${f0(p.carpet.w*p.carpet.h*M2SF)} sq ft</td><td class="mini">${roomRangeText(p.req.range)}</td>`+
       `<td class="mini">${openings}</td><td><span class="badge ${s[0]}">${s[1]}</span></td></tr>`;
@@ -4744,7 +4913,7 @@ function renderRoomPlanner(r){
   plan.unmet.forEach(x=>rows.push(`<tr><td><b>${x.label}</b></td><td class="n">—</td><td class="n">—</td><td class="mini">${roomRangeText(x.range)}</td><td class="mini">—</td><td><span class="badge b-bad">Not placed</span></td></tr>`));
   (plan.furniture||[]).forEach(f=>{
     const parent=plan.placed.find(p=>p.req.id===f.roomId);
-    rows.push(`<tr><td><span class="mini">↳ ${parent?parent.req.label:'Bedroom'}</span><br><b>${f.label}</b></td><td class="n">${f1(f.w/FT)} × ${f1(f.h/FT)} ft</td>`+
+    rows.push(`<tr><td><span class="mini">↳ ${parent?parent.req.label:'Bedroom'}</span><br><b>${roomEscapeMarkup(f.label)}</b></td><td class="n">${f1(f.w/FT)} × ${f1(f.h/FT)} ft</td>`+
       `<td class="n">${f0(f.w*f.h*M2SF)} sq ft</td><td class="mini">${f.custom?'Added from component pane':f.type==='bed'?'Selected standard size':`${f1(cfg.furniture.cupboardLength/FT)} ft length × ${f1(cfg.furniture.cupboardDepth/FT)} ft depth`}</td>`+
       `<td class="mini">Inside ${parent?parent.req.label.toLowerCase():'bedroom'}</td><td><span class="badge b-ok">Movable</span></td></tr>`);
   });
@@ -4942,8 +5111,6 @@ function costModel(r){
 
 const RS = n => '₹' + Math.round(n).toLocaleString('en-IN');
 const RSl = n => n>=1e7 ? '₹'+(n/1e7).toFixed(2)+' Cr' : n>=1e5 ? '₹'+(n/1e5).toFixed(2)+' L' : RS(n);
-let keepFineSplitStep = false;
-
 function splitStepPct(r){
   const u = +$('dunit').value || 1;
   const raw = r && Number.isFinite(r.totalFront) && r.totalFront > 0 ? (0.1 * u) / r.totalFront * 100 : 0.1;
@@ -4962,8 +5129,6 @@ function renderSplit(r){
   const builtGain = s.built - w.built, builtGainPct = w.built? builtGain/w.built*100 : 0;
   const lossDelta = w.lost - s.lost;   // positive = split loses less of the plot
 
-  if (keepFineSplitStep) keepFineSplitStep = false;
-  else $('splitPos').step = splitStepPct(r);
   $('splitA').value = (r.totalFront*r.frac/u).toFixed(1);
   $('splitB').value = (r.totalFront*(1-r.frac)/u).toFixed(1);
   const pct = x => (x*100).toFixed(Math.abs(x*100-Math.round(x*100))<0.05?0:1).replace(/\.0$/,'');
@@ -5433,6 +5598,7 @@ $('face').addEventListener('change',()=>{buildRoadInputs();render();});
 document.querySelectorAll('.primary-tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.primary-tabs button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.app-page').forEach(p=>p.classList.toggle('on',p.id==='page-'+b.dataset.page));
+  $('plotSources').hidden=b.dataset.page!=='optimizer';
   if (b.dataset.page==='rooms') renderRoomPlanner(window.__last);
 }));
 document.querySelectorAll('.sub-tabs button').forEach(b=>b.addEventListener('click',()=>{
@@ -5442,7 +5608,6 @@ document.querySelectorAll('.sub-tabs button').forEach(b=>b.addEventListener('cli
 $('splitA').addEventListener('input',()=>{
   const r=window.__last; if(!r||!r.totalFront) return;
   const u=+$('dunit').value, v=(+$('splitA').value||0)*u;
-  $('splitPos').step = splitStepPct(r);
   $('splitPos').value = Math.min(85, Math.max(15, v/r.totalFront*100)).toFixed(6);
   render();
 });
@@ -5451,9 +5616,15 @@ $('splitSnaps').addEventListener('click',ev=>{
   if (!btn) return;
   const f = +btn.dataset.frac;
   if (!Number.isFinite(f)) return;
-  keepFineSplitStep = true;
-  $('splitPos').step = '0.0001';
   $('splitPos').value = (Math.min(0.85, Math.max(0.15, f))*100).toFixed(4);
+  render();
+});
+$('splitPos').addEventListener('keydown',event=>{
+  const direction=['ArrowRight','ArrowUp'].includes(event.key)?1:['ArrowLeft','ArrowDown'].includes(event.key)?-1:0;
+  if(!direction)return;
+  event.preventDefault();
+  const value=+$('splitPos').value+direction*splitStepPct(window.__last)*(event.shiftKey?10:1);
+  $('splitPos').value=String(Math.min(85,Math.max(15,value)));
   render();
 });
 ['dunit','pEW','pNS','cat','use','ht','stilt','ffh','tdr','dev','splitPos',
@@ -5492,6 +5663,13 @@ render();
 </script>
 <script src="vendor/suncalc-2.0.1.js"></script>
 <script src="sun-model.js"></script>
+<script src="planner-location.js"></script>
 <script src="sun-planner.js"></script>
+<script src="planner-model.js"></script>
+<script src="planner-bridge.js"></script>
+<script src="planner-editor.js"></script>
+<script src="planner-3d.js"></script>
+<script src="planner-storage.js"></script>
+<script src="planner-persistence.js"></script>
 </body>
 </html>

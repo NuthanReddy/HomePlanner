@@ -1,8 +1,9 @@
 # Sun path
 
 The **Sun Path** tab reuses the locally bundled **SunCalc 2.0.1** script. It does
-not implement astronomical algorithms, fetch weather, detect location or require
-an API key. Open `index.html` with the accompanying scripts and `vendor` folder,
+not implement astronomical algorithms, fetch weather or require an API key.
+Location detection runs only when **Detect current location** is clicked.
+Open `index.html` with the accompanying scripts and `vendor` folder,
 including when offline.
 
 ## Location and clock
@@ -11,6 +12,13 @@ The initial coordinates are an explicitly labelled Hyderabad example. Enter the
 actual site latitude (north positive) and longitude (east positive), plus its
 IANA time zone. The selected local date/time is resolved to a UTC instant rather
 than using the computer's timezone or an assumed longitude-based offset.
+
+The optional location button requests browser permission and reports the device's
+latitude, longitude and accuracy. It does not prove the device is at the planned
+site, change the timezone, or reverse-geocode an address. Permission denial,
+timeout and unsupported/insecure origins leave manual input usable. Coordinates
+edited while a request is pending are preserved. HTTPS or localhost may be
+required by the browser for this optional capability.
 
 Clock times skipped by daylight-saving/calendar changes are rejected. Repeated
 times require an earlier/later selection. The annual plot labels repeated-time
@@ -24,6 +32,9 @@ handling and leaves skipped times as gaps, never invented positions.
 - Daily sky paths use 15-minute UTC samples filtered to the selected civil date.
   The diagram uses an equidistant altitude radius, with zenith at the centre
   and the horizon at the outer ring. It is not a stereographic chart.
+- Min/Max callouts identify the lowest and highest **above-horizon elevation**
+  in the daily samples, with their local times. These are sampled extrema, not
+  exact sunrise/horizon crossings. A polar night has no daylight extrema.
 - The annual plot uses one sample per calendar date at the selected local clock
   time (365 or 366 dates). It is not an 8760-hour energy calculation.
 - Solar events refer to the solar cycle near local noon with an unobstructed,

@@ -132,6 +132,18 @@
     return samples;
   }
 
+  function daylightExtrema(samples){
+    let min=null,max=null;
+    for(const sample of samples){
+      if(!Number.isFinite(sample.altitude))
+        throw new InputError('A daily sun sample has an invalid elevation.','date');
+      if(sample.altitude<0)continue;
+      if(!min||sample.altitude<min.altitude)min=sample;
+      if(!max||sample.altitude>max.altitude)max=sample;
+    }
+    return min?{min,max}:null;
+  }
+
   function* annualSamples(config){
     validate(config);
     const year=parseDate(config.date).year;
@@ -170,6 +182,6 @@
       .map(row=>row.map(quote).join(',')).join('\r\n');
   }
 
-  return Object.freeze({InputError,validate,calculate,dailySamples,annualSamples,resolveLocal,
+  return Object.freeze({InputError,validate,calculate,dailySamples,daylightExtrema,annualSamples,resolveLocal,
     dateAt,daysInYear,dayOfYear,dateFromDay,csv});
 });

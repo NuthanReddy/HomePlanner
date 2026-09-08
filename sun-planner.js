@@ -50,7 +50,18 @@
   function drawDaily(config,current){
     const rows=model.dailySamples(config);
     const path=pathFor(rows,skyPoint,row=>row.altitude>=0);
+    const extrema=model.daylightExtrema(rows);
     const p=skyPoint(current);
+    const mark=(sample,label,kind)=>{
+      const point=skyPoint(sample),left=point.x>=230;
+      const x=point.x+(left?-20:20),y=Math.max(30,Math.min(330,point.y+(kind==='max'?-28:28)));
+      const anchor=left?'end':'start';
+      return `<g class="sun-extrema sun-extrema-${kind}">`+
+        `<path d="M${point.x} ${point.y} L${x} ${y}" fill="none" stroke="currentColor"/>`+
+        `<circle cx="${point.x}" cy="${point.y}" r="5" fill="${kind==='min'?'var(--panel)':'currentColor'}" stroke="currentColor" stroke-width="2"/>`+
+        `<text x="${x}" y="${y-3}" text-anchor="${anchor}">${label} ${degrees(sample.altitude)}</text>`+
+        `<text x="${x}" y="${y+12}" text-anchor="${anchor}">${clock(sample.instant,config.timeZone)}</text></g>`;
+    };
     byId('sunDaily').innerHTML=
       '<title>Daily sky path, geographic north up</title>'+
       '<desc>Equidistant altitude diagram. The centre is the zenith at 90 degrees; the outer circle is the horizon at zero degrees. Only above-horizon samples are connected.</desc>'+
@@ -60,9 +71,12 @@
       '<text x="230" y="350">S / 180\u00b0</text><text x="50" y="190">W / 270\u00b0</text></g>'+
       '<g class="sun-plot-text"><text x="238" y="53">0\u00b0</text><text x="238" y="99">30\u00b0</text><text x="238" y="146">60\u00b0</text><text x="238" y="182">90\u00b0</text></g>'+
       `<path class="sun-plot-path" d="${path}"/>`+
+      (extrema?mark(extrema.min,'Min','min')+mark(extrema.max,'Max','max'):'')+
       (current.altitude>=0?`<circle class="sun-plot-selected" cx="${p.x}" cy="${p.y}" r="6"/>`:'');
     byId('sunDailyCaption').textContent=`${config.date} in ${config.timeZone}. Blue: 15-minute samples for this civil date. ${
-      current.altitude>=0?'Amber: selected time.':'The selected sun position is below the horizon.'} This diagram does not include buildings, trees or terrain.`;
+      current.altitude>=0?'Amber: selected time.':'The selected sun position is below the horizon.'} ${
+      extrema?`Daylight elevation ranges from ${degrees(extrema.min.altitude)} at ${clock(extrema.min.instant,config.timeZone)} to ${degrees(extrema.max.altitude)} at ${clock(extrema.max.instant,config.timeZone)} (sampled extrema, not exact horizon crossings).`
+        :'There are no above-horizon samples, so daylight minimum and maximum are unavailable.'} This diagram does not include buildings, trees or terrain.`;
   }
 
   function drawAnnual(config,rows){
@@ -115,6 +129,8 @@
     Object.values(fields).forEach(field=>field.removeAttribute('aria-invalid'));
     try{
       const config=readConfig(),current=model.calculate(config);
+      document.dispatchEvent(new CustomEvent('homeplanner:sun-change',{detail:config}));
+      if(token!==revision)return;
       byId('sunOccurrenceRow').hidden=!current.ambiguous;
       results.hidden=false;
       byId('sunAzimuth').textContent=degrees(current.azimuth);
@@ -151,6 +167,26 @@
 
   form.addEventListener('submit',event=>{event.preventDefault();update();});
   Object.values(fields).forEach(field=>field.addEventListener('input',update));
+  byId('sunLocate').addEventListener('click',async()=>{
+    const button=byId('sunLocate'),status=byId('sunLocationStatus');
+    const before=[fields.latitude.value,fields.longitude.value];
+    button.disabled=true;status.textContent='Requesting your device location. Your browser may ask for permission.';
+    try{
+      if(!window.HomePlannerLocation)throw new Error('The local location helper is unavailable. Enter coordinates manually.');
+      const location=await window.HomePlannerLocation.detect();
+      if(before[0]!==fields.latitude.value||before[1]!==fields.longitude.value){
+        status.textContent='A device location was received, but you edited the coordinates while waiting. Your manual values were kept.';
+        return;
+      }
+      fields.latitude.value=String(location.latitude);fields.longitude.value=String(location.longitude);
+      fields.latitude.dispatchEvent(new Event('input',{bubbles:true}));
+      status.textContent=`Device coordinates applied (reported accuracy ${Math.round(location.accuracyM)} m). Confirm that the device is at the site. The time zone was not changed.`;
+    }catch(error){
+      status.textContent=error.message;
+    }finally{
+      button.disabled=false;
+    }
+  });
   byId('sunDay').addEventListener('input',()=>{
     const year=Number(fields.date.value.slice(0,4));
     if(!Number.isInteger(year)||year<1){update();return;}

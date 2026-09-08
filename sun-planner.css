@@ -25,6 +25,10 @@
 .sun-plot-text{fill:var(--dim);font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .sun-plot-path{fill:none;stroke:var(--acc);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 .sun-plot-selected{fill:var(--warn);stroke:var(--panel);stroke-width:2}
+.sun-extrema{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.sun-extrema text{fill:currentColor;stroke:var(--panel);stroke-width:3px;paint-order:stroke;stroke-linejoin:round}
+.sun-extrema-min{color:var(--tdr)}
+.sun-extrema-max{color:var(--ok)}
 .sun-plot-horizon{stroke:var(--dim);stroke-dasharray:5 5}
 .sun-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .sun-heading h2{margin-bottom:0}

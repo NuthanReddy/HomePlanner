@@ -1,0 +1,39 @@
+.sun-layout{max-width:1440px;margin-inline:auto;grid-template-columns:300px minmax(0,1fr)}
+.sun-layout>*,.sun-controls .row>*{min-width:0}
+.sun-controls h2{margin-bottom:6px}
+.sun-controls fieldset{padding:0;margin:0;border:0;min-width:0}
+.sun-controls input,.sun-controls select{min-height:38px;min-width:0}
+.sun-controls input[type=range]{min-height:32px;padding:0;accent-color:var(--acc)}
+.sun-controls input[aria-invalid=true],.sun-controls select[aria-invalid=true]{border-color:var(--bad)}
+.sun-controls .split-snaps button,.sun-download{min-height:34px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer}
+.sun-download{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px}
+.sun-download:disabled{opacity:.55;cursor:not-allowed}
+.sun-controls button:focus-visible,.sun-download:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sun-controls output{font-variant-numeric:tabular-nums}
+.sun-controls .note{border:0;padding:0}
+.sun-readouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:14px 0}
+.sun-readouts dt{font-size:12px;color:var(--dim)}
+.sun-readouts dd{margin:0;color:var(--txt);font-size:24px;font-weight:650;font-variant-numeric:tabular-nums}
+.sun-events{display:flex;gap:20px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+.sun-events dt{color:var(--dim);font-size:12px}
+.sun-events dd{margin:0;font-variant-numeric:tabular-nums}
+#sunDaily{max-width:520px;margin-inline:auto;border:0;background:transparent}
+#sunAnnual{border:0;background:transparent}
+.sun-annual-wrap{max-width:100%;overflow-x:auto}
+.sun-scroll-hint{display:none}
+.sun-plot-grid{stroke:var(--line);fill:none}
+.sun-plot-text{fill:var(--dim);font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.sun-plot-path{fill:none;stroke:var(--acc);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.sun-plot-selected{fill:var(--warn);stroke:var(--panel);stroke-width:2}
+.sun-plot-horizon{stroke:var(--dim);stroke-dasharray:5 5}
+.sun-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.sun-heading h2{margin-bottom:0}
+#sunError{color:var(--bad);margin:12px 0 0}
+#sunError[hidden],#sunResults[hidden],#sunOccurrenceRow[hidden]{display:none}
+#sunResults[aria-busy=true] #sunAnnual{opacity:.45}
+.sun-example{margin:8px 0 0;color:var(--dim);font-size:12px}
+@media(max-width:1000px){.sun-layout{grid-template-columns:1fr}.sun-controls{max-width:none}}
+@media(max-width:620px){
+  .sun-layout{padding:12px}.sun-readouts{gap:8px}.sun-readouts dd{font-size:20px}
+  #sunAnnual{min-width:680px}.sun-scroll-hint{display:block}
+}

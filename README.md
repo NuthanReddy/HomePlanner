@@ -1,12 +1,14 @@
 # HomePlanner
 
-A dependency-free browser tool for comparing GHMC/HMDA plot setbacks, floor
-limits, plot efficiency, indicative costs, and schematic room layouts.
+A browser tool for comparing GHMC/HMDA plot setbacks, floor limits, plot
+efficiency, indicative costs, schematic room layouts, and local sun paths.
 
 ## Run locally
 
 Open [`index.html`](index.html) in a modern web browser. No installation or
-build step is required.
+build step is required. Keep its accompanying scripts, stylesheet, and `vendor`
+folder together. The **Sun Path** tab uses bundled SunCalc to calculate angles
+and daily/annual paths offline; it does not request weather or location access.
 
 ## Documentation
 

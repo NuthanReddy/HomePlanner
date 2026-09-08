@@ -286,6 +286,7 @@ body.room-plan-lock{overflow:hidden}
   #roomFullscreen{width:100%}
 }
 </style>
+<link rel="stylesheet" href="sun-planner.css">
 </head>
 <body>
 <header>
@@ -306,6 +307,7 @@ body.room-plan-lock{overflow:hidden}
 <div class="tabs primary-tabs">
   <button data-page="optimizer" class="on">Plot Optimizer</button>
   <button data-page="rooms">Room Planner</button>
+  <button data-page="sun">Sun Path</button>
 </div>
 
 <div class="app-page on" id="page-optimizer">
@@ -1008,6 +1010,77 @@ body.room-plan-lock{overflow:hidden}
 
   </div>
 </div><!-- /page-rooms -->
+
+<div class="app-page" id="page-sun">
+  <div class="wrap sun-layout">
+    <form class="card sun-controls" id="sunForm" novalidate>
+      <h2>Sun Path</h2>
+      <p class="mini">Calculate sun angles locally from a date and location. No weather service or location permission is used.</p>
+      <fieldset>
+        <div class="row">
+          <div><label for="sunLatitude">Latitude (&deg; N)</label><input id="sunLatitude" type="number" min="-90" max="90" step="any" value="17.385" required></div>
+          <div><label for="sunLongitude">Longitude (&deg; E)</label><input id="sunLongitude" type="number" min="-180" max="180" step="any" value="78.4867" required></div>
+        </div>
+        <p class="sun-example">Example coordinates: Hyderabad, not a detected site. Use negative values for south or west.</p>
+        <label for="sunTimeZone">Time zone (IANA name)</label>
+        <input id="sunTimeZone" type="text" value="Asia/Kolkata" list="sunTimeZones" spellcheck="false" required aria-describedby="sunZoneHint">
+        <datalist id="sunTimeZones"><option value="Asia/Kolkata"></option><option value="UTC"></option><option value="America/New_York"></option><option value="Europe/London"></option><option value="Australia/Sydney"></option></datalist>
+        <div class="mini" id="sunZoneHint">Clock time below uses this zone, not the computer's zone or local solar time.</div>
+        <div class="row">
+          <div><label for="sunDate">Date</label><input id="sunDate" type="date" required></div>
+          <div><label for="sunTime">Local clock time</label><input id="sunTime" type="time" value="12:00" step="60" required></div>
+        </div>
+        <div id="sunOccurrenceRow" hidden>
+          <label for="sunOccurrence">Repeated clock time</label>
+          <select id="sunOccurrence"><option value="">Choose an occurrence</option><option value="earlier">Earlier occurrence</option><option value="later">Later occurrence</option></select>
+        </div>
+        <label for="sunMinute">Scrub time: <output id="sunMinuteValue" for="sunMinute">12:00</output></label>
+        <input id="sunMinute" type="range" min="0" max="1439" step="1" value="720">
+        <label for="sunDay">Scrub year: <output id="sunDayValue" for="sunDay"></output></label>
+        <input id="sunDay" type="range" min="1" max="366" step="1" value="1">
+        <div class="split-snaps">
+          <button type="button" data-sun-date="03-20">Mar 20</button><button type="button" data-sun-date="06-21">Jun 21</button>
+          <button type="button" data-sun-date="09-22">Sep 22</button><button type="button" data-sun-date="12-21">Dec 21</button>
+          <button type="button" id="sunNow">Use current time</button>
+        </div>
+        <p class="mini">Reference dates, not exact equinox or solstice instants. Seasons depend on the hemisphere.</p>
+      </fieldset>
+      <p id="sunError" role="alert" hidden></p>
+      <p class="note">Powered by the local <a href="https://github.com/mourner/suncalc/tree/v2.0.1" target="_blank" rel="noopener">SunCalc 2.0.1</a> bundle.
+        <a href="vendor/suncalc-LICENSE.txt" target="_blank" rel="noopener">License</a>. Values use its apparent (refraction-corrected) elevation.</p>
+      <noscript><p>JavaScript is required for the local sun calculations.</p></noscript>
+    </form>
+    <div id="sunResults" hidden>
+      <section class="card" aria-labelledby="sunPositionHeading">
+        <h2 id="sunPositionHeading">Daily Sky Path</h2>
+        <div class="mini" id="sunInstant"></div>
+        <dl class="sun-readouts">
+          <div><dt>Azimuth, from north</dt><dd id="sunAzimuth"></dd></div>
+          <div><dt>Elevation</dt><dd id="sunAltitude"></dd></div>
+          <div><dt>Zenith angle</dt><dd id="sunZenith"></dd></div>
+        </dl>
+        <div id="sunState" class="mini"></div>
+        <svg id="sunDaily" viewBox="0 0 460 370" role="img" aria-label="Daily sun path above the horizon" aria-describedby="sunDailyCaption"></svg>
+        <p class="mini" id="sunDailyCaption"></p>
+        <dl class="sun-events">
+          <div><dt>Sunrise</dt><dd id="sunRise"></dd></div>
+          <div><dt>Solar noon</dt><dd id="sunNoon"></dd></div>
+          <div><dt>Sunset</dt><dd id="sunSet"></dd></div>
+        </dl>
+        <p class="mini" id="sunEventNote"></p>
+      </section>
+      <section class="card" aria-labelledby="sunAnnualHeading">
+        <div class="sun-heading"><h2 id="sunAnnualHeading">Elevation Across the Year</h2><button type="button" class="sun-download" id="sunDownload" disabled>Download daily samples (CSV)</button></div>
+        <div class="sun-annual-wrap" tabindex="0" role="region" aria-label="Scrollable annual sun chart">
+          <svg id="sunAnnual" viewBox="0 0 680 264" role="img" aria-label="Annual solar elevation at the selected local clock time" aria-describedby="sunAnnualStatus"></svg>
+        </div>
+        <p class="mini sun-scroll-hint">Scroll the chart horizontally to explore the full year.</p>
+        <p class="mini" id="sunAnnualStatus" role="status"></p>
+      </section>
+      <p class="mini">Astronomical position only: these plots do not calculate building shadows, solar energy, weather or indoor temperature. The room planner's existing daylight and ventilation checks remain separate heuristics.</p>
+    </div>
+  </div>
+</div>
 
 <div class="foot">
   <b>Sources.</b> G.O.Ms.No.168 MA&amp;UD dt. 07.04.2012 — Rule 2(f) definitions, Rule 4 &amp; Table II (approach road), Rule 5 &amp; Table III (setbacks &amp; height), Rule 6 (projections), Rule 7 &amp; Table IV (high-rise), Rule 13 &amp; Table V (parking), Rule 26 (occupancy certificate &amp; compounding), Rule 27 (enforcement).
@@ -5417,5 +5490,8 @@ initRoomViewport();
 initChecklistFixes();
 render();
 </script>
+<script src="vendor/suncalc-2.0.1.js"></script>
+<script src="sun-model.js"></script>
+<script src="sun-planner.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 # GHMC / HMDA Plot Optimizer documentation
 
 This folder documents the assumptions and behavior of
-`../index.html`, a dependency-free browser tool for comparing
+`../index.html`, a browser tool for comparing
 setbacks, floor limits, plot efficiency, indicative costs, and schematic room
 layouts in the GHMC/HMDA context.
 
@@ -18,6 +18,8 @@ layouts in the GHMC/HMDA context.
 - [Design guidance](design-guidance.md): daylight, ventilation, IGBC/LEED
   comparisons, Vastu separation, checklist fixes, and rollback.
 - [Cost model](cost-model.md): included cost layers, equations, and confidence.
+- [Sun path](sun-path.md): local SunCalc integration, timezone handling,
+  daily/annual plots, CSV export, and analysis boundaries.
 - [Validation and limitations](validation-and-limitations.md): tested behavior,
   known constraints, and professional-review boundaries.
 

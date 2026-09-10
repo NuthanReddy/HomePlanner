@@ -13,6 +13,14 @@ layouts in the GHMC/HMDA context.
   optimal aspect ratio, corner plots, and plot splitting.
 - [Room planner](room-planner.md): geometry pipeline, packing model, editable
   state, walls, corridors, and services.
+- [Shared project model](project-model.md): physical walls/openings, identities,
+  floor namespaces, geometry assumptions and JSON validation.
+- [Editor workspace](editor-workspace.md): selection, dimensions, door/bed
+  controls, independent floors and history.
+- [Local persistence](local-persistence.md): IndexedDB, autosave, project
+  management, JSON backups and recovery.
+- [3D inspection](three-dimensional.md): stacked storeys, local Three.js,
+  real aperture geometry, selection and serving requirements.
 - [Circulation and components](circulation-and-components.md): access graph,
   doors, windows, furniture, and open-plan connections.
 - [Design guidance](design-guidance.md): daylight, ventilation, IGBC/LEED
@@ -20,6 +28,12 @@ layouts in the GHMC/HMDA context.
 - [Cost model](cost-model.md): included cost layers, equations, and confidence.
 - [Sun path](sun-path.md): local SunCalc integration, timezone handling,
   daily/annual plots, CSV export, and analysis boundaries.
+- [Environment workspace](environment-analysis.md): weather, shadows, materials,
+  wind proposals, explicit numerical experiments and expert exports.
+- [Building physics](building-physics.md): supported equations, units, assumptions
+  and numerical limits.
+- [Electrical planning](electrical-planning.md): physical point anchors,
+  nullable measurements and ergonomic review.
 - [Validation and limitations](validation-and-limitations.md): tested behavior,
   known constraints, and professional-review boundaries.
 

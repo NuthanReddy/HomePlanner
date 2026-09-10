@@ -56,12 +56,24 @@ several rooms and then repair access.
 
 ## State model
 
-Manual room geometry, balconies, furniture, custom doors/windows, wall
-openings, and hidden default components are stored in an in-memory map keyed by
-the floor-plate/configuration signature. They survive re-rendering during the
-current page session but are intentionally cleared by reload.
+The [shared project](project-model.md) now owns independent floor slices and
+effective physical walls/openings. The existing room generator remains an
+adapter: each floor retains its controls, road widths/units, split direction,
+manual-layout map and captured geometry. Floor elevation comes from the ordered
+storey heights, not the regulatory balcony-rule selector.
 
-The light/dark theme is the exception: it is persisted in browser
+The [editor](editor-workspace.md) adds selection, explicit bed-head polarity,
+door hinge/swing controls and conceptual open partitions. Automatic bed placement
+prefers geographic South, West, East, then North; manual/pinned choices are not
+silently replaced. Both the plan's rotation handle and keyboard R use the same
+project command as the inspector.
+
+Projects can be exported/imported as JSON or retained through opt-in
+[IndexedDB persistence](local-persistence.md). With persistence off, edits remain
+memory-only unless explicitly exported. Local storage is not an independent
+backup.
+
+The light/dark theme is persisted separately in browser
 `localStorage` under `ghmc-hmda-theme`.
 
 ## Balcony and service rules
@@ -81,3 +93,9 @@ keyboard zoom, and fullscreen with a maximized fallback. Fullscreen keeps the
 same live Rooms & Services / Components pane docked on the right. Geometry
 remains in a fixed viewBox; screen coordinates are transformed back to plan
 coordinates for accurate dragging at every zoom level.
+
+Clicks and focus are distinct from dragging; a drag threshold avoids moving an
+object during inspection. Escape/pointer cancellation discards an unfinished
+gesture. The inspector stays in the same right-hand pane in fullscreen.
+The optional [3D view](three-dimensional.md) reads the same floor scenes and
+does not own another editable layout.

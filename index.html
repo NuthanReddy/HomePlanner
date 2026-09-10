@@ -274,7 +274,7 @@ body.room-plan-lock{overflow:hidden}
   .header-bar{gap:12px}
   .theme-toggle{padding:6px}
   .theme-toggle-label{display:none}
-  .tabs{padding-left:12px;padding-right:12px;overflow-x:auto}
+  .tabs{padding-left:12px;padding-right:12px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
   .tabs button{white-space:nowrap}
   .wrap,.room-wrap{padding:12px}
   .checklist-grid{grid-template-columns:1fr}
@@ -291,6 +291,8 @@ body.room-plan-lock{overflow:hidden}
 <link rel="stylesheet" href="planner-3d.css">
 <link rel="stylesheet" href="planner-editor.css">
 <link rel="stylesheet" href="planner-persistence.css">
+<link rel="stylesheet" href="electrical-planner.css">
+<link rel="stylesheet" href="environment-ui.css">
 <script type="importmap">
 {"imports":{"three":"./vendor/three/three.module.min.js"}}
 </script>
@@ -3239,6 +3241,18 @@ function roomDropOpeningComponent(ctx,type,point){
   return true;
 }
 
+function roomRotateFromPlan(ctx,item){
+  if(!window.HomePlanner)return roomRotateFurniture(ctx,item);
+  const entity=window.HomePlanner.getScene()?.furniture.find(f=>f.sourceId===item.id);
+  if(!entity)return roomEditBlocked(ctx,'The component is no longer in the active floor model.');
+  try{
+    window.HomePlanner.execute({type:'rotate-furniture',id:entity.id});
+    return true;
+  }catch(error){
+    return roomEditBlocked(window.__roomPlanner||ctx,error.message);
+  }
+}
+
 function roomUnionArea(rects){
   if(!rects.length)return 0;
   const xs=[...new Set(rects.flatMap(r=>[r.x,r.x+r.w]))].sort((a,b)=>a-b);
@@ -4396,7 +4410,7 @@ function initRoomEditing(){
         if(item.kind==='furniture')roomDeleteFurniture(ctx,item);
         else roomDeleteOpening(ctx,item);
       }
-      else roomRotateFurniture(ctx,item);
+      else roomRotateFromPlan(ctx,item);
     }
     ev.preventDefault();ev.stopPropagation();
   });
@@ -4433,7 +4447,7 @@ function initRoomEditing(){
     }else if(window.HomePlanner){
       window.HomePlanner.selectSource(ended.kind==='room'?'room':ended.kind==='furniture'?'furniture':ended.kind,ended.id);
     }
-    if(error)$('roomEditHint').innerHTML=`<b style="color:var(--bad)">Move blocked.</b> ${error}`;
+    if(error)$('roomEditHint').innerHTML=`<b style="color:var(--bad)">Move blocked.</b> ${roomEscapeMarkup(error)}`;
   };
   svg.addEventListener('pointerup',finish);
   svg.addEventListener('pointercancel',finish);
@@ -4464,7 +4478,7 @@ function initRoomEditing(){
       ev.preventDefault();return;
     }
     if((ev.key==='r'||ev.key==='R')&&item.kind==='furniture'){
-      roomRotateFurniture(ctx,item);
+      roomRotateFromPlan(ctx,item);
       ev.preventDefault();return;
     }
     const step=ev.altKey?.05:.15;
@@ -5669,6 +5683,10 @@ render();
 <script src="planner-bridge.js"></script>
 <script src="planner-editor.js"></script>
 <script src="planner-3d.js"></script>
+<script src="building-physics.js"></script>
+<script src="environment-data.js"></script>
+<script src="environment-ui.js"></script>
+<script src="electrical-planner.js"></script>
 <script src="planner-storage.js"></script>
 <script src="planner-persistence.js"></script>
 </body>

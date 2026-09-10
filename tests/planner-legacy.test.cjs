@@ -15,10 +15,12 @@ function load(){
     roomClamp:(value,min,max)=>Math.max(min,Math.min(max,value)),
     roomFurnitureClearances:()=>[],
     roomCommitFurniture:(ctx,f,parent,rect)=>{Object.assign(f,rect);return true;},
+    window:{},
+    roomEditBlocked:(ctx,message)=>{ctx.editError=message;return false;},
     $:()=>({innerHTML:''})
   });
   for(const name of ['roomRectInside','roomIntersects','roomLocalEdgeGlobal','roomFurnitureWallCandidates',
-    'roomFurnitureDefaults','roomRotateFurniture','roomEscapeMarkup']){
+    'roomFurnitureDefaults','roomRotateFurniture','roomRotateFromPlan','roomEscapeMarkup']){
     const match=html.match(new RegExp(`function ${name}\\([^]*?\\n\\}`));
     assert.ok(match,`${name} must remain available`);
     vm.runInContext(match[0],context);
@@ -54,6 +56,15 @@ test('four rotations retain all bed head polarities, including a 180 degree turn
   assert.equal(furniture.x,4);assert.equal(furniture.y,4);
 });
 
+test('plan rotation uses the canonical command after an inspector override',()=>{
+  const api=load(),commands=[];
+  api.window.HomePlanner={getScene:()=>({furniture:[{id:'floor:bed',sourceId:'legacy-bed'}]}),
+    execute:command=>commands.push(command)};
+  assert.equal(api.roomRotateFromPlan({}, {id:'legacy-bed',kind:'furniture'}),true);
+  assert.equal(commands[0].type,'rotate-furniture');
+  assert.equal(commands[0].id,'floor:bed');
+});
+
 test('swing-sector collision includes the arc interior but excludes the bounding-box corner',()=>{
   const api=load();
   const sector={x:0,y:0,w:2,h:2,doorSector:{hinge:{x:0,y:0},radiusM:2}};
@@ -66,4 +77,10 @@ test('imported labels and attribute IDs are escaped as text, not executable mark
   const api=load();
   assert.equal(api.roomEscapeMarkup('<image onerror="x" /> & \'label\''),
     '&lt;image onerror=&quot;x&quot; /&gt; &amp; &#39;label&#39;');
+  assert.match(html,/\$\{roomEscapeMarkup\(error\)\}/);
+});
+
+test('rendering cannot silently quantize a saved split fraction',()=>{
+  assert.match(html,/<input id="splitPos"[^>]+step="any"/);
+  assert.doesNotMatch(html,/\$\('splitPos'\)\.step\s*=/);
 });

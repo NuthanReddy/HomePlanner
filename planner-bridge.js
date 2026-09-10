@@ -197,6 +197,8 @@
           const keys=type==='update-door'?['hinge','swing','widthM','openFraction']:['widthM','sillM','heightM','openFraction'];
           keys.forEach(key=>{if(command[key]!==undefined)record[key]=command[key];});
           if(record.widthM!==undefined)finite(record.widthM,'Opening width',true);
+          if(record.widthM!==undefined&&record.widthM<(type==='update-door'?.68:.3))
+            throw new Error(type==='update-door'?'The schematic circulation model requires a door span of at least 0.68 m.':'The legacy window editor supports spans of at least 0.30 m.');
           if(record.heightM!==undefined)finite(record.heightM,'Opening height',true);
           if(record.sillM!==undefined&&finite(record.sillM,'Sill height')<0)throw new Error('Sill height cannot be negative.');
           if(record.openFraction!==undefined&&(!Number.isFinite(record.openFraction)||record.openFraction<0||record.openFraction>1))
@@ -205,6 +207,18 @@
           if(record.swing!==undefined&&!['left','right'].includes(record.swing))throw new Error('Choose a valid swing side.');
           const wall=find('wall',entity.wallId),length=Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y);
           if(entity.offsetM+(record.widthM??entity.widthM)>length+1e-7)throw new Error('The opening would extend past its wall.');
+          if(command.widthM!==undefined&&Math.abs(command.widthM-entity.widthM)>1e-7){
+            const host=getScene().rooms.find(room=>room.id===entity.roomId);
+            if(host?.module){
+              const alongX=Math.abs(wall.end.x-wall.start.x)>=Math.abs(wall.end.y-wall.start.y);
+              const first=Model.wallPoint(wall,entity.offsetM),last=Model.wallPoint(wall,entity.offsetM+command.widthM);
+              const lo=Math.min(alongX?first.x:first.y,alongX?last.x:last.y);
+              const hi=Math.max(alongX?first.x:first.y,alongX?last.x:last.y);
+              const start=alongX?host.module.x:host.module.y,span=alongX?host.module.w:host.module.h;
+              if(lo<start+.09-1e-7||hi>start+span-.09+1e-7)
+                throw new Error('The current opening adapter needs a small end margin; use a smaller span or another position.');
+            }
+          }
           const sill=record.sillM??entity.sillM,height=record.heightM??entity.heightM;
           if(sill+height>wall.heightM+1e-7)throw new Error('The opening would extend above its wall.');
           const overlap=getScene().openings.some(other=>other.id!==entity.id&&other.wallId===wall.id&&
@@ -474,6 +488,7 @@
       if(!wall.exterior||wall.removed)throw new Error('Choose a surviving exterior wall.');
       const length=Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y);
       const offset=finite(command.offsetM,'Window offset'),width=finite(command.widthM,'Window width',true);
+      if(width<.3)throw new Error('The legacy window editor supports spans of at least 0.30 m.');
       if(offset<0||offset+width>length)throw new Error('The window must fit within the wall.');
       const roomId=wall.roomIds[0],scene=controller.getScene(),room=scene.rooms.find(item=>item.id===roomId);
       if(!room)throw new Error('This exterior wall is not attached to an editable room.');
@@ -483,13 +498,37 @@
       if(!roomExteriorEdges(p.module,ctx.g).includes(candidate.edge))throw new Error('That room edge is not exterior.');
       const height=finite(command.heightM,'Window height',true),sill=finite(command.sillM,'Window sill');
       if(sill<0||sill+height>controller.getProject().building.wallHeightM)throw new Error('The window must fit vertically in the wall.');
+      if(scene.openings.some(opening=>opening.wallId===wall.id&&offset<opening.offsetM+opening.widthM-1e-7&&
+        offset+width>opening.offsetM+1e-7&&sill<opening.sillM+opening.heightM-1e-7&&sill+height>opening.sillM+1e-7))
+        throw new Error('The new window overlaps an existing opening. Edit that opening or choose another span.');
       const fraction=command.openFraction;
       if(!Number.isFinite(fraction)||fraction<0||fraction>1)throw new Error('Window opening fraction must be between zero and one.');
       const record={id:freshId('window'),type:'window',roomId:p.req.id,edge:candidate.edge,
         fraction:candidate.fraction,width,height,sillM:sill,openFraction:fraction,
         operability:ctx.cfg.window.operability,windowType:'manual',label:`${p.req.label} window`};
       const built=roomOpeningSegmentFromRecord(record,p);
-      ctx.plan.customOpenings=[...(ctx.plan.customOpenings||[]),{...record,...built,custom:true}];
+      if(Math.abs(built.width-width)>1e-6)throw new Error('The window needs room at the ends of its host wall.');
+      const horizontal=candidate.edge==='N'||candidate.edge==='S';
+      const actualCentre=horizontal?(built.segment.x1+built.segment.x2)/2:(built.segment.y1+built.segment.y2)/2;
+      if(Math.abs(actualCentre-(horizontal?point.x:point.y))>1e-6)
+        throw new Error('The window centre needs clearance from the room-wall ends.');
+      const existing=(ctx.plan.customOpenings||[]).slice();
+      // Legacy manual windows replace a room's generated set. Preserve that set
+      // explicitly so the shared add-window command really is additive.
+      for(const opening of scene.openings.filter(item=>item.kind==='window'&&item.roomId===room.id)){
+        const aliases=[opening.sourceId,...(opening.sourceIds||[])];
+        if(existing.some(item=>aliases.includes(item.id)))continue;
+        const original=ctx.plan.openings.windows.find(item=>aliases.includes(item.id));
+        if(!original)throw new Error('An existing window could not be preserved. Reload the layout before adding another.');
+        const middle={x:(original.segment.x1+original.segment.x2)/2,y:(original.segment.y1+original.segment.y2)/2};
+        const anchor=roomPointToEdge(p.module,original.edge,middle);
+        const preserved={id:original.id,type:'window',roomId:p.req.id,edge:original.edge,fraction:anchor.fraction,
+          width:opening.widthM,height:opening.heightM,sillM:opening.sillM,openFraction:opening.openFraction,
+          operability:original.operability,windowType:original.windowType,label:original.label,
+          origin:'preserved-generated'};
+        existing.push({...preserved,...roomOpeningSegmentFromRecord(preserved,p),custom:true});
+      }
+      ctx.plan.customOpenings=[...existing,{...record,...built,custom:true}];
       roomSaveManualLayout(ctx);
     }
   };
@@ -529,6 +568,15 @@
       if(!opening)continue;
       record.width=opening.widthM;record.segment={...opening.segment};
       record.hinge=opening.hinge;record.swing=opening.swing;
+      if(record.custom){
+        const room=plan.placed.find(item=>item.req.id===record.roomId);
+        if(room){
+          // Legacy full-layout saves use centre fractions; keep that source
+          // representation aligned with the effective start-anchored edit.
+          const centre={x:(record.segment.x1+record.segment.x2)/2,y:(record.segment.y1+record.segment.y2)/2};
+          record.fraction=roomPointToEdge(room.module,record.edge,centre).fraction;
+        }
+      }
       if(opening.kind==='window'){
         record.height=opening.heightM;record.sillM=opening.sillM;
         record.area=opening.widthM*opening.heightM;
@@ -637,6 +685,8 @@
       target?.focus({preventScroll:true});
       return;
     }
+    if(event.type==='project'||event.type==='restore')
+      document.dispatchEvent(new CustomEvent('homeplanner:project-context'));
     const site=event.project.site;
     const saved=event.project.environment.sunSelection;
     const values=[String(site.latitude),String(site.longitude),site.timeZone,

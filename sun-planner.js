@@ -5,7 +5,7 @@
   const fields={latitude:byId('sunLatitude'),longitude:byId('sunLongitude'),date:byId('sunDate'),
     time:byId('sunTime'),timeZone:byId('sunTimeZone'),occurrence:byId('sunOccurrence')};
   const download=byId('sunDownload'),annualStatus=byId('sunAnnualStatus');
-  let revision=0,annualKey='',annualRows=[],exportConfig=null;
+  let revision=0,annualKey='',annualRows=[],exportConfig=null,locationRequest=0;
 
   if(!model){
     errorBox.hidden=false;errorBox.textContent='The local solar scripts could not load. Keep sun-model.js, sun-planner.js and the vendor folder beside index.html, then reload.';
@@ -167,13 +167,24 @@
 
   form.addEventListener('submit',event=>{event.preventDefault();update();});
   Object.values(fields).forEach(field=>field.addEventListener('input',update));
+  document.addEventListener('homeplanner:project-context',()=>{
+    locationRequest++;
+    byId('sunLocate').disabled=false;
+    byId('sunLocationStatus').textContent='Project context changed. Any previous location result will be ignored; confirm the site coordinates or detect again.';
+  });
   byId('sunLocate').addEventListener('click',async()=>{
     const button=byId('sunLocate'),status=byId('sunLocationStatus');
     const before=[fields.latitude.value,fields.longitude.value];
+    const token=++locationRequest,projectId=window.HomePlanner?.getProject().id??null;
     button.disabled=true;status.textContent='Requesting your device location. Your browser may ask for permission.';
     try{
       if(!window.HomePlannerLocation)throw new Error('The local location helper is unavailable. Enter coordinates manually.');
       const location=await window.HomePlannerLocation.detect();
+      if(token!==locationRequest)return;
+      if(projectId!==(window.HomePlanner?.getProject().id??null)){
+        status.textContent='The project changed while locating the device. Its coordinates were not replaced; detect again if needed.';
+        return;
+      }
       if(before[0]!==fields.latitude.value||before[1]!==fields.longitude.value){
         status.textContent='A device location was received, but you edited the coordinates while waiting. Your manual values were kept.';
         return;
@@ -182,9 +193,9 @@
       fields.latitude.dispatchEvent(new Event('input',{bubbles:true}));
       status.textContent=`Device coordinates applied (reported accuracy ${Math.round(location.accuracyM)} m). Confirm that the device is at the site. The time zone was not changed.`;
     }catch(error){
-      status.textContent=error.message;
+      if(token===locationRequest)status.textContent=error.message;
     }finally{
-      button.disabled=false;
+      if(token===locationRequest)button.disabled=false;
     }
   });
   byId('sunDay').addEventListener('input',()=>{

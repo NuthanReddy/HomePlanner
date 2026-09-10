@@ -114,6 +114,13 @@ without increasing the revision, the UI reports
 `RestoredSnapshotChangedError`, keeps the saved copy intact and pauses
 autosave rather than silently overwriting that revision.
 
+The bridge captures the dynamically generated road widths/units and split-axis
+checkbox separately from ID-bearing controls. It rebuilds dependent plot-target
+and regulatory-floor options before selecting their saved values. The split
+slider retains its exact fraction instead of changing its step during rendering;
+keyboard nudges still follow the chosen dimension unit. This prevents a reload
+or floor switch from changing plot geometry through display rounding.
+
 `HomePlannerPersistence.mount(host, planner, options?)` returns
 `{controller, destroy}`. Browser scripts mount automatically once.
 `host.homePlannerPersistence` refers to the controller; the module also

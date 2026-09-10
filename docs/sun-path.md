@@ -19,6 +19,9 @@ site, change the timezone, or reverse-geocode an address. Permission denial,
 timeout and unsupported/insecure origins leave manual input usable. Coordinates
 edited while a request is pending are preserved. HTTPS or localhost may be
 required by the browser for this optional capability.
+Project replacement, restoration or floor-context changes invalidate a pending
+request. A late result cannot overwrite a newly opened project, even if its
+coordinate strings happen to match the previous project.
 
 Clock times skipped by daylight-saving/calendar changes are rejected. Repeated
 times require an earlier/later selection. The annual plot labels repeated-time
@@ -45,14 +48,18 @@ handling and leaves skipped times as gaps, never invented positions.
 
 CSV export includes local date/time, timezone, coordinates, UTC instant, angle
 units, availability and engine version. Calculations and exports stay local.
-Inputs are session-only and are not saved across page reloads.
+Site coordinates and the selected date/time are part of the shared project.
+Use explicit JSON backup or the opt-in local project database to retain them
+across reloads; without a save/export they remain memory-only.
 
 ## Boundaries
 
-This feature provides astronomical positions only. Building/terrain/tree shadows,
-irradiance, daylight lux, weather and indoor temperatures are separate future
-models. The existing room-planner daylight/ventilation checklist is still a
-heuristic and is not replaced by these sun readings.
+This tab provides astronomical positions only. The separate
+[Environment workspace](environment-analysis.md) provides limited geometric
+shadows, weather and explicitly supplied analytical scenarios. Calibrated indoor
+temperatures, terrain/microclimate, CFD and daylight lux are not supplied by the
+sun-path chart. The existing room-planner daylight/ventilation checklist remains
+a heuristic and is not replaced by sun readings.
 
 ## Dependency and development
 

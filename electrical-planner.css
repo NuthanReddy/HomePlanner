@@ -26,13 +26,6 @@
   font-size: 14px;
 }
 
-.elec-workspace .elec-eyebrow {
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  color: var(--acc);
-}
-
 .elec-workspace .elec-toolbar,
 .elec-workspace .elec-section-heading,
 .elec-workspace .elec-actions {

@@ -899,7 +899,7 @@
     const doc = host.ownerDocument, win = doc.defaultView;
     host.dataset.elecMounted = 'true';
     host.classList.add('elec-workspace');
-    host.innerHTML = `<header class="elec-heading"><div><p class="elec-eyebrow">Devices first · local planning</p><h2>Electrical point planning</h2>
+    host.innerHTML = `<header class="elec-heading"><div><h2>Electrical point planning</h2>
       <p>Place and review connection intents on the active floor. This is not wiring design, electrical certification, a lighting calculation or an accessibility pass.</p></div></header>
       <div class="elec-toolbar">
         <label class="elec-floor-label" for="elec-active-floor">Active floor <select id="elec-active-floor" data-elec-floor></select></label>

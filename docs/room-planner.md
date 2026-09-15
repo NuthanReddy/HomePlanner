@@ -8,7 +8,8 @@ the user adds only the rooms and services required.
 
 ## Geometry pipeline
 
-1. Read the selected legal floor plate from the Plot Optimizer.
+1. Read the selected floor plate from Plot Planner, retaining any explicitly
+   enabled custom/non-compliant setback scenario.
 2. Convert configurable front, side, and rear external corridors to metres.
 3. Widen the side-corridor band when needed to contain requested lifts and
    stairs.

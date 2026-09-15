@@ -329,6 +329,7 @@
   const initialControls=readControls();
   let controller,scheduled=false,pendingRoomChoices=null,pendingZoom=null;
   function contextSnapshot(){
+    if(root.__plotInputError)return null;
     const ctx=root.__roomPlanner;
     if(!ctx||ctx.g.error||!Number.isFinite(ctx.g.W)||!Number.isFinite(ctx.g.D))return null;
     return clone({plate:ctx.plate,g:ctx.g,cfg:ctx.cfg,plan:{
@@ -387,7 +388,7 @@
       pendingZoom=states.roomZoom?.value??null;
       controls().forEach(el=>{
         const state=states[el.id];if(!state)return;
-        if(el.id==='roomTarget'||el.id==='roomFloor'){
+        if(['ht','floorCount','roomTarget','roomFloor'].includes(el.id)){
           if(typeof state.value!=='string')throw new Error('The saved floor reference is invalid.');
           pendingRoomChoices[el.id]=state.value;
           return;
@@ -412,11 +413,11 @@
       pendingRoomChoices=null;pendingZoom=null;
       root.render();
       // Target choices depend on the restored plot, and floor choices on that target.
-      for(const id of ['roomTarget','roomFloor']){
+      for(const id of ['ht','floorCount','roomTarget','roomFloor']){
         if(choices?.[id]===undefined)continue;
         const el=document.getElementById(id),value=choices[id];
-        if(![...el.options].some(option=>option.value===value))
-          throw new Error(`The saved ${id==='roomTarget'?'plot target':'regulatory floor'} is unavailable for this plot.`);
+        if(![...el.options].some(option=>option.value===value&&!option.disabled))
+          throw new Error(`The saved ${id} choice is unavailable for this plot.`);
         if(el.value!==value){el.value=value;root.render();}
       }
       if(zoom!==null){
@@ -535,7 +536,8 @@
   controller=createController(adapter,Model);
   root.HomePlanner=controller;
   function renderContext(g,plan,cfg){
-    const plate=root.__roomPlanner?.plate||{id:'whole',frontEdge:g.frontEdge,width:g.W,depth:g.D};
+    // A rebuild can have new geometry before its plate is published; never mix it with the previous site's bounds.
+    const plate=root.__roomPlanner?.g===g?root.__roomPlanner.plate:{id:'whole',frontEdge:g.frontEdge,width:g.W,depth:g.D};
     return {plate:{...plate,frontEdge:g.frontEdge,width:g.W,depth:g.D},g,plan,cfg};
   }
   controller.preparePartitions=(g,plan,cfg)=>{
@@ -697,7 +699,7 @@
     if(changed)document.getElementById('sunLatitude').dispatchEvent(new Event('input',{bubbles:true}));
     const status=document.getElementById('plannerBridgeStatus'),floor=event.project.floors.find(item=>item.id===event.project.activeFloorId);
     if(status&&floor){
-      const limit=root.__roomPlanner?.plate.floors;
+      const limit=root.__roomPlanner?.plate.maxFloors??root.__roomPlanner?.plate.floors;
       status.textContent=`Editing ${floor.name}. ${event.project.floors.length} independent floor layout(s). ${
         Number.isFinite(limit)&&event.project.floors.length>limit?'The floor count exceeds the currently selected regulatory allowance. ':''}Stacked layouts do not establish structural safety or an approved building height.`;
     }

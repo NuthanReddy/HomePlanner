@@ -44,6 +44,15 @@ const obstacle = overrides => ({
 const zenith = { east: 0, north: 0, up: 1 };
 const east45 = { east: Math.SQRT1_2, north: 0, up: Math.SQRT1_2 };
 const north45 = { east: 0, north: Math.SQRT1_2, up: Math.SQRT1_2 };
+const clearNeighbors = () => Object.fromEntries(['front', 'right', 'rear', 'left'].map(side => [side, { state: 'clear' }]));
+const sunInterval = (sunENU = zenith, startUTC = '2026-09-15T06:00:00Z', endUTC = '2026-09-15T07:00:00Z') => ({
+  startUTC, endUTC, sunENU
+});
+function sunlightAt(models, sunENU = zenith, options = {}) {
+  const study = physics.createSunlightStudy(Array.isArray(models) ? models : [models], { neighbors: clearNeighbors(), ...options });
+  study.addInterval(sunInterval(sunENU));
+  return study.getResult();
+}
 
 function deepFreeze(value) {
   if (value && typeof value === 'object') {
@@ -62,14 +71,19 @@ function plainFiniteJSON(value) {
   assert.doesNotThrow(() => JSON.stringify(value));
 }
 
-test('CommonJS and browser IIFE expose exactly the frozen pure numerical functions', () => {
-  const names = ['assemblyProperties', 'shadowAt', 'surfaceExposure', 'solveAirflow', 'simulateThermal'];
+test('CommonJS and browser IIFE expose exactly the frozen numerical API including the sunlight study', () => {
+  const names = ['assemblyProperties', 'shadowAt', 'surfaceExposure', 'solveAirflow', 'simulateThermal', 'createSunlightStudy'];
   assert.deepEqual(Object.keys(physics), names);
+  assert.equal(Object.isFrozen(physics), true);
   const context = {};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'building-physics.js'), 'utf8'), context);
   assert.deepEqual(Object.keys(context.BuildingPhysics), names);
   assert.equal(Object.isFrozen(context.BuildingPhysics), true);
   near(context.BuildingPhysics.assemblyProperties([material()]).resistanceM2K_W, 0.67);
+  const study = context.BuildingPhysics.createSunlightStudy([scene()], { neighbors: clearNeighbors() });
+  assert.equal(Object.isFrozen(study), true);
+  study.addInterval(sunInterval());
+  near(find(study.getResult(), 'f:roof').averageHours, 1);
 });
 
 test('assembly uses d/k, explicit film resistances, and rho*c*d in SI units', () => {
@@ -460,6 +474,470 @@ test('radiation requires nonnegative finite DNI/DHI/GHI and bounded albedo witho
   }
   assert.throws(() => physics.surfaceExposure(scene(), zenith, { ...valid, groundAlbedo: 1.1 }), /between/);
   assert.throws(() => physics.surfaceExposure(scene(), zenith, { ...valid, lux: 10000 }), /not supported/);
+});
+
+test('sunlight study starts at zero with a finite, explicit result and sampling contract', () => {
+  const study = physics.createSunlightStudy([scene()], { neighbors: clearNeighbors() });
+  assert.equal(Object.isFrozen(study), true);
+  assert.deepEqual(Object.keys(study), ['addInterval', 'getResult']);
+  const result = study.getResult();
+  assert.deepEqual(Object.keys(result), [
+    'elapsedHours', 'aboveHorizonHours', 'nearHorizonExcludedHours', 'sampling', 'assumptions', 'warnings', 'surfaces'
+  ]);
+  assert.deepEqual(result.sampling, {
+    method: 'area-weighted midpoint rays', samplesPerAxis: 8, sampleCount: 64, intervalCount: 0,
+    timeIntegration: 'duration-weighted midpoint sun vectors', minSunAltitudeDeg: 1
+  });
+  assert.deepEqual(find(result, 'f:roof'), {
+    id: 'f:roof', floorId: 'f', type: 'roof', normal: { x: 0, y: 0, z: 1 },
+    areaM2: 16, sampleCount: 64, averageHours: 0, minHours: 0, maxHours: 0,
+    unobstructedHours: 0, blockedHours: 0, firstSunUTC: null, lastSunUTC: null
+  });
+  near(result.elapsedHours, 0);
+  near(result.aboveHorizonHours, 0);
+  near(result.nearHorizonExcludedHours, 0);
+  assert.match(result.assumptions.join(' '), /continuous opaque.*without along-side ends/);
+  assert.match(result.warnings.join(' '), /no opaque exterior wall receivers; no walls were invented/);
+  plainFiniteJSON(result);
+  assert.equal(find(sunlightAt(scene({ floorId: undefined })), 'roof').floorId, null);
+});
+
+test('unobstructed constant sunlight integrates known hours on roof and only outward opaque wall faces', () => {
+  const model = scene({
+    walls: [
+      wall(),
+      wall({ id: 'right', start: { x: 12, y: 8 }, end: { x: 12, y: 12 } }),
+      wall({ id: 'rear', start: { x: 12, y: 12 }, end: { x: 8, y: 12 } }),
+      wall({ id: 'left', start: { x: 8, y: 12 }, end: { x: 8, y: 8 } }),
+      wall({ id: 'internal', start: { x: 8, y: 9 }, end: { x: 12, y: 9 }, exterior: false })
+    ],
+    openings: [opening()]
+  });
+  const study = physics.createSunlightStudy([model], { neighbors: clearNeighbors() });
+  study.addInterval(sunInterval(north45, '2026-09-15T06:00:00Z', '2026-09-15T08:00:00Z'));
+  study.addInterval(sunInterval(north45, '2026-09-15T08:00:00Z', '2026-09-15T10:00:00Z'));
+  const result = study.getResult();
+  assert.deepEqual(result.surfaces.map(surface => surface.id), ['front', 'right', 'rear', 'left', 'f:roof']);
+  near(result.elapsedHours, 4);
+  near(result.aboveHorizonHours, 4);
+  near(find(result, 'front').areaM2, 10); // 12 m2 face minus the 2 m2 window.
+  for (const id of ['front', 'f:roof']) {
+    const surface = find(result, id);
+    for (const field of ['averageHours', 'minHours', 'maxHours', 'unobstructedHours']) near(surface[field], 4);
+    near(surface.blockedHours, 0);
+    assert.equal(surface.firstSunUTC, '2026-09-15T06:00:00.000Z');
+    assert.equal(surface.lastSunUTC, '2026-09-15T10:00:00.000Z');
+  }
+  for (const id of ['right', 'rear', 'left']) {
+    const surface = find(result, id);
+    near(surface.averageHours, 0);
+    near(surface.unobstructedHours, 0);
+    near(surface.blockedHours, 0);
+    assert.equal(surface.firstSunUTC, null);
+    assert.equal(surface.lastSunUTC, null);
+  }
+  const removed = sunlightAt(scene({ walls: [wall({ removed: true })], openings: [opening()] }), north45);
+  assert.deepEqual(removed.surfaces.map(surface => surface.type), ['roof']);
+});
+
+test('high, low, far and partially obstructing neighbours resolve roof and facade sun hours', () => {
+  const model = scene({ walls: [wall()] });
+  const run = (heightM, gapM = 0) => sunlightAt(model, north45, {
+    neighbors: { ...clearNeighbors(), front: { state: 'block', heightM, gapM } }
+  });
+  const high = run(100);
+  for (const id of ['front', 'f:roof']) {
+    const surface = find(high, id);
+    near(surface.averageHours, 0);
+    near(surface.unobstructedHours, 1);
+    near(surface.blockedHours, 1);
+    assert.equal(surface.firstSunUTC, null);
+    assert.equal(surface.lastSunUTC, null);
+  }
+  for (const result of [run(1), run(100, 100)]) {
+    near(find(result, 'front').averageHours, 1);
+    near(find(result, 'f:roof').averageHours, 1);
+  }
+  const roofHalf = find(run(13), 'f:roof');
+  near(roofHalf.averageHours, 0.5);
+  near(roofHalf.minHours, 0);
+  near(roofHalf.maxHours, 1);
+  near(roofHalf.blockedHours, 0.5);
+  assert.equal(roofHalf.firstSunUTC, '2026-09-15T06:00:00.000Z');
+  const wallHalf = run(9.4);
+  near(find(wallHalf, 'front').averageHours, 0.5);
+  near(find(wallHalf, 'f:roof').averageHours, 1);
+});
+
+test('neighbour gap starts at the actual plot boundary so house setbacks and translated plot origins matter', () => {
+  const options = { neighbors: { ...clearNeighbors(), front: { state: 'block', heightM: 10, gapM: 2 } } };
+  const nearBoundary = scene({ building: { x: 8, y: 2, w: 4, h: 4 } });
+  near(find(sunlightAt(nearBoundary, north45, options), 'f:roof').averageHours, 0.25);
+  near(find(sunlightAt(scene(), north45, options), 'f:roof').averageHours, 1);
+  const shifted = scene({
+    floor: { x: 100, y: 200, w: 20, h: 20 }, building: { x: 108, y: 202, w: 4, h: 4 }
+  });
+  near(find(sunlightAt(shifted, north45, options), 'f:roof').averageHours, 0.25);
+  const raisedDatum = scene({ floorElevationM: 10 });
+  const raisedOptions = { groundElevationM: 10, neighbors: {
+    ...clearNeighbors(), front: { state: 'block', heightM: 13, gapM: 0 }
+  } };
+  near(find(sunlightAt(raisedDatum, north45, raisedOptions), 'f:roof').averageHours, 0.5);
+});
+
+test('all four neighbour sides and cardinal/noncardinal headings use exactly one ENU rotation', () => {
+  const local = { front: [0, -1], right: [1, 0], rear: [0, 1], left: [-1, 0] };
+  for (const headingDeg of [0, 90, 180, 270, 33]) {
+    const angle = headingDeg * Math.PI / 180;
+    for (const [side, [x, y]] of Object.entries(local)) {
+      const options = { samplesPerAxis: 2, neighbors: {
+        ...clearNeighbors(), [side]: { state: 'block', heightM: 100, gapM: 2 }
+      } };
+      for (const sign of [-1, 1]) {
+        const sun = {
+          east: sign * Math.SQRT1_2 * (x * Math.cos(angle) - y * Math.sin(angle)),
+          north: -sign * Math.SQRT1_2 * (x * Math.sin(angle) + y * Math.cos(angle)),
+          up: Math.SQRT1_2
+        };
+        const result = sunlightAt(scene({ headingDeg, walls: [wall()] }), sun, options);
+        near(find(result, 'f:roof').averageHours, sign === 1 ? 0 : 1);
+        near(find(result, 'front').normal.x, 0);
+        near(find(result, 'front').normal.y, -1);
+        near(find(result, 'front').normal.z, 0);
+      }
+    }
+  }
+});
+
+test('neighbours are unbounded along the side, with no finite footprint or projection-distance truncation', () => {
+  const diagonal = { east: 0.9, north: 0.1, up: Math.sqrt(0.18) };
+  const result = sunlightAt(scene(), diagonal, {
+    neighbors: { ...clearNeighbors(), front: { state: 'block', heightM: 1000, gapM: 5 } }
+  });
+  // These rays reach the front screen well beyond the plot's right endpoint.
+  near(find(result, 'f:roof').averageHours, 0);
+  const far = sunlightAt(scene(), north45, {
+    neighbors: { ...clearNeighbors(), front: { state: 'block', heightM: 1000000, gapM: 10000 } }
+  });
+  near(find(far, 'f:roof').averageHours, 0);
+  assert.doesNotMatch(far.warnings.join(' '), /projection omitted/);
+});
+
+test('sunlight excludes at/below-horizon rays and separately reports positive near-horizon time', () => {
+  const study = physics.createSunlightStudy([scene()], { neighbors: clearNeighbors() });
+  const sunAt = degrees => ({ east: Math.cos(degrees * Math.PI / 180), north: 0, up: Math.sin(degrees * Math.PI / 180) });
+  study.addInterval(sunInterval({ east: 0, north: 0, up: -1 }, '2026-09-15T00:00:00Z', '2026-09-15T01:00:00Z'));
+  study.addInterval(sunInterval(sunAt(0), '2026-09-15T01:00:00Z', '2026-09-15T03:00:00Z'));
+  study.addInterval(sunInterval(sunAt(0.5), '2026-09-15T03:00:00Z', '2026-09-15T03:30:00Z'));
+  study.addInterval(sunInterval(sunAt(1), '2026-09-15T03:30:00Z', '2026-09-15T03:45:00Z'));
+  study.addInterval(sunInterval(sunAt(2), '2026-09-15T03:45:00Z', '2026-09-15T04:00:00Z'));
+  const result = study.getResult();
+  near(result.elapsedHours, 4);
+  near(result.aboveHorizonHours, 1);
+  near(result.nearHorizonExcludedHours, 0.75);
+  near(find(result, 'f:roof').averageHours, 0.25);
+  near(find(result, 'f:roof').unobstructedHours, 0.25);
+  near(find(result, 'f:roof').blockedHours, 0);
+  assert.equal(find(result, 'f:roof').firstSunUTC, '2026-09-15T03:45:00.000Z');
+  assert.match(result.warnings.join(' '), /nearHorizonExcludedHours.*cutoff/);
+  const stricter = sunlightAt(scene(), sunAt(2), { minSunAltitudeDeg: 5 });
+  near(stricter.nearHorizonExcludedHours, 1);
+  near(find(stricter, 'f:roof').unobstructedHours, 0);
+});
+
+test('unequal, fractional and separated intervals use duration weights, not counts, elapsed span or cosine', () => {
+  const study = physics.createSunlightStudy([scene({ walls: [wall()] })], { neighbors: clearNeighbors() });
+  study.addInterval(sunInterval(north45, '2026-09-15T06:00:00Z', '2026-09-15T06:15:00Z'));
+  study.addInterval(sunInterval(zenith, '2026-09-15T06:30:00Z', '2026-09-15T08:00:00Z'));
+  study.addInterval(sunInterval({ east: 0, north: 0, up: -1 }, '2026-09-15T08:00:00Z', '2026-09-15T08:30:00Z'));
+  study.addInterval(sunInterval(north45, '2026-09-15T08:30:00Z', '2026-09-15T08:30:00.5Z'));
+  const result = study.getResult();
+  near(result.elapsedHours, 2.25 + 0.5 / 3600);
+  near(result.aboveHorizonHours, 1.75 + 0.5 / 3600);
+  near(find(result, 'f:roof').averageHours, 1.75 + 0.5 / 3600);
+  near(find(result, 'front').averageHours, 0.25 + 0.5 / 3600);
+  assert.equal(find(result, 'front').lastSunUTC, '2026-09-15T08:30:00.500Z');
+  assert.match(result.warnings.join(' '), /gaps.*excluded from elapsedHours/);
+  assert.match(result.warnings.join(' '), /not a claim of uninterrupted/);
+  assert.equal(result.sampling.intervalCount, 4);
+});
+
+test('sunlight point minima and maxima integrate changing shadows before taking the spatial range', () => {
+  for (const split of ['07:00:00', '06:30:00']) {
+    const study = physics.createSunlightStudy([scene()], {
+      neighbors: {
+        ...clearNeighbors(), front: { state: 'block', heightM: 13, gapM: 0 },
+        rear: { state: 'block', heightM: 13, gapM: 0 }
+      }
+    });
+    const change = '2026-09-15T' + split + 'Z';
+    study.addInterval(sunInterval(north45, '2026-09-15T06:00:00Z', change));
+    study.addInterval(sunInterval({ east: 0, north: -Math.SQRT1_2, up: Math.SQRT1_2 }, change, '2026-09-15T08:00:00Z'));
+    const roof = find(study.getResult(), 'f:roof');
+    near(roof.averageHours, 1);
+    near(roof.minHours, split === '07:00:00' ? 1 : 0.5);
+    near(roof.maxHours, split === '07:00:00' ? 1 : 1.5);
+    near(roof.unobstructedHours, 2);
+    near(roof.blockedHours, 1);
+  }
+});
+
+test('unequal terrace patch areas weight the average rather than each sample getting an equal vote', () => {
+  const lower = scene({ obstacles: [obstacle({ x: 10, y: 8, w: 2, h: 4, baseM: 7, heightM: 1 })] });
+  const upper = scene({ floorId: 'u', floorElevationM: 3, building: { x: 9, y: 8, w: 1, h: 3 } });
+  const result = sunlightAt([lower, upper], zenith, { samplesPerAxis: 1 });
+  const terrace = find(result, 'f:roof');
+  near(terrace.areaM2, 13);
+  assert.equal(terrace.sampleCount, 5);
+  near(terrace.averageHours, 5 / 13); // Three lit patches have areas 3, 1, 1; shaded patches have areas 6, 2.
+  near(terrace.blockedHours, 8 / 13);
+  near(terrace.minHours, 0);
+  near(terrace.maxHours, 1);
+  for (const surface of result.surfaces) {
+    assert.ok(surface.minHours <= surface.averageHours && surface.averageHours <= surface.maxHours);
+    assert.ok(surface.maxHours <= surface.unobstructedHours);
+    near(surface.blockedHours + surface.averageHours, surface.unobstructedHours);
+  }
+  plainFiniteJSON(result);
+});
+
+test('explicit scene obstacles and distinct transmission layers weight hours without adding obstacle receivers', () => {
+  const tree = obstacle({ type: 'tree', x: 8, y: 8, w: 2, h: 4, baseM: 4, heightM: 2, transmittance: 0.5 });
+  const one = sunlightAt(scene({ obstacles: [tree] }));
+  near(find(one, 'f:roof').averageHours, 0.75);
+  near(find(one, 'f:roof').minHours, 0.5);
+  near(find(one, 'f:roof').maxHours, 1);
+  near(find(one, 'f:roof').blockedHours, 0.25);
+  assert.deepEqual(one.surfaces.map(surface => surface.type), ['roof']);
+  assert.match(one.warnings.join(' '), /partial-transmission.*area\/transmission-weighted/);
+  const two = sunlightAt(scene({ obstacles: [tree, { ...tree, id: 'second' }] }));
+  near(find(two, 'f:roof').averageHours, 0.625);
+  near(find(two, 'f:roof').minHours, 0.25);
+  const clear = sunlightAt(scene({ obstacles: [{ ...tree, transmittance: 1 }] }));
+  near(find(clear, 'f:roof').averageHours, 1);
+  const aperture = sunlightAt(apertureScene('window', 0.5), north45, { windowTransmittance: 0.2 });
+  assert.match(aperture.warnings.join(' '), /closed-window beam transmittance = 0.2/);
+  assert.match(aperture.warnings.join(' '), /partial-transmission/);
+});
+
+test('the same explicitly identified environment obstacle copied into multiple floors transmits only once', () => {
+  const tree = obstacle({
+    id: 'f:tree', sourceId: 'environment-tree', type: 'tree', x: 8, y: 8, w: 4, h: 4,
+    baseM: 7, heightM: 2, transmittance: 0.5
+  });
+  const lower = scene({ obstacles: [tree] });
+  const upper = scene({ floorId: 'u', floorElevationM: 3, obstacles: [{ ...tree, id: 'u:tree' }] });
+  const result = sunlightAt([lower, upper]);
+  near(find(result, 'u:roof').averageHours, 0.5);
+  assert.match(result.warnings.join(' '), /same explicit sourceId are applied once/);
+  for (const change of [{ transmittance: 0.25 }, { x: 8.1 }, { baseM: 8 }]) {
+    const inconsistent = clone(upper);
+    Object.assign(inconsistent.obstacles[0], change);
+    assert.throws(() => sunlightAt([lower, inconsistent]), /sourceId.*ambiguous/);
+  }
+});
+
+test('covered intermediate slabs are omitted while the raw single-scene roof API remains unchanged', () => {
+  const lower = scene({ roofThicknessM: 0.2, walls: [wall()] });
+  const upper = scene({
+    floorId: 'u', floorElevationM: 3.2, roofThicknessM: 0.2,
+    walls: [wall({ id: 'u:front', baseM: 3.2 })]
+  });
+  const result = sunlightAt([upper, lower]);
+  assert.deepEqual(result.surfaces.filter(surface => surface.type === 'roof').map(surface => surface.id), ['u:roof']);
+  near(find(result, 'u:roof').areaM2, 16);
+  near(find(result, 'u:roof').averageHours, 1);
+  assert.equal(find(result, 'u:front').floorId, 'u');
+  assert.equal(find(result, 'front').floorId, 'f');
+  assert.match(result.warnings.join(' '), /fully covered.*omitted/);
+  assert.doesNotMatch(result.warnings.join(' '), /Only this scene is modeled/);
+  near(find(physics.shadowAt(lower, zenith), 'f:roof').sunlitFraction, 1);
+});
+
+test('upper-storey roofs and explicitly supplied walls mutually shade lower roof terraces', () => {
+  const lower = scene();
+  const upper = scene({ floorId: 'u', floorElevationM: 3, building: { x: 8, y: 8, w: 2, h: 4 } });
+  const west45 = { east: -Math.SQRT1_2, north: 0, up: Math.SQRT1_2 };
+  const roofOnly = sunlightAt([lower, upper], west45);
+  near(find(roofOnly, 'f:roof').areaM2, 8);
+  near(find(roofOnly, 'f:roof').averageHours, 0.5);
+  upper.walls = [wall({ id: 'u:right', start: { x: 10, y: 8 }, end: { x: 10, y: 12 }, baseM: 3 })];
+  const enclosed = sunlightAt([lower, upper], west45);
+  near(find(enclosed, 'f:roof').averageHours, 0);
+  near(find(enclosed, 'f:roof').unobstructedHours, 1);
+  near(find(enclosed, 'u:roof').averageHours, 1);
+  near(find(sunlightAt(lower, west45), 'f:roof').averageHours, 1);
+});
+
+test('supplied upper walls can shade lower exterior walls, with unspecified projecting undersides disclosed', () => {
+  const lower = scene({ walls: [wall({ id: 'f:right', start: { x: 12, y: 8 }, end: { x: 12, y: 12 } })] });
+  const upper = scene({
+    floorId: 'u', floorElevationM: 3, building: { x: 9, y: 8, w: 4, h: 4 },
+    walls: [wall({ id: 'u:right', start: { x: 13, y: 8 }, end: { x: 13, y: 12 }, baseM: 3, thicknessM: 0.02 })]
+  });
+  const result = sunlightAt([lower, upper], east45);
+  near(find(result, 'f:right').averageHours, 0.75);
+  near(find(result, 'f:right').minHours, 0);
+  near(find(result, 'f:right').maxHours, 1);
+  near(find(sunlightAt(lower, east45), 'f:right').averageHours, 1);
+  assert.match(result.warnings.join(' '), /Unspecified projecting floor undersides.*may add shade/);
+});
+
+test('all higher footprints are union-subtracted without double counting covered roof areas', () => {
+  const middle = scene({ floorId: 'm', floorElevationM: 3, building: { x: 8, y: 8, w: 2, h: 4 } });
+  const top = scene({ floorId: 't', floorElevationM: 6, building: { x: 9, y: 8, w: 2, h: 4 } });
+  const result = sunlightAt([scene(), middle, top]);
+  near(find(result, 'f:roof').areaM2, 4);
+  near(find(result, 'm:roof').areaM2, 4);
+  near(find(result, 't:roof').areaM2, 8);
+  result.surfaces.forEach(surface => near(surface.averageHours, 1));
+  const gap = sunlightAt([scene(), { ...middle, floorElevationM: 4 }]);
+  assert.match(gap.warnings.join(' '), /explicit vertical gap/);
+});
+
+test('sunlight requires known, well-formed neighbours on every side and strict finite option units', () => {
+  assert.throws(() => physics.createSunlightStudy([scene()]), /neighbors.*front.*right.*rear.*left/);
+  assert.throws(() => physics.createSunlightStudy([scene()], {}), /neighbors/);
+  for (const neighbors of [null, [], {}, { ...clearNeighbors(), other: { state: 'clear' } }]) {
+    assert.throws(() => physics.createSunlightStudy([scene()], { neighbors }), /neighbors/);
+  }
+  for (const side of ['front', 'right', 'rear', 'left']) {
+    const missing = clearNeighbors();
+    delete missing[side];
+    assert.throws(() => physics.createSunlightStudy([scene()], { neighbors: missing }), new RegExp(side + '.*required'));
+    for (const value of [undefined, null, {}, { state: 'unknown' }, { state: 'Clear' }, { state: 'clear', heightM: 1 },
+      { state: 'block', heightM: 1 }, { state: 'block', gapM: 0 },
+      { state: 'block', heightM: 1, gapM: 0, widthM: 4 }, { state: 'block', heightM: 1, gapM: 0, depthM: 4 }]) {
+      assert.throws(() => physics.createSunlightStudy([scene()], { neighbors: { ...clearNeighbors(), [side]: value } }), new RegExp(side));
+    }
+    for (const field of ['heightM', 'gapM']) {
+      for (const value of [undefined, null, NaN, Infinity, -1, '3', ...(field === 'heightM' ? [0] : [])]) {
+        const block = { state: 'block', heightM: 3, gapM: 0, [field]: value };
+        assert.throws(() => physics.createSunlightStudy([scene()], { neighbors: { ...clearNeighbors(), [side]: block } }),
+          new RegExp(side + '.*' + field));
+      }
+    }
+  }
+  const inherited = Object.create(clearNeighbors());
+  assert.throws(() => physics.createSunlightStudy([scene()], { neighbors: inherited }), /front.*required/);
+  for (const options of [
+    { samplesPerAxis: 0 }, { samplesPerAxis: 2.5 }, { samplesPerAxis: 129 }, { samplesPerAxis: null },
+    { groundElevationM: NaN }, { groundElevationM: '0' }, { minSunAltitudeDeg: 0 }, { minSunAltitudeDeg: 90 },
+    { windowTransmittance: null }, { windowTransmittance: -0.1 }, { windowTransmittance: 1.1 }, { maxShadowDistanceM: 1000 }
+  ]) {
+    assert.throws(() => physics.createSunlightStudy([scene()], { neighbors: clearNeighbors(), ...options }), Error);
+  }
+});
+
+test('sunlight rejects mismatched plot frames, duplicate IDs and inconsistent stacked geometry without guessed alignment', () => {
+  assert.throws(() => physics.createSunlightStudy([], { neighbors: clearNeighbors() }), /nonempty/);
+  const upper = () => scene({ floorId: 'u', floorElevationM: 3 });
+  const bad = [
+    { ...upper(), floor: { x: 1, y: 0, w: 20, h: 20 } },
+    { ...upper(), floor: { x: 0, y: 0, w: 21, h: 20 } },
+    { ...upper(), headingDeg: 90 },
+    { ...upper(), plot: { x: 0, y: 0, w: 22, h: 20 } },
+    { ...upper(), floorId: 'f' },
+    { ...upper(), floorId: undefined },
+    { ...upper(), floorElevationM: 2.9 },
+    { ...upper(), walls: [wall({ id: 'u:front', baseM: 0 })] },
+    { ...upper(), walls: [wall({ id: 'u:front', baseM: 3, heightM: 4 })] },
+    { ...upper(), walls: [wall({ id: 'u:front', baseM: 3, start: { x: 0, y: 0 } })] },
+    { ...upper(), building: { x: 19, y: 8, w: 4, h: 4 } },
+    { ...upper(), obstacles: [obstacle({ id: 'f:roof' })] }
+  ];
+  for (const model of bad) assert.throws(() => sunlightAt([scene(), model]), /plot|heading|floorId|stacked|Wall|geometry ID/);
+  assert.throws(() => sunlightAt([scene({ roofThicknessM: 0.2 }), upper()]), /upper floor base.*roof slab top/);
+  assert.throws(() => sunlightAt([scene({ walls: [wall()] }), { ...upper(), walls: [wall({ baseM: 3 })] }]), /Duplicate geometry ID/);
+  assert.throws(() => sunlightAt(scene({
+    building: { x: 8, y: 0, w: 4, h: 4 },
+    walls: [wall({ start: { x: 8, y: 0 }, end: { x: 12, y: 0 } })]
+  })), /wall face.*outside the plot/);
+  assert.doesNotThrow(() => sunlightAt([scene(), { ...upper(), headingDeg: 360 }]));
+});
+
+test('invalid sunlight times and vectors fail atomically before consuming chronology or exposure', () => {
+  const study = physics.createSunlightStudy([scene()], { neighbors: clearNeighbors() });
+  study.addInterval(sunInterval());
+  const before = study.getResult();
+  const valid = sunInterval(zenith, '2026-09-15T07:00:00Z', '2026-09-15T08:00:00Z');
+  const invalid = [
+    null, {}, { ...valid, extra: 1 },
+    { ...valid, startUTC: 0 }, { ...valid, endUTC: Infinity },
+    { ...valid, startUTC: '2026-09-15T07:00:00' }, { ...valid, endUTC: '2026-09-15T08:00:00+00:00' },
+    { ...valid, startUTC: '2026-02-30T07:00:00Z' }, { ...valid, endUTC: '2026-09-15T24:00:00Z' },
+    { ...valid, endUTC: valid.startUTC }, { ...valid, endUTC: '2026-09-15T06:00:00Z' },
+    { ...valid, startUTC: '2026-09-15T06:59:59.999Z' }, sunInterval(),
+    { ...valid, startUTC: '2026-09-15T07:00:00.0001Z' },
+    ...[undefined, null, { east: 0, north: 0, up: 0 }, { east: 0, north: 0, up: 2 },
+      { east: NaN, north: 0, up: 1 }, { east: 0, north: Infinity, up: 1 }, { east: '0', north: 0, up: 1 },
+      { x: 0, y: 0, z: 1 }, { east: 0, north: 0, up: 1, altitude: 90 }
+    ].map(sunENU => ({ ...valid, sunENU }))
+  ];
+  for (const interval of invalid) {
+    assert.throws(() => study.addInterval(interval), Error);
+    assert.deepEqual(study.getResult(), before);
+  }
+  study.addInterval({ ...valid, sunENU: { east: 0, north: 0, up: 1 + 1e-8 } });
+  near(study.getResult().elapsedHours, 2);
+  near(find(study.getResult(), 'f:roof').averageHours, 2);
+});
+
+test('sunlight compiles inputs once, preserves frozen data and returns independent finite JSON snapshots', () => {
+  const models = [scene({ walls: [wall()], openings: [opening()] })];
+  const options = { neighbors: clearNeighbors(), samplesPerAxis: 4 };
+  const interval = sunInterval(north45);
+  const before = JSON.stringify({ models, options, interval });
+  deepFreeze(models); deepFreeze(options); deepFreeze(interval);
+  const study = physics.createSunlightStudy(models, options);
+  study.addInterval(interval);
+  assert.equal(JSON.stringify({ models, options, interval }), before);
+  const expected = study.getResult();
+  const external = study.getResult();
+  external.surfaces[0].normal.y = 99;
+  external.surfaces[0].averageHours = 99;
+  external.sampling.samplesPerAxis = 99;
+  external.assumptions.length = 0;
+  external.warnings.push('External mutation');
+  assert.deepEqual(study.getResult(), expected);
+  plainFiniteJSON(expected);
+
+  const mutable = scene();
+  const mutableOptions = { neighbors: clearNeighbors() };
+  const compiled = physics.createSunlightStudy([mutable], mutableOptions);
+  Object.defineProperty(mutable, 'walls', { get() { throw new Error('Geometry was read again'); } });
+  mutable.headingDeg = NaN;
+  mutable.building.y = -100;
+  mutableOptions.neighbors.front = { state: 'unknown' };
+  compiled.addInterval(sunInterval());
+  near(find(compiled.getResult(), 'f:roof').averageHours, 1);
+});
+
+test('a derived ray-distance overflow rejects the interval without leaving partially accumulated hours', () => {
+  const study = physics.createSunlightStudy([scene()], {
+    neighbors: { ...clearNeighbors(), front: { state: 'block', heightM: 1e308, gapM: 1e308 } }
+  });
+  study.addInterval(sunInterval());
+  const before = study.getResult();
+  const direction = { east: 0.7, north: 0.01, up: Math.sqrt(1 - 0.7 ** 2 - 0.01 ** 2) };
+  assert.throws(() => study.addInterval(sunInterval(direction, '2026-09-15T07:00:00Z', '2026-09-15T08:00:00Z')), /Ray\/plane.*finite numerical range/);
+  assert.deepEqual(study.getResult(), before);
+  study.addInterval(sunInterval(zenith, '2026-09-15T07:00:00Z', '2026-09-15T08:00:00Z'));
+  near(find(study.getResult(), 'f:roof').averageHours, 2);
+});
+
+test('sunlight stays finite across large valid dimensions and durations without arbitrary dimension maxima', () => {
+  const model = scene({
+    floor: { x: 0, y: 0, w: 1e308, h: 1e-308 },
+    building: { x: 0, y: 0, w: 1e308, h: 1e-308 }
+  });
+  const study = physics.createSunlightStudy([model], { neighbors: clearNeighbors() });
+  study.addInterval(sunInterval(zenith, '0001-01-01T00:00:00Z', '9999-12-31T23:59:59.999Z'));
+  const result = study.getResult();
+  plainFiniteJSON(result);
+  near(find(result, 'f:roof').averageHours, result.elapsedHours);
+  assert.equal(find(result, 'f:roof').sampleCount, 64);
+  near(find(result, 'f:roof').blockedHours, 0);
 });
 
 const zone = (id = 'room', volumeM3 = 30) => ({ id, volumeM3 });

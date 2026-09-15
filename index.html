@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Compare GHMC/HMDA plot setbacks, floor limits, efficiency, costs, and schematic room layouts.">
+<meta name="description" content="Plan plots and rooms, compare building scenarios, and explore seasonal sun paths and environmental performance.">
 <link rel="icon" href="data:,">
-<title>GHMC / HMDA Plot Optimizer &amp; Room Planner — GO 168 + GO 95 (2026)</title>
+<title>HomePlanner — Plot Planner, Rooms &amp; Sunlight</title>
 <script>
 (() => {
   const key='ghmc-hmda-theme';
@@ -52,6 +52,12 @@ header{padding:20px 24px;border-bottom:1px solid var(--line);background:linear-g
 .header-copy{min-width:0}
 header h1{margin:0;font-size:20px;letter-spacing:-.3px}
 header p{margin:5px 0 0;color:var(--dim);font-size:12.5px;max-width:1100px}
+.plot-introduction{padding:12px 24px;color:var(--dim);font-size:12px;border-bottom:1px solid var(--line)}
+.plot-introduction p{margin:0;max-width:1100px}
+#plotInputError{color:var(--bad)}
+#plotInputError[hidden],#plotResults[hidden],#customSetbackFields[hidden]{display:none}
+#customSetbackFields input[aria-invalid=true]{border-color:var(--bad)}
+#customSetbackFields button{margin-top:8px;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit;cursor:pointer}
 .theme-toggle{display:flex;flex:none;align-items:center;gap:8px;min-height:34px;margin:0;padding:6px 9px;
   border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--txt);
   font:600 11.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer}
@@ -302,10 +308,7 @@ body.room-plan-lock{overflow:hidden}
 <header>
   <div class="header-bar">
     <div class="header-copy">
-      <h1>GHMC / HMDA Plot Optimizer</h1>
-      <p>Built from the primary texts: <b>G.O.Ms.No.168 MA&amp;UD dt. 07.04.2012</b> (Telangana Building Rules 2012) as amended by
-      <b>G.O.Ms.No.95 MA&amp;UD dt. 21.03.2026</b>, which substituted Rule 2(f) to make a high-rise <b>21 m or more</b> (was 18 m) and added the TDR provisions in Rule 17(d).
-      Permission tiers from the TG-bPASS Act 12 of 2020. Reference tool — not a substitute for a TG-bPASS sanction.</p>
+      <h1>HomePlanner</h1>
     </div>
     <button type="button" id="themeToggle" class="theme-toggle" role="switch" aria-checked="false">
       <span class="theme-toggle-track" aria-hidden="true"></span>
@@ -315,7 +318,7 @@ body.room-plan-lock{overflow:hidden}
 </header>
 
 <div class="tabs primary-tabs">
-  <button data-page="optimizer" class="on">Plot Optimizer</button>
+  <button data-page="optimizer" class="on">Plot Planner</button>
   <button data-page="rooms">Room Planner</button>
   <button data-page="sun">Sun Path</button>
   <button data-page="environment">Environment</button>
@@ -324,6 +327,11 @@ body.room-plan-lock{overflow:hidden}
 </div>
 
 <div class="app-page on" id="page-optimizer">
+<div class="plot-introduction">
+  <p>GHMC / HMDA plot planning based on <b>G.O.Ms.No.168 MA&amp;UD dt. 07.04.2012</b>, amended by
+    <b>G.O.Ms.No.95 dt. 21.03.2026</b>. High-rise starts at <b>21 m</b>; TDR provisions and TG-bPASS permission tiers apply.
+    Reference scenarios, not a sanctioned plan. Full sources and limitations are in References below.</p>
+</div>
 <div class="tabs sub-tabs">
   <button data-pane="calc" class="on">Calculator</button>
   <button data-pane="insights">Insights</button>
@@ -415,13 +423,28 @@ body.room-plan-lock{overflow:hidden}
         <option value="4">4.0 m (13 ft) — showroom / office</option>
       </select>
 
-      <label>Floors <span class="mini">(only what your plot and road allow)</span></label>
+      <label for="ht">Height band <span class="mini">(plot and road limits)</span></label>
       <select id="ht"></select>
+      <label for="floorCount">Floors to plan <span class="mini">(G, G+1, G+2, ...)</span></label>
+      <select id="floorCount"><option value="max">Use the maximum allowed</option></select>
       <div class="mini" id="floorEcho" style="margin-top:6px"></div>
 
       <div class="chk"><input type="checkbox" id="stilt" checked><label for="stilt" style="margin:0">Stilt parking floor <span class="mini">— excluded from the Table III height</span></label></div>
-      <div class="chk"><input type="checkbox" id="tdr"><label for="tdr" style="margin:0">Use <b style="color:var(--tdr)">TDR</b> — GO 95 relaxations &amp; extra floors</label></div>
+      <div class="chk"><input type="checkbox" id="tdr"><label for="tdr" style="margin:0">Use <b style="color:var(--tdr)">TDR</b> — GO 95 relaxations &amp; extra floors <span class="mini">(750–2,000 sq m plots: 18–21 m band; extra floors: above 2,000 sq m with qualifying roads)</span></label></div>
       <div class="chk"><input type="checkbox" id="dev"><label for="dev" style="margin:0">Show 10% side/rear compounding (Rule 26(d))</label></div>
+      <div class="chk"><input type="checkbox" id="customSetbacks"><label for="customSetbacks" style="margin:0">Allow setback violations <span class="mini">— custom what-if scenario only</span></label></div>
+      <div id="customSetbackFields" hidden>
+        <p class="mini">Enter setbacks in metres, relative to the selected road/front. Values below the rule minimum are flagged as non-compliant. Road widening, height limits and open-space deductions still apply.</p>
+        <div class="row">
+          <div><label for="setbackFront">Front (m)</label><input id="setbackFront" type="number" min="0" step="any" disabled></div>
+          <div><label for="setbackRear">Rear (m)</label><input id="setbackRear" type="number" min="0" step="any" disabled></div>
+          <div><label for="setbackLeft">Left (m)</label><input id="setbackLeft" type="number" min="0" step="any" disabled></div>
+          <div><label for="setbackRight">Right (m)</label><input id="setbackRight" type="number" min="0" step="any" disabled></div>
+        </div>
+        <button id="resetSetbacks" type="button">Use rule setbacks</button>
+        <p class="mini">This does not grant TDR relaxation, compounding, regularisation or permission to construct.</p>
+      </div>
+      <p id="plotInputError" role="alert" hidden></p>
     </div>
 
     <div class="card">
@@ -485,7 +508,7 @@ body.room-plan-lock{overflow:hidden}
   </div>
 
   <!-- ============ RESULTS ============ -->
-  <div>
+  <div id="plotResults">
     <div class="pane on" id="pane-calc">
     <div id="verdicts"></div>
 
@@ -559,6 +582,7 @@ body.room-plan-lock{overflow:hidden}
     <div class="pane" id="pane-insights">
     <div class="card">
       <h2>Scaling Analysis <span class="mini" id="chartRoad"></span></h2>
+      <p class="mini" id="chartScenarioNote"></p>
       <div id="chartLegend" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:6px;font-size:11.5px"></div>
       <div class="mini" style="margin-bottom:10px">Legend = <b>aspect ratio</b> (frontage : depth). Each curve holds the shape constant and grows the plot, at the road width and settings selected above. Steps are the Table III band boundaries.</div>
 
@@ -579,6 +603,7 @@ body.room-plan-lock{overflow:hidden}
 
     <div class="card">
       <h2>Optimal Plot Shape</h2>
+      <p class="mini">Rule-based reference: this table does not apply custom setback overrides.</p>
       <div class="opt-shape-wrap"><table id="optShape"></table></div>
       <div class="note">
         For a rectangular plot of fixed area, the optimum depth-to-frontage ratio is <b>k* = (f + s) / 2s</b>, where <b>f</b> is the front setback and <b>s</b> is the Table III side/rear setback. The front setback is charged once, while the side setback is charged twice, so the contest is <b>f + s</b> versus <b>2s</b>. On roads up to 12 m, the optimum flips from deeper to wider at around 500 sq m as side/rear setbacks overtake the front setback. The gains are small — usually only about 0.1–0.8% versus a square plot — so shape matters far less than the plot-size band and road width. Crossing a band boundary can cost more than any shape optimisation gains.
@@ -587,6 +612,7 @@ body.room-plan-lock{overflow:hidden}
 
     <div class="card">
       <h2>How % Lost Varies With Plot Size <span class="mini" id="sensRoad"></span></h2>
+      <p class="mini">Rule-based reference at each band's maximum height; custom setbacks and selected floor counts are not applied to this table.</p>
       <div class="table-scroll"><table id="sensTable"></table></div>
       <div class="note">Each plot assumed at a 1 : 1.6 frontage : depth ratio, at the tallest height permitted for that band on the selected road, with no tot-lot deduction.
       <br><br><b>Watch the band boundaries.</b> Setbacks step up at 200, 300, 500, 750 and 1000 sq m. Buying slightly <i>more</i> land can push you into the next band and leave <i>less</i> buildable footprint — 200 sq m keeps a 1.0 m side setback, 201 sq m jumps to 1.5 m plus a deeper front. Check the rows either side of your size before committing.</div>
@@ -598,7 +624,7 @@ body.room-plan-lock{overflow:hidden}
     <div class="card">
       <h2>Reference — Table III (non-high-rise)</h2>
       <div style="overflow-x:auto"><table id="t3"></table></div>
-      <div class="note">Cols 6–10 = front setback / building line by abutting road width. Col 11 = minimum setback on <b>each</b> remaining side. ** the 15–18 m band is permitted only on plots abutting a minimum 12 m road. Max floors uses the selected floor-to-floor height; the stilt floor is excluded from Table III height (Rule 5(c)) and is not counted.</div>
+      <div class="note">Cols 6–10 = front setback / building line by abutting road width. Col 11 = minimum setback on <b>each</b> remaining side. ** the 15–18 m band is permitted only on plots abutting a minimum 12 m road. Max floors is a ceiling, not the only choice: G+2 can fit a G+3 maximum. Choose intermediate counts in Building. The stilt floor is excluded from Table III height (Rule 5(c)) and is not counted.</div>
     </div>
 
     <div class="card">
@@ -1083,8 +1109,10 @@ body.room-plan-lock{overflow:hidden}
           <div><dt>Azimuth, from north</dt><dd id="sunAzimuth"></dd></div>
           <div><dt>Elevation</dt><dd id="sunAltitude"></dd></div>
           <div><dt>Zenith angle</dt><dd id="sunZenith"></dd></div>
+          <div><dt>1 ft pole shadow</dt><dd id="sunShadowLength" aria-describedby="sunShadowNote"></dd></div>
         </dl>
         <div id="sunState" class="mini"></div>
+        <p class="mini" id="sunShadowNote"></p>
         <fieldset class="sun-layers" aria-label="Sun-path diagram layers" aria-describedby="sunLayersHint">
           <label><input id="sunShowMonths" type="checkbox" checked><span class="sun-line-key sun-key-months" aria-hidden="true"></span>Monthly paths (21st)</label>
           <label><input id="sunShowHours" type="checkbox" checked><span class="sun-line-key sun-key-hours" aria-hidden="true"></span>Hourly guides</label>
@@ -1103,12 +1131,47 @@ body.room-plan-lock{overflow:hidden}
         <p class="mini sun-scroll-hint">Scroll horizontally to read the full diagram and its month labels.</p>
         <p class="mini" id="sunDiagramStatus" role="status"></p>
         <p class="mini" id="sunDailyCaption"></p>
+      </section>
+      <section class="card sun-day-summary" id="sunDaySummary" aria-labelledby="sunDaySummaryHeading">
+        <div class="sun-heading"><h2 id="sunDaySummaryHeading">Day summary</h2><span class="mini" id="sunDaySummaryDate"></span></div>
         <dl class="sun-events">
+          <div><dt>Daylight duration</dt><dd id="sunDaylightDuration" aria-describedby="sunDaylightNote"></dd></div>
           <div><dt>Sunrise</dt><dd id="sunRise"></dd></div>
           <div><dt>Solar noon</dt><dd id="sunNoon"></dd></div>
           <div><dt>Sunset</dt><dd id="sunSet"></dd></div>
         </dl>
+        <p class="mini" id="sunDaylightNote"></p>
+        <table class="sun-phases" aria-describedby="sunPhaseNote sunEventNote">
+          <caption>Twilight &amp; golden-hour times</caption>
+          <thead><tr><th scope="col">Light phase</th><th scope="col">Morning</th><th scope="col">Evening</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Civil twilight<span class="sun-phase-detail">Sun 6&deg; below the horizon</span></th><td><span class="sun-phase-detail">Dawn begins</span><span id="sunCivilDawn"></span></td><td><span class="sun-phase-detail">Dusk ends</span><span id="sunCivilDusk"></span></td></tr>
+            <tr><th scope="row">Nautical twilight<span class="sun-phase-detail">Sun 12&deg; below the horizon</span></th><td><span class="sun-phase-detail">Dawn begins</span><span id="sunNauticalDawn"></span></td><td><span class="sun-phase-detail">Dusk ends</span><span id="sunNauticalDusk"></span></td></tr>
+            <tr><th scope="row">Astronomical twilight<span class="sun-phase-detail">Sun 18&deg; below the horizon</span></th><td><span class="sun-phase-detail">Dawn begins</span><span id="sunAstronomicalDawn"></span></td><td><span class="sun-phase-detail">Dusk ends</span><span id="sunAstronomicalDusk"></span></td></tr>
+            <tr><th scope="row">Golden hour<span class="sun-phase-detail">Sun 6&deg; above the horizon</span></th><td><span class="sun-phase-detail">Morning ends</span><span id="sunGoldenMorningEnd"></span></td><td><span class="sun-phase-detail">Evening begins</span><span id="sunGoldenEveningStart"></span></td></tr>
+          </tbody>
+        </table>
+        <p class="mini" id="sunPhaseNote">Golden-hour times use SunCalc's +6&deg; boundary. Its daylight portion runs from sunrise to the morning end, and from the evening start to sunset, when those events occur. This is not a fixed 60-minute period or a prediction of lighting/weather conditions.</p>
         <p class="mini" id="sunEventNote"></p>
+      </section>
+      <section class="card" id="sunExposure" aria-labelledby="sunExposureHeading">
+        <h2 id="sunExposureHeading">Direct sunlight on your house</h2>
+        <p class="mini" id="sunExposurePlot"></p>
+        <p class="mini" id="sunExposureGeometryNote"></p>
+        <details><summary>House geometry used for sunlight</summary><div class="sun-exposure-table" id="sunExposureGeometry" tabindex="0" role="region" aria-label="Scrollable modeled house geometry"></div></details>
+        <p class="sun-exposure-warning" id="sunExposureScenario" hidden></p>
+        <p class="mini">Use neighbour heights and gaps from the <b>net plot boundary</b>, including any intervening road in the gap. Each neighbour is assumed to be a full-side opaque block on level ground. The house keeps its actual modeled setbacks, floor elevations and frontage direction.</p>
+        <form id="sunExposureForm" novalidate>
+          <div id="sunNeighborRows"></div>
+          <p class="mini">Unknown is not clear space. Heights and gaps are in metres (1 m = 3.281 ft); neighbour heights are above the shared flat ground datum. Enter actual measurements or explicitly choose a scenario.</p>
+          <div class="sun-exposure-actions">
+            <button class="sun-download" type="button" id="sunExposureSave">Save neighbour inputs</button>
+            <button class="sun-download" type="submit" id="sunExposureCalculate">Calculate selected day</button>
+          </div>
+        </form>
+        <p id="sunExposureError" class="sun-exposure-warning" role="alert" hidden></p>
+        <p id="sunExposureStatus" class="mini" role="status"></p>
+        <div id="sunExposureResults"></div>
       </section>
       <section class="card" aria-labelledby="sunAnnualHeading">
         <div class="sun-heading"><h2 id="sunAnnualHeading">Elevation Across the Year</h2><button type="button" class="sun-download" id="sunDownload" disabled>Download daily samples (CSV)</button></div>
@@ -1118,7 +1181,7 @@ body.room-plan-lock{overflow:hidden}
         <p class="mini sun-scroll-hint">Scroll the chart horizontally to explore the full year.</p>
         <p class="mini" id="sunAnnualStatus" role="status"></p>
       </section>
-      <p class="mini">Astronomical position only: these plots do not calculate building shadows, solar energy, weather or indoor temperature. The room planner's existing daylight and ventilation checks remain separate heuristics.</p>
+      <p class="mini">Sun paths, pole-shadow length and house sunlight hours are geometric estimates, not measured sunshine, solar energy, weather or indoor temperature. House sunlight includes the supplied scene and explicit full-side neighbour assumptions; the room planner's daylight and ventilation checks remain separate heuristics.</p>
     </div>
   </div>
 </div>
@@ -1299,7 +1362,29 @@ function readRoads(){
 const FRONT_PRIORITY = ['E','N','W','S'];
 
 /* ================= Core computation ================= */
-function compute(){
+class PlotInputError extends Error{
+  constructor(message,field){super(message);this.name='PlotInputError';this.field=field;}
+}
+
+function scenarioSettings(ignoreCustom=false){
+  let setbacks=null;
+  if($('customSetbacks').checked&&!ignoreCustom){
+    setbacks={};
+    for(const side of ['Front','Rear','Left','Right']){
+      const field='setback'+side,value=$(field).valueAsNumber;
+      if(!Number.isFinite(value)||value<0)
+        throw new PlotInputError(`Enter a nonnegative ${side.toLowerCase()} setback in metres.`,field);
+      setbacks[side.toLowerCase()]=value;
+    }
+  }
+  const choice=$('floorCount').value;
+  const floorCount=choice==='max'?null:Number(choice);
+  if(floorCount!==null&&(!Number.isSafeInteger(floorCount)||floorCount<1))
+    throw new PlotInputError('Choose a valid planned floor count.','floorCount');
+  return {setbacks,floorCount};
+}
+
+function compute({ignoreCustomSetbacks=false}={}){
   const cat=$('cat').value, use=$('use').value, face=$('face').value;
   const edges = FACE_EDGES[face];
   const roads = readRoads();
@@ -1332,6 +1417,7 @@ function compute(){
 
   const band = plotBand(netA), rbi = roadBandIdx(effRoad);
   const tdr = $('tdr').checked;
+  const settings=scenarioSettings(ignoreCustomSetbacks),customSetbacks=!!settings.setbacks;
 
   const roadCapHt = (function(){
     if (rawRd < 9)  return cat==='A' ? 10 : 12;
@@ -1380,7 +1466,7 @@ function compute(){
   }
 
   // Rule 26(d) — post-facto compounding, non-high-rise, excludes front
-  const devOn = $('dev').checked && !highRise;
+  const devOn = $('dev').checked && !highRise && !customSetbacks;
   const devBlocked = $('dev').checked && highRise;
   const devSide = devOn ? side*0.9 : side;
   const devRear = devOn ? rear*0.9 : rear;
@@ -1395,13 +1481,17 @@ function compute(){
     e[OPP[frontEdge]] = rr;
     return e;
   }
-  function footprint(s, rr){
-    const e = edgesOf(s, rr);
+  function footprint(e){
     return {bw:Math.max(0,extEW-e.W-e.E), bd:Math.max(0,extNS-e.N-e.S),
             a:Math.max(0,extEW-e.W-e.E)*Math.max(0,extNS-e.N-e.S), e};
   }
-  const F=footprint(side,rear), FD=footprint(devSide,devRear);
-  const E=F.e, ED=FD.e;
+  const requiredE=edgesOf(side,rear);
+  const E=customSetbacks?Object.fromEntries([['N','front'],['E','right'],['S','rear'],['W','left']]
+    .map(([edge,role])=>[roomLocalEdgeGlobal(edge,frontEdge),settings.setbacks[role]])):requiredE;
+  const ED=customSetbacks?E:edgesOf(devSide,devRear);
+  const F=footprint(E),FD=footprint(ED),legalF=footprint(requiredE);
+  const setbackViolations=['N','E','S','W'].filter(edge=>E[edge]<requiredE[edge]-ROOM_EPS);
+  const nonCompliant=setbackViolations.length>0;
 
   const usable  = Math.max(0, F.a - totArea);
   const cov     = netA ? usable/netA*100 : 0;
@@ -1414,7 +1504,9 @@ function compute(){
   const stilt = $('stilt').checked;
   const floorsByHt = Math.floor(selH/ffh + 1e-9);
   const baseFloors = Math.min(floorsByHt, roadFloorCap);
-  const floors = baseFloors + tdrFloors;
+  const maxFloors=baseFloors+tdrFloors;
+  const floors=settings.floorCount===null?maxFloors:Math.min(settings.floorCount,maxFloors);
+  const plannedBaseFloors=Math.min(floors,baseFloors),usedTdrFloors=Math.max(0,floors-baseFloors);
   const builtUp = usable * floors;
 
   /* ---- split analysis ---- */
@@ -1425,19 +1517,31 @@ function compute(){
   const totalFront = axis && isNS(axis) ? grossEW : grossNS;
   const totalDepth = axis && isNS(axis) ? grossNS : grossEW;
   const frac = Math.min(0.85, Math.max(0.15, (+$('splitPos').value||50)/100));
-  const split = splitOn ? splitPair(totalFront, totalDepth, frac, axisRoad, cat, ffh) : null;
-  const splitBest = splitOn ? bestSplit(totalFront, totalDepth, axisRoad, cat, ffh) : null;
-  const whole = envelopeFor(totalFront, totalDepth, axisRoad, cat, ffh);
+  const split = splitOn ? splitPair(totalFront, totalDepth, frac, axisRoad, cat, ffh,settings) : null;
+  const splitBest = splitOn ? bestSplit(totalFront, totalDepth, axisRoad, cat, ffh,settings) : null;
+  const whole = envelopeFor(totalFront, totalDepth, axisRoad, cat, ffh,settings);
 
   return {W,D,netD,grossA,netA,extNS,extEW,grossEW,grossNS,widenStrip,rawRd,roads,edges,corner,face,frontEdge,widerEdge,
           effRoad,cat,use,band,rbi,opt,selH,highRise,tdrBand,tdr,tdrFloors,tdrFloorBasis,tdrSetbackRelaxed,hrRow,sbNote,
           front,side,rear,devSide,devRear,devOn,devBlocked,devGain,usableD,E,ED,F,FD,usable,cov,lost,covD,
-          totPct,totArea,floors,baseFloors,floorsByHt,roadFloorCap,roadCapHt,builtUp,stilt,ffh,
+          requiredE,legalF,customSetbacks,nonCompliant,setbackViolations,
+          totPct,totArea,floors,maxFloors,plannedBaseFloors,usedTdrFloors,baseFloors,floorsByHt,roadFloorCap,roadCapHt,builtUp,stilt,ffh,
           splitOn,axis,axisRoad,totalFront,totalDepth,frac,split,splitBest,whole};
 }
 
 /* ================= Floors dropdown ================= */
 const floorLabel = n => n<=0 ? '—' : n===1 ? 'G' : `G+${n-1}`;
+
+function fillFloorCounts(maxFloors){
+  const select=$('floorCount'),previous=select.value||'max';
+  select.innerHTML=`<option value="max">Use maximum — ${floorLabel(maxFloors)} (${maxFloors} floors)</option>`+
+    Array.from({length:maxFloors},(_,i)=>`<option value="${i+1}">${floorLabel(i+1)} — ${i+1} habitable floor${i?'s':''}</option>`).join('');
+  if(previous==='max'||Number(previous)<=maxFloors)select.value=previous;
+  else{
+    select.value=String(Math.max(1,maxFloors));
+    select.dataset.adjustment=`The previous ${floorLabel(Number(previous))} choice exceeded the new limit and was reduced to ${floorLabel(maxFloors)}.`;
+  }
+}
 
 function fillHeights(){
   const sel=$('ht'), prev=+sel.value;
@@ -1475,17 +1579,37 @@ function fillHeights(){
   sel.innerHTML = opts.map(o=>{
     const ok = o.h <= roadCapHt;
     const fl = Math.min(Math.floor(o.h/ffh + 1e-9), roadFloorCap) + tdrExtra;
-    const txt = `${stilt?'Stilt + ':''}${floorLabel(fl)} — ${fl} floor${fl===1?'':'s'} · ${o.h} m${o.tag}`;
+    const txt = `${o.h} m${o.tag} — up to ${stilt?'Stilt + ':''}${floorLabel(fl)}`;
     return `<option value="${o.h}" ${ok?'':'disabled'}>${txt}${ok?'':'  — road too narrow'}</option>`;
   }).join('');
   const avail = opts.filter(o=>o.h<=roadCapHt).map(o=>o.h);
   sel.value = avail.includes(prev) ? prev : (avail[avail.length-1] ?? opts[0]?.h ?? 7);
+  fillFloorCounts(Math.min(Math.floor(Number(sel.value)/ffh+1e-9),roadFloorCap)+tdrExtra);
 }
 
 /* ================= Render ================= */
 function render(){
-  fillHeights();
-  const r = compute();
+  let r;
+  $('plotInputError').hidden=true;
+  ['Front','Rear','Left','Right'].forEach(side=>$('setback'+side).removeAttribute('aria-invalid'));
+  const custom=$('customSetbacks').checked;
+  $('customSetbackFields').hidden=!custom;
+  ['Front','Rear','Left','Right'].forEach(side=>{$('setback'+side).disabled=!custom;});
+  $('dev').disabled=custom;
+  try{fillHeights();r=compute();}
+  catch(error){
+    if(!(error instanceof PlotInputError))throw error;
+    window.__plotInputError=error.message;
+    $('plotInputError').textContent=error.message;$('plotInputError').hidden=false;
+    if(error.field)$(error.field).setAttribute('aria-invalid','true');
+    $('plotResults').hidden=true;
+    $('roomPlan').innerHTML='';
+    $('roomStats').innerHTML='';$('roomTable').innerHTML='';$('roomAlerts').innerHTML='';$('roomNote').innerHTML='';
+    $('roomSourceHint').textContent=`Plot Planner inputs are incomplete: ${error.message}`;
+    if(window.HomePlanner)window.HomePlanner.acceptLegacy();
+    return;
+  }
+  window.__plotInputError=null;$('plotResults').hidden=false;
   window.__last = r;
   $('splitBox').style.display = r.splitOn ? 'block' : 'none';
   renderSplit(r);
@@ -1520,12 +1644,17 @@ function render(){
         ? `<br><b style="color:var(--warn)">Road under 9 m — ${f1(r.widenStrip)} m widening strip deducted automatically.</b> Rule 4(b)/(c) makes this mandatory: land up to 4.5 m from the road centre line must be surrendered free of cost, and setbacks are measured after it.`
         : '');
 
-  $('floorEcho').innerHTML = `<b>${r.stilt?'Stilt + ':''}${floorLabel(r.floors)}</b> = ${r.floors} habitable floor${r.floors===1?'':'s'} at ${r.ffh} m each, within the ${r.selH} m band`
+  $('floorEcho').innerHTML = `<b>${r.stilt?'Stilt + ':''}${floorLabel(r.floors)}</b> = ${r.floors} selected habitable floor${r.floors===1?'':'s'} at ${r.ffh} m each; up to ${floorLabel(r.maxFloors)} in the ${r.selH} m band`
     + (r.stilt?`. The stilt parking floor sits below and is <b>excluded</b> from the ${r.selH} m (Rule 5(c), min 2.5 m clear).`:'.')
-    + (r.tdrFloors?` Includes <b style="color:var(--tdr)">+${r.tdrFloors} TDR floors</b>.`:'');
+    + (r.usedTdrFloors?` Includes <b style="color:var(--tdr)">+${r.usedTdrFloors} TDR floors</b>.`:'')
+    + ' Fewer floors do not automatically reduce this height band or its setbacks. Editable floor layouts are added separately in Room Planner.'
+    + ($('floorCount').dataset.adjustment?` <b>${$('floorCount').dataset.adjustment}</b>`:'');
 
   /* verdicts */
   const V=[];
+  if(r.customSetbacks)V.push([r.nonCompliant?'v-bad':'v-warn',r.nonCompliant
+    ? `<b>NON-COMPLIANT SETBACK SCENARIO.</b> ${r.setbackViolations.map(edge=>DIRNAME[edge]).join(', ')} setbacks are below the rule minimum. Footprint, costs and downstream layouts use your custom values; this is not a sanctioned or permission-eligible design.`
+    : '<b>Custom setback scenario.</b> These entered setbacks are not below the modeled minimum, but no legal compliance or building permission is certified.']);
   if (r.rawRd < 9)
     V.push(['v-warn', `<b>Road under 9 m.</b> Rule 4(b)/(c): permitted only after surrendering land up to <b>4.5 m from the road centre line</b> free of cost, with setbacks measured after that strip. Maximum height then ${r.cat==='A'?'10 m':'12 m (individual residential only)'}. <b>No relaxations permissible.</b>`]);
   if (r.rawRd >= 9 && r.effRoad < 12)
@@ -1563,13 +1692,13 @@ function render(){
   $('stats').innerHTML = `
     <div class="stat"><div class="k">Net plot area</div><div class="v">${f0(r.netA*M2SY)} <span style="font-size:13px;color:var(--dim)">sq yd</span></div>
       <div class="s">${f0(r.netA)} sq m · ${f0(r.netA*M2SF)} sq ft</div></div>
-    <div class="stat"><div class="k">Buildable footprint</div><div class="v">${f0(r.usable*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div>
+    <div class="stat"><div class="k">${r.customSetbacks?'Scenario footprint':'Buildable footprint'}</div><div class="v">${f0(r.usable*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div>
       <div class="s">${f0(r.usable)} sq m · ${f1(r.F.bw)} m E–W × ${f1(r.F.bd)} m N–S</div></div>
-    <div class="stat"><div class="k">Coverage</div><div class="v" style="color:var(--ok)">${f1(r.cov)}%</div><div class="s">of net plot area</div></div>
+    <div class="stat"><div class="k">Coverage</div><div class="v" style="color:${r.nonCompliant?'var(--warn)':'var(--ok)'}">${f1(r.cov)}%</div><div class="s">of net plot area${r.nonCompliant?' · non-compliant scenario':''}</div></div>
     <div class="stat"><div class="k">Lost to setbacks</div><div class="v" style="color:var(--warn)">${f1(r.lost)}%</div>
       <div class="s">${f0((r.netA-r.usable)*M2SY)} sq yd${r.totPct?` (incl. ${r.totPct}% tot lot)`:''}</div></div>
-    <div class="stat"><div class="k">Floors permitted</div><div class="v">${r.stilt?'Stilt + ':''}${floorLabel(r.floors)}</div>
-      <div class="s">${r.floors} floor${r.floors===1?'':'s'} · ${r.baseFloors} base${r.tdrFloors?` <b style="color:var(--tdr)">+${r.tdrFloors} TDR</b>`:''}</div></div>
+    <div class="stat"><div class="k">Floors selected</div><div class="v">${r.stilt?'Stilt + ':''}${floorLabel(r.floors)}</div>
+      <div class="s">up to ${floorLabel(r.maxFloors)} by modeled height/road limits · ${r.plannedBaseFloors} base${r.usedTdrFloors?` <b style="color:var(--tdr)">+${r.usedTdrFloors} TDR</b>`:''}</div></div>
     <div class="stat"><div class="k">Total built-up</div><div class="v">${f0(r.builtUp*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div>
       <div class="s">${f0(r.builtUp)} sq m over ${r.floors} floors</div></div>
     ${r.devOn?`<div class="stat" style="border-color:rgba(210,153,34,.5)"><div class="k">With 10% compounding</div>
@@ -1586,13 +1715,13 @@ function render(){
   const NA='<span style="color:var(--bad)">not allowed</span>';
   const basisFront = r.highRise?'Table IV, or Table III building line if higher':`Table III col ${5+r.rbi} — road ${ROAD_BANDS[r.rbi].label}`;
   const basisSide  = r.highRise?'Table IV all-round':'Table III col 10';
-  $('sbTable').innerHTML = `<tr><th>Edge</th><th class="n">Required (m)</th><th class="n">10% compounded</th><th>Basis</th></tr>`+
+  $('sbTable').innerHTML = `<tr><th>Edge</th><th class="n">Required (m)</th><th class="n">${r.customSetbacks?'Custom (m)':'10% compounded'}</th><th>Basis</th></tr>`+
     ['N','E','S','W'].map(d=>{
       const isFront=d===r.frontEdge, isRear=d===OPP[r.frontEdge];
       const role = isFront?'<b style="color:var(--acc)">front</b>':isRear?'rear':'side';
       const road = r.roads[d]!==undefined ? ` · road ${f1(r.roads[d])} m` : '';
-      return `<tr><td>${DIRNAME[d]} — ${role}${road}</td><td class="n"><b>${f1(r.E[d])}</b></td>`+
-             `<td class="n">${isFront?NA:f1(r.ED[d])}</td><td class="mini">${isFront?basisFront:basisSide}</td></tr>`;
+      return `<tr><td>${DIRNAME[d]} — ${role}${road}</td><td class="n"><b>${f1(r.requiredE[d])}</b></td>`+
+             `<td class="n">${r.customSetbacks?`${f1(r.E[d])}${r.setbackViolations.includes(d)?' <span class="badge b-bad">Below minimum</span>':''}`:isFront?NA:f1(r.ED[d])}</td><td class="mini">${isFront?basisFront:basisSide}</td></tr>`;
     }).join('');
   $('sbNote').innerHTML = `Plot band <b>${r.band.name} sq m</b> (Sl.No ${r.band.sl}); height <b>${r.selH} m</b>; parking provision <b>${r.highRise?'cellars':r.opt.park}</b>. `+
     `Rule 6 permits chajjas / weather shades up to 60 cm in setbacks and prohibits balcony or corridor projection for non-high-rise buildings. Rule 7(a)(xiv) separately permits high-rise balcony projection up to 2 m from 6 m height onward. ${r.sbNote}`;
@@ -1605,7 +1734,8 @@ function render(){
     ['Max floors from road (Table II)', r.roadFloorCap>90?'—':`${r.roadFloorCap}`, r.effRoad<12?'B1: stilt/cellar + max 5 floors':r.effRoad<18?'B2: cellars + 6 floors':'high-rise bands'],
     ['Floors at chosen height', `${r.floorsByHt}`, `${r.selH} m ÷ ${r.ffh} m floor-to-floor`],
     ['Extra floors via TDR', r.tdrFloors?`<b style="color:var(--tdr)">+${r.tdrFloors}</b>`:'—', r.tdrFloors?`GO 95 Rule 17(d)(xii) — ${r.tdrFloorBasis}, plot above 2 000 sq m`:'needs TDR, plot above 2 000 sq m and a 40 ft+ road'],
-    ['Floors permitted', `<b>${r.stilt?'Stilt + ':''}${floorLabel(r.floors)}</b> = ${r.floors}`, 'lower of the height and road caps, plus TDR floors'],
+    ['Maximum floor count', `<b>${r.stilt?'Stilt + ':''}${floorLabel(r.maxFloors)}</b> = ${r.maxFloors}`, 'lower of the height and road caps, plus available TDR floors; not a complete permission assessment'],
+    ['Floors selected', `<b>${floorLabel(r.floors)}</b> = ${r.floors}`, 'chosen count used for built-up area, costs and repeatable layout scenarios'],
     ['Stilt floor', r.stilt?'provided':'not provided', 'Rule 5(c) — excluded from the Table III height; min 2.5 m, or 4.5 m with mechanical parking']
   ];
   $('htTable').innerHTML = `<tr><th>Parameter</th><th class="n">Value</th><th>Basis</th></tr>`+
@@ -1647,6 +1777,12 @@ function render(){
       ['Process','Town planning scrutiny + NOCs',r.highRise?'Fire Services NOC mandatory; AAI clearance near airports':'as applicable to use and height'],
       ['Occupancy certificate','<span class="badge b-warn">Required</span>','Rule 26 — checks floors, external setbacks, use, parking, road width'],
       ['Setbacks','Table III / Table IV apply in full','']];
+  }
+  if(r.nonCompliant){
+    tier='Non-compliant scenario — not a permission assessment';
+    tRows=[['Custom setbacks','<span class="badge b-bad">Below rule minimum</span>','Restore compliant geometry and obtain professional/authority review before construction.'],
+      ['Reference route',tier,'An area/height threshold does not authorise setback violations.'],
+      ['Road widening and other requirements','Still applicable','The what-if control does not waive road, parking, fire, open-space, title or structural requirements.']];
   }
   if (r.tdr) tRows.push(['TDR','<span class="badge b-tdr">Required</span>','GO 95 — TDR certificate must be procured and surrendered; 50% at permission, 50% before OC']);
   $('permTable').innerHTML=`<tr><th>Item</th><th>Position</th><th>Basis</th></tr>`+
@@ -1896,12 +2032,18 @@ function roomPlateFor(r){
   const wholeD=isNS(r.frontEdge)?r.F.bd:r.F.bw;
   const wholeSetbacks=Object.fromEntries(['N','E','S','W'].map(edge=>
     [edge,r.E[roomLocalEdgeGlobal(edge,r.frontEdge)]||0]));
-  const common={ffh:r.ffh,stilt:r.stilt};
+  const common={ffh:r.ffh,stilt:r.stilt,customSetbacks:r.customSetbacks};
   const plates=[make('whole','Whole plot',wholeW,wholeD,r.usable,r.frontEdge,r.floors,
-    {...common,highRise:r.highRise,selectedHeight:r.selH,localSetbacks:wholeSetbacks})];
+    {...common,highRise:r.highRise,selectedHeight:r.selH,maxFloors:r.maxFloors,
+      nonCompliant:r.nonCompliant,localSetbacks:wholeSetbacks,
+      requiredSetbacks:Object.fromEntries(['N','E','S','W'].map(edge=>[edge,r.requiredE[roomLocalEdgeGlobal(edge,r.frontEdge)]])),
+      sitePlot:{x:-wholeSetbacks.W,y:-wholeSetbacks.N,w:r.W,h:r.D}})];
   if (r.splitOn && r.split){
     const splitMeta=p=>({...common,highRise:false,selectedHeight:p.h,
-      localSetbacks:{N:p.front,E:p.side,S:p.side,W:p.side}});
+      maxFloors:p.maxFloors,nonCompliant:p.nonCompliant,
+      localSetbacks:{N:p.front,E:p.right,S:p.rear,W:p.left},
+      requiredSetbacks:p.requiredSetbacks,
+      sitePlot:{x:-p.left,y:-p.front,w:p.frontage,h:p.depth}});
     plates.push(make('A','Split plot A',r.split.A.bw,r.split.A.bd,r.split.A.usable,r.axis,r.split.A.floors,splitMeta(r.split.A)));
     plates.push(make('B','Split plot B',r.split.B.bw,r.split.B.bd,r.split.B.usable,r.axis,r.split.B.floors,splitMeta(r.split.B)));
   }
@@ -1923,8 +2065,9 @@ function roomPlateFor(r){
   plate.floorIndex=+floorSelect.value||1;
   plate.floorElevation=(plate.floorIndex-1+(plate.stilt?1:0))*plate.ffh;
   plate.balconyProjectionAllowed=!!plate.highRise&&plate.floorElevation>=6-ROOM_EPS;
-  $('roomSourceHint').innerHTML=`Uses the current <b>${plate.label.toLowerCase()}</b> buildable envelope from the Plot Optimizer. `+
-    `${DIRNAME[plate.frontEdge]} is the front; habitable floor ${plate.floorIndex} is modelled at approximately ${f1(plate.floorElevation)} m above ground.`;
+  $('roomSourceHint').innerHTML=`Uses the current <b>${plate.label.toLowerCase()}</b> ${plate.customSetbacks?'custom setback':'buildable'} envelope from Plot Planner. `+
+    `${DIRNAME[plate.frontEdge]} is the front; habitable floor ${plate.floorIndex} is modelled at approximately ${f1(plate.floorElevation)} m above ground.`+
+    (plate.nonCompliant?' <b style="color:var(--bad)">Non-compliant setback scenario, not a sanctioned design.</b>':'');
   $('roomBalconyRuleHint').innerHTML=plate.balconyProjectionAllowed
     ? `<b style="color:var(--ok)">High-rise projection eligible.</b> Rule 7(a)(xiv) allows balcony projection up to 2 m onto open space from 6 m height onward; the planner also caps it to the available setback.`
     : `<b style="color:var(--warn)">No setback projection on this floor.</b> Rule 6 keeps non-high-rise balconies inside the statutory envelope; the Rule 7(a)(xiv) exception needs a high-rise floor at or above 6 m.`;
@@ -4810,7 +4953,7 @@ function roomSvgPlan(plate,g,plan){
   const roadTextAngle=angle===90||angle===-90?angle:0;
   out+=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="var(--acc)" stroke-width="4"/>`;
   out+=`<text x="${m.x}" y="${m.y+3}" text-anchor="middle" fill="var(--acc)" stroke="var(--svg-bg)" stroke-width="3.5" paint-order="stroke" font-size="10" font-weight="700" transform="rotate(${roadTextAngle} ${m.x} ${m.y+3})">${DIRNAME[plate.frontEdge].toUpperCase()} FRONT / ROAD</text>`;
-  out+=`<text x="14" y="${VH-14}" fill="var(--svg-muted)" font-size="9.5">${plate.label} · statutory envelope ${f1(g.W/FT)} ft × ${f1(g.D/FT)} ft · rectangular dwelling ${f1(g.outerW/FT)} ft × ${f1(g.outerD/FT)} ft</text>`;
+  out+=`<text x="14" y="${VH-14}" fill="${plate.nonCompliant?'var(--bad)':'var(--svg-muted)'}" font-size="9.5">${plate.label} · ${plate.customSetbacks?'custom setback':'statutory'} envelope ${f1(g.W/FT)} ft × ${f1(g.D/FT)} ft · rectangular dwelling ${f1(g.outerW/FT)} ft × ${f1(g.outerD/FT)} ft${plate.nonCompliant?' · NON-COMPLIANT':''}</text>`;
   out+=`<g transform="translate(${VW-38},38)"><circle r="21" fill="var(--svg-surface)" stroke="var(--svg-line)"/><path d="M 0 -15 L 5 3 L 0 -1 L -5 3 Z" fill="var(--bad)"/><text x="0" y="-23" fill="var(--bad)" font-size="9" text-anchor="middle">N</text><text x="0" y="31" fill="var(--svg-muted)" font-size="8" text-anchor="middle">S</text><text x="29" y="4" fill="var(--svg-muted)" font-size="8" text-anchor="middle">E</text><text x="-29" y="4" fill="var(--svg-muted)" font-size="8" text-anchor="middle">W</text></g>`;
   svg.innerHTML=out;
   const focusTarget=focusId?svg.querySelector(`[data-planner-id="${CSS.escape(focusId)}"]`):
@@ -4825,6 +4968,7 @@ function roomRangeText(range){
 }
 
 function renderRoomPlanner(r){
+  if(window.__plotInputError)return;
   if (!r) return;
   const plate=roomPlateFor(r),cfg=roomPlannerConfig(),warnings=cfg.warnings.slice();
   cfg.frontEdge=plate.frontEdge;
@@ -4888,6 +5032,7 @@ function renderRoomPlanner(r){
   const repeatable=plate.area*Math.max(0,plate.floors);
 
   const alerts=[];
+  if(plate.nonCompliant)alerts.push('<div class="verdict v-bad"><b>NON-COMPLIANT SETBACK SCENARIO.</b> This layout uses custom setbacks below the modeled rules. It is not a sanctioned or permission-eligible design.</div>');
   if(!requestedTotal)alerts.push(`<div class="verdict v-info"><b>The floor plate is empty.</b> Drag only the rooms and services you need from the right sidebar; each collapsed row shows its current dimensions.</div>`);
   else if (allFit) alerts.push(`<div class="verdict v-ok"><b>The requested program fits in this deterministic schematic.</b> The dwelling is rectangular, lift / stair access stays on the external corridor, and every balcony follows the selected floor's projection rule.</div>`);
   if(cfg.counts.balcony)alerts.push(`<div class="verdict v-info"><b>Balcony rule for floor ${plate.floorIndex}:</b> ${g.balconyPolicy.allowed
@@ -4916,12 +5061,12 @@ function renderRoomPlanner(r){
   $('roomAlerts').innerHTML=alerts.join('');
 
   $('roomStats').innerHTML=`
-    <div class="stat"><div class="k">Statutory floor envelope</div><div class="v">${f0(plate.area*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">rectangular dwelling ${f1(g.outerW)} × ${f1(g.outerD)} m</div></div>
+    <div class="stat"><div class="k">${plate.customSetbacks?'Custom setback':'Statutory floor'} envelope</div><div class="v">${f0(plate.area*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">rectangular dwelling ${f1(g.outerW)} × ${f1(g.outerD)} m${plate.nonCompliant?' · NON-COMPLIANT':''}</div></div>
     <div class="stat"><div class="k">Room carpet</div><div class="v" style="color:var(--ok)">${f0(plan.habitableCarpetArea*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">occupied rooms, excluding lift / stair</div></div>
     <div class="stat"><div class="k">Circulation + service</div><div class="v">${f0(circulation*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.corridorArea*M2SF)} external corridor · ${f0(plan.unassigned*M2SF)} internal flex · ${f0(plan.balconyArea*M2SF)} balcony · ${f0(plan.serviceArea*M2SF)} corridor-overlaid lift / stair</div></div>
     <div class="stat"><div class="k">Wall footprint</div><div class="v">${f0(walls*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.externalWallArea*M2SF)} external · ${f0(internalWall*M2SF)} internal</div></div>
     <div class="stat"><div class="k">Carpet efficiency</div><div class="v" style="color:${efficiency>=55?'var(--ok)':'var(--warn)'}">${f1(efficiency)}%</div><div class="s">room carpet ÷ gross floor plate</div></div>
-    <div class="stat"><div class="k">Across permitted floors</div><div class="v">${f0(repeatable*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${plate.floors} floor${plate.floors===1?'':'s'} if this plate repeats</div></div>`;
+    <div class="stat"><div class="k">Across selected floors</div><div class="v">${f0(repeatable*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${plate.floors} floor${plate.floors===1?'':'s'} if this plate repeats</div></div>`;
 
   roomSvgPlan(plate,g,plan);
   const status=p=>{
@@ -4972,7 +5117,7 @@ function renderRoomPlanner(r){
 
 /* ================= Sub-plot envelope & split ================= */
 // Evaluate one rectangular plot fronting a road of the given width, under current settings.
-function envelopeFor(frontage, depth, roadW, cat, ffh){
+function envelopeFor(frontage, depth, roadW, cat, ffh,settings=scenarioSettings()){
   const widen = roadW>0 && roadW<9;
   const strip = widen ? Math.max(0, 4.5-roadW/2) : 0;
   const eff = widen ? 9 : roadW;
@@ -4984,28 +5129,34 @@ function envelopeFor(frontage, depth, roadW, cat, ffh){
   const band = plotBand(area);
   const avail = band.opts.filter(o=>!(o.road12&&eff<12) && o.h<=capHt);
   const opt = avail[avail.length-1] || band.opts[0];
-  const front = opt.front[rbi], side = opt.side;
-  const bw = Math.max(0, frontage-2*side), bd = Math.max(0, d-front-side);
+  const requiredSetbacks={N:opt.front[rbi],E:opt.side,S:opt.side,W:opt.side};
+  const front=settings.setbacks?.front??requiredSetbacks.N,left=settings.setbacks?.left??requiredSetbacks.W;
+  const right=settings.setbacks?.right??requiredSetbacks.E,rear=settings.setbacks?.rear??requiredSetbacks.S;
+  const side=left;
+  const nonCompliant=front<requiredSetbacks.N-ROOM_EPS||left<requiredSetbacks.W-ROOM_EPS||
+    right<requiredSetbacks.E-ROOM_EPS||rear<requiredSetbacks.S-ROOM_EPS;
+  const bw = Math.max(0, frontage-left-right), bd = Math.max(0, d-front-rear);
   const tot = area>750 ? area*0.05 : 0;
   const usable = Math.max(0, bw*bd-tot);
-  const floors = Math.min(Math.floor(opt.h/ffh + 1e-9), capFl);
-  return {frontage, depth:d, area, band, opt, front, side, bw, bd, usable, floors,
+  const maxFloors = Math.min(Math.floor(opt.h/ffh + 1e-9), capFl);
+  const floors=settings.floorCount===null?maxFloors:Math.min(settings.floorCount,maxFloors);
+  return {frontage, depth:d, area, band, opt, front, side, left,right,rear,requiredSetbacks,nonCompliant,bw,bd,usable,floors,maxFloors,
           built: usable*floors, lost: area? (1-usable/area)*100 : 0, h:opt.h};
 }
 
 // Both halves front the same road, so the cut runs perpendicular to that road.
-function splitPair(totalFrontage, depth, frac, roadW, cat, ffh){
+function splitPair(totalFrontage, depth, frac, roadW, cat, ffh,settings=scenarioSettings()){
   const fa = totalFrontage*frac, fb = totalFrontage-fa;
-  const A = envelopeFor(fa, depth, roadW, cat, ffh);
-  const B = envelopeFor(fb, depth, roadW, cat, ffh);
+  const A = envelopeFor(fa, depth, roadW, cat, ffh,settings);
+  const B = envelopeFor(fb, depth, roadW, cat, ffh,settings);
   const area = A.area+B.area, usable = A.usable+B.usable;
   return {A,B,frac,area,usable,built:A.built+B.built, lost: area? (1-usable/area)*100 : 0};
 }
 
-function bestSplit(totalFrontage, depth, roadW, cat, ffh){
+function bestSplit(totalFrontage, depth, roadW, cat, ffh,settings=scenarioSettings()){
   let best=null;
   for (let f=0.15; f<=0.851; f+=0.0025){
-    const s = splitPair(totalFrontage, depth, f, roadW, cat, ffh);
+    const s = splitPair(totalFrontage, depth, f, roadW, cat, ffh,settings);
     if (!best || s.usable > best.usable + 1e-9) best = s;
   }
   return best;
@@ -5289,10 +5440,13 @@ function evalPlot(areaSqm, aspect, ctx){
   const band = plotBand(areaSqm);
   const avail = band.opts.filter(o => !(o.road12 && ctx.effRoad < 12) && o.h <= ctx.roadCapHt);
   const opt = avail[avail.length-1] || band.opts[0];
-  const front = opt.front[ctx.rbi], side = opt.side;
-  const baseFp = Math.max(0, W-2*side) * Math.max(0, D-front-side);
+  const requiredFront = opt.front[ctx.rbi], side = opt.side;
+  const front=ctx.setbacks?.front??requiredFront,left=ctx.setbacks?.left??side;
+  const right=ctx.setbacks?.right??side,rear=ctx.setbacks?.rear??side;
+  const baseFp = Math.max(0, W-2*side) * Math.max(0, D-requiredFront-side);
   const compoundedSide=ctx.dev?side*.9:side;
-  const fp = Math.max(0, W-2*compoundedSide) * Math.max(0, D-front-compoundedSide);
+  const fp = ctx.setbacks?Math.max(0,W-left-right)*Math.max(0,D-front-rear):
+    Math.max(0, W-2*compoundedSide) * Math.max(0, D-front-compoundedSide);
   const totArea = areaSqm > 750 ? areaSqm*0.05 : 0;
   const usable = Math.max(0, fp - totArea);
   const baseUsable=Math.max(0,baseFp-totArea);
@@ -5304,6 +5458,7 @@ function evalPlot(areaSqm, aspect, ctx){
     else if (ctx.effRoad >= 18) floors += 4;
     else if (ctx.effRoad >= 12) floors += 3;
   }
+  if(Number.isSafeInteger(ctx.floorCount)&&ctx.floorCount>0)floors=Math.min(floors,ctx.floorCount);
   const built = usable * floors;
   // All-in cost per sq ft of usable built-up, reusing the rates from the cost panel
   let costPsf = 0;
@@ -5441,9 +5596,13 @@ function drawChart(elId, key, fmtY, yLabel, ctx, yScale=1){
 }
 
 function drawCharts(r, cost){
+  const settings=scenarioSettings();
   const ctx = {effRoad:r.effRoad, roadCapHt:r.roadCapHt, roadFloorCap:r.roadFloorCap,
-               rbi:r.rbi, ffh:r.ffh, tdr:r.tdr, dev:r.devOn, netA:r.netA, cost, use:r.use, stilt:r.stilt};
+               rbi:r.rbi, ffh:r.ffh, tdr:r.tdr, dev:r.devOn, netA:r.netA, cost, use:r.use, stilt:r.stilt,
+               setbacks:settings.setbacks,floorCount:settings.floorCount};
   $('chartRoad').textContent = `— at ${f1(r.effRoad)} m road${r.tdr?', with TDR':''}${r.devOn?', with 10% side/rear compounding':''}`;
+  $('chartScenarioNote').textContent=(r.customSetbacks?'Charts apply your custom setbacks; some scenarios are non-compliant. Preset best-ratio labels describe the statutory references, not a custom optimum. ':'')+
+    (settings.floorCount!==null?`Charts use up to ${floorLabel(settings.floorCount)}, capped by each plot's height/road allowance.`:'Charts use each plot band’s maximum floor count.');
   $('chartLegend').innerHTML = ASPECTS.map(a=>
     `<span style="display:flex;align-items:center;gap:5px"><i style="width:16px;height:3px;background:${a.color};display:inline-block;border-radius:2px"></i>${a.label}</span>`
   ).join('');
@@ -5632,7 +5791,7 @@ document.querySelectorAll('.primary-tabs button').forEach(b=>b.addEventListener(
   document.querySelectorAll('.primary-tabs button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.app-page').forEach(p=>p.classList.toggle('on',p.id==='page-'+b.dataset.page));
   $('plotSources').hidden=b.dataset.page!=='optimizer';
-  if (b.dataset.page==='rooms') renderRoomPlanner(window.__last);
+  if (b.dataset.page==='rooms'&&!window.__plotInputError) renderRoomPlanner(window.__last);
 }));
 document.querySelectorAll('.sub-tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.sub-tabs button').forEach(x=>x.classList.toggle('on',x===b));
@@ -5660,7 +5819,20 @@ $('splitPos').addEventListener('keydown',event=>{
   $('splitPos').value=String(Math.min(85,Math.max(15,value)));
   render();
 });
-['dunit','pEW','pNS','cat','use','ht','stilt','ffh','tdr','dev','splitPos',
+function useRuleSetbacks(){
+  const r=compute({ignoreCustomSetbacks:true});
+  for(const [edge,side] of [['N','Front'],['E','Right'],['S','Rear'],['W','Left']])
+    $('setback'+side).value=String(r.requiredE[roomLocalEdgeGlobal(edge,r.frontEdge)]);
+  render();
+}
+$('customSetbacks').addEventListener('change',()=>{
+  if($('customSetbacks').checked&&['Front','Rear','Left','Right'].every(side=>$('setback'+side).value===''))useRuleSetbacks();
+  else render();
+});
+$('resetSetbacks').addEventListener('click',useRuleSetbacks);
+$('floorCount').addEventListener('input',()=>{delete $('floorCount').dataset.adjustment;render();});
+$('floorCount').addEventListener('change',()=>{delete $('floorCount').dataset.adjustment;render();});
+['dunit','pEW','pNS','cat','use','ht','stilt','ffh','tdr','dev','splitPos','setbackFront','setbackRear','setbackLeft','setbackRight',
  'plotRate','plotRateUnit','govRate','govRateUnit','flatRate','buildRate','stiltRate','stampPct','gstPct','lrsMode','lrsRebate','brsMode','brsArea']
   .forEach(id=>{const e=$(id); if(!e)return; e.addEventListener('input',render); e.addEventListener('change',render);});
 ['roomTarget','roomFloor','showPlanDims','passiveMode','windowType','windowHeadHeight','ceilingHeight','windDir','vastuMode','greenMode','livingCount','bedCount','bathCount','kitchenCount','poojaCount','balconyCount','liftCount','stairCount',
@@ -5703,6 +5875,7 @@ render();
 <script src="planner-editor.js"></script>
 <script src="planner-3d.js"></script>
 <script src="building-physics.js"></script>
+<script src="sun-exposure.js"></script>
 <script src="environment-data.js"></script>
 <script src="environment-ui.js"></script>
 <script src="electrical-planner.js"></script>

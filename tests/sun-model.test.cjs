@@ -25,6 +25,113 @@ test('equivalent UTC and local clock inputs give the same position',()=>{
   assert.deepEqual(a.vector,b.vector);
 });
 
+test('day summary reuses SunCalc event boundaries and derives exact sunrise-to-sunset duration',()=>{
+  const config={...base,latitude:17.3262,longitude:78.5916,date:'2026-09-15',time:'10:44'};
+  const direct=SunCalc.getTimes(model.resolveLocal(config.date,'12:00',config.timeZone).instant,
+    config.latitude,config.longitude);
+  const summary=model.daySummary(model.calculate(config).events);
+  assert.deepEqual(summary.daylight,{status:'sunrise-sunset',durationMs:direct.sunset-direct.sunrise});
+  assert.equal(Math.round(summary.daylight.durationMs/60000),734);
+  for(const [name,instant] of Object.entries(summary.events)){
+    assert.equal(instant.getTime(),direct[name].getTime(),name);
+  }
+  assert.ok(summary.events.nightEnd<summary.events.nauticalDawn);
+  assert.ok(summary.events.nauticalDawn<summary.events.dawn);
+  assert.ok(summary.events.dawn<summary.events.sunrise);
+  assert.ok(summary.events.sunrise<summary.events.goldenHourEnd);
+  assert.ok(summary.events.goldenHourEnd<summary.events.solarNoon);
+  assert.ok(summary.events.solarNoon<summary.events.goldenHour);
+  assert.ok(summary.events.goldenHour<summary.events.sunset);
+  assert.ok(summary.events.sunset<summary.events.dusk);
+  assert.ok(summary.events.dusk<summary.events.nauticalDusk);
+  assert.ok(summary.events.nauticalDusk<summary.events.night);
+});
+
+test('day summary measures elapsed UTC time across clock changes and midnight',()=>{
+  const events=model.calculate(base).events;
+  // Synthetic event pairs isolate elapsed-time semantics from an astronomical location.
+  for(const [sunrise,sunset,hours] of [
+    ['2026-03-08T06:30:00Z','2026-03-08T08:30:00Z',2],
+    ['2026-11-01T05:30:00Z','2026-11-01T07:30:00Z',2],
+    ['2026-09-14T22:00:00Z','2026-09-15T11:00:00Z',13]
+  ]){
+    const summary=model.daySummary({...events,sunrise:new Date(sunrise),sunset:new Date(sunset)});
+    assert.equal(summary.daylight.durationMs,hours*3600000);
+  }
+});
+
+test('polar day and night retain missing boundaries instead of inventing durations or twilight',()=>{
+  const config={...base,latitude:69.6492,longitude:18.9553,timeZone:'Europe/Oslo'};
+  const summer=model.daySummary(model.calculate({...config,date:'2026-06-21'}).events);
+  const winter=model.daySummary(model.calculate({...config,date:'2026-12-21'}).events);
+  assert.deepEqual(summer.daylight,{status:'polar-day',durationMs:null});
+  assert.equal(summer.events.sunrise,null);assert.equal(summer.events.sunset,null);
+  assert.equal(summer.events.dawn,null);assert.equal(summer.events.night,null);
+  assert.deepEqual(winter.daylight,{status:'polar-night',durationMs:0});
+  assert.equal(winter.events.sunrise,null);assert.equal(winter.events.sunset,null);
+  assert.ok(winter.events.dawn instanceof Date);
+  assert.ok(winter.events.dusk instanceof Date);
+  assert.equal(winter.events.goldenHourEnd,null);assert.equal(winter.events.goldenHour,null);
+});
+
+test('partial or unknown rise/set pairs are explicitly unavailable, not automatically zero or all day',()=>{
+  const events=model.calculate(base).events;
+  for(const change of [
+    {sunrise:null,alwaysUp:true},
+    {sunset:null,alwaysDown:true},
+    {sunrise:null,sunset:null}
+  ]){
+    const summary=model.daySummary({...events,...change});
+    assert.deepEqual(summary.daylight,{status:'incomplete',durationMs:null});
+  }
+});
+
+test('malformed solar events raise errors while explicit absent phase crossings remain null',()=>{
+  const events=model.calculate(base).events;
+  assert.throws(()=>model.daySummary(null),model.InputError);
+  assert.throws(()=>model.daySummary({}),model.InputError);
+  assert.throws(()=>model.daySummary([]),model.InputError);
+  for(const name of ['sunrise','solarNoon','sunset','dawn','dusk','nauticalDawn','nauticalDusk',
+    'nightEnd','night','goldenHourEnd','goldenHour']){
+    for(const invalid of [undefined,'06:00',NaN,new Date(NaN)])
+      assert.throws(()=>model.daySummary({...events,[name]:invalid}),error=>error.code==='events');
+    if(name!=='solarNoon')assert.equal(model.daySummary({...events,[name]:null}).events[name],null);
+  }
+  assert.throws(()=>model.daySummary({...events,solarNoon:null}),model.InputError);
+  assert.throws(()=>model.daySummary({...events,sunset:new Date(events.sunrise-1)}),/before sunrise/);
+  assert.throws(()=>model.daySummary({...events,alwaysUp:true,alwaysDown:true}),/conflicting/);
+  assert.throws(()=>model.daySummary({...events,alwaysUp:'true'}),/invalid polar/);
+});
+
+test('day summaries stay local, deterministic and independent of event input mutations',()=>{
+  const events=model.calculate(base).events,before=JSON.stringify(events);
+  const summary=model.daySummary(Object.freeze(events));
+  assert.equal(JSON.stringify(events),before);
+  assert.deepEqual(summary,model.daySummary(events));
+  summary.events.dawn.setTime(0);
+  assert.equal(JSON.stringify(events),before);
+  assert.deepEqual(model.daySummary(model.calculate({...base,time:'18:30'}).events),model.daySummary(events));
+  const south={...base,latitude:-33.8688,longitude:151.2093,timeZone:'Australia/Sydney'};
+  const june=model.daySummary(model.calculate({...south,date:'2026-06-21'}).events);
+  const december=model.daySummary(model.calculate({...south,date:'2026-12-21'}).events);
+  assert.ok(december.daylight.durationMs>june.daylight.durationMs);
+});
+
+test('pole-shadow lengths use height over tangent of elevation and preserve metre units',()=>{
+  assert.ok(Math.abs(model.shadowLengthM(45,0.3048)-0.3048)<1e-12);
+  assert.ok(Math.abs(model.shadowLengthM(30,0.3048)-0.3048*Math.sqrt(3))<1e-12);
+  assert.ok(Math.abs(model.shadowLengthM(45,3)-3)<1e-12);
+  assert.equal(model.shadowLengthM(90,0.3048),0);
+  assert.equal(model.shadowLengthM(0,0.3048),null);
+  assert.equal(model.shadowLengthM(-10,0.3048),null);
+  assert.ok(model.shadowLengthM(0.1,0.3048)>100);
+  for(const altitude of [NaN,Infinity,-91,91])
+    assert.throws(()=>model.shadowLengthM(altitude,0.3048),model.InputError);
+  for(const height of [NaN,Infinity,0,-1])
+    assert.throws(()=>model.shadowLengthM(45,height),model.InputError);
+  assert.throws(()=>model.shadowLengthM(Number.MIN_VALUE,0.3048),model.InputError);
+});
+
 test('quarter-hour and half-hour zones are not rounded to full hours',()=>{
   assert.equal(model.resolveLocal('2026-09-08','12:00','Asia/Kathmandu').instant.toISOString(),'2026-09-08T06:15:00.000Z');
   assert.equal(model.resolveLocal('2026-01-08','12:00','Australia/Adelaide').instant.toISOString(),'2026-01-08T01:30:00.000Z');
@@ -66,6 +173,26 @@ test('daily sampling follows civil dates through DST',()=>{
   assert.equal(spring.length,23*4);
   assert.equal(fall.length,25*4);
   assert.ok(spring.every(row=>model.dateAt(row.instant,'America/New_York')==='2026-03-08'));
+});
+
+test('daylight integration intervals cover exact civil days and use midpoint positions',()=>{
+  for(const [date,timeZone,hours] of [
+    ['2026-09-15','Asia/Kolkata',24],['2026-03-08','America/New_York',23],
+    ['2026-11-01','America/New_York',25],['2024-02-29','Asia/Kathmandu',24]
+  ]){
+    const config={...base,date,timeZone},rows=[...model.dailyIntervals(config,7)];
+    assert.equal(rows.reduce((sum,row)=>sum+Date.parse(row.endUTC)-Date.parse(row.startUTC),0),hours*3600000);
+    for(const [index,row] of rows.entries()){
+      assert.equal(model.dateAt(row.instant,timeZone),date);
+      assert.equal(row.instant.getTime(),(Date.parse(row.startUTC)+Date.parse(row.endUTC))/2);
+      if(index)assert.equal(row.startUTC,rows[index-1].endUTC);
+      const direct=SunCalc.getPosition(row.instant,config.latitude,config.longitude);
+      assert.equal(row.altitude,direct.altitude);
+    }
+    assert.equal(rows[0].startUTC,model.resolveLocal(date,'00:00',timeZone).instant.toISOString());
+    assert.notEqual(model.dateAt(new Date(rows.at(-1).endUTC),timeZone),date);
+  }
+  assert.throws(()=>[...model.dailyIntervals({...base,date:'2011-12-30',timeZone:'Pacific/Apia'})],error=>error.code==='gap');
 });
 
 test('daily chart extrema use daylight elevation and do not invent polar-night markers',()=>{
@@ -202,6 +329,7 @@ test('browser bundles operate without modules, Node, network or local storage',(
   const result=context.HomeSun.calculate(base);
   assert.equal(result.instant.toISOString(),'2026-09-08T06:30:00.000Z');
   assert.ok(Number.isFinite(result.azimuth));
+  assert.equal(context.HomeSun.daySummary(result.events).daylight.status,'sunrise-sunset');
 });
 
 test('a missing browser bundle reports an actionable error instead of invented output',()=>{

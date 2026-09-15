@@ -420,6 +420,12 @@
     if (Math.abs(denominator) <= 1e-12) return false;
     const distance = computed(dot(subtract(patch.origin, origin), normal) / denominator, 'Ray/plane distance');
     if (distance <= rayEpsilon) return false;
+    if (patch.unboundedU) {
+      // Neighbour screens have a finite height, but no invented along-side ends.
+      const v = computed(dot(subtract(origin, patch.origin), patch.v) +
+        distance * dot(direction, patch.v), 'Ray/screen vertical coordinate');
+      return v >= -rayEpsilon && v <= patch.height + rayEpsilon;
+    }
     const relative = subtract(add(origin, direction, distance), patch.origin);
     const u = dot(relative, patch.u);
     const v = dot(relative, patch.v);
@@ -576,6 +582,297 @@
 
   function shadowAt(scene, sunENU, options) {
     return calculateShadows(scene, sunENU, options).result;
+  }
+
+  function sunlightOptions(value) {
+    if (value === undefined) value = {};
+    keys(value, ['neighbors', 'samplesPerAxis', 'groundElevationM', 'minSunAltitudeDeg', 'windowTransmittance'], 'options');
+    const sides = ['front', 'right', 'rear', 'left'];
+    if (!own(value, 'neighbors')) throw new TypeError('options.neighbors must explicitly describe front, right, rear and left; unknown sides are not clear space.');
+    keys(value.neighbors, sides, 'options.neighbors');
+    const neighbors = {};
+    for (const side of sides) {
+      const name = 'options.neighbors.' + side;
+      if (!own(value.neighbors, side)) throw new TypeError(name + ' is required: declare {state:"clear"} or {state:"block",heightM,gapM}.');
+      const neighbor = object(value.neighbors[side], name);
+      if (!own(neighbor, 'state') || !['clear', 'block'].includes(neighbor.state)) {
+        throw new RangeError(name + '.state must be "clear" or "block"; resolve unknown side information before calculating.');
+      }
+      keys(neighbor, neighbor.state === 'clear' ? ['state'] : ['state', 'heightM', 'gapM'], name);
+      neighbors[side] = { state: neighbor.state };
+      if (neighbor.state === 'block') {
+        for (const field of ['heightM', 'gapM']) {
+          if (!own(neighbor, field)) throw new TypeError(name + '.' + field + ' is required in metres.');
+        }
+        neighbors[side].heightM = positive(neighbor.heightM, name + '.heightM');
+        neighbors[side].gapM = nonnegative(neighbor.gapM, name + '.gapM');
+      }
+    }
+    const { neighbors: ignored, ...rayOptions } = value;
+    if (rayOptions.samplesPerAxis === undefined) rayOptions.samplesPerAxis = 8;
+    return { ...shadowOptions(rayOptions), neighbors };
+  }
+
+  function neighborScreens(neighbors, plot, groundElevationM) {
+    const result = [];
+    for (const [side, neighbor] of Object.entries(neighbors)) {
+      if (neighbor.state === 'clear') continue;
+      const alongX = side === 'front' || side === 'rear';
+      const sign = side === 'front' || side === 'left' ? -1 : 1;
+      const boundary = alongX ? plot.y + (sign > 0 ? plot.h : 0) : plot.x + (sign > 0 ? plot.w : 0);
+      const position = computed(boundary + sign * neighbor.gapM, side + ' neighbour boundary position');
+      if (neighbor.gapM > 0 && sign * (position - boundary) <= 0) {
+        throw new RangeError(side + ' neighbour gap is below the coordinate numerical resolution.');
+      }
+      extentEnd(groundElevationM, neighbor.heightM, side + ' neighbour top elevation');
+      result.push({
+        kind: 'panel', id: Symbol(side + ' neighbour'), transmittance: 0,
+        panel: {
+          origin: { x: alongX ? plot.x : position, y: alongX ? position : plot.y, z: groundElevationM },
+          u: alongX ? xVector : yVector, v: upVector, height: neighbor.heightM, unboundedU: true
+        }
+      });
+    }
+    return result;
+  }
+
+  function sunlightSamples(surface, samplesPerAxis) {
+    const samples = [];
+    for (const patch of surface.patches) {
+      const columns = Math.max(1, Math.ceil(samplesPerAxis * (patch.width / surface.spanU)));
+      const rows = Math.max(1, Math.ceil(samplesPerAxis * (patch.height / surface.spanV)));
+      const weight = positive(patch.width * patch.height / (rows * columns) / surface.areaM2, 'Sunlight sample area weight');
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          const point = add(add(add(patch.origin, patch.u, patch.width * ((column + 0.5) / columns)),
+            patch.v, patch.height * ((row + 0.5) / rows)), surface.normal, 4 * rayEpsilon);
+          for (const axis of ['x', 'y', 'z']) computed(point[axis], 'Sunlight sample coordinate');
+          samples.push({ point, weight, milliseconds: 0, correction: 0, transmission: 0 });
+        }
+      }
+    }
+    return samples;
+  }
+
+  function createSunlightStudy(scenes, inputOptions) {
+    array(scenes, 'scenes', true);
+    const options = sunlightOptions(inputOptions);
+    const warnings = [
+      'Geometric potential direct-beam-equivalent hours, not observed sunshine, weather-adjusted duration, PV yield, daylight lux or indoor illumination.',
+      'Spatial and temporal midpoint sampling can miss thin features and short shadow transitions; repeat with finer samples and shorter intervals to check convergence.',
+      'First/last sun are sampled interval bounds with any transmitted sun, not a claim of uninterrupted sunlight between them.'
+    ];
+    const assumptions = [
+      'Each blocked neighbour side is a continuous opaque vertical screen from the flat ground datum to heightM, without along-side ends or an invented footprint/depth. This conservatively overstates obstruction compared with finite buildings of that height and gap.',
+      'Neighbour gapM is measured outward from the actual plot boundary, not from the house; supplied building placement and setbacks determine the remaining ray distance.',
+      'All supplied floors use one plot-local coordinate frame and absolute elevations. ENU sun directions are rotated by the shared headingDeg exactly once.',
+      'Only opaque exterior wall faces, excluding window/door/passage apertures, and exposed flat roof/terrace tops are receivers. All supplied walls, apertures, roofs and obstacles remain ray casters.',
+      'Higher-storey building footprints remove covered roof receiver areas, including across explicit vertical gaps. No walls, connecting slabs, terrain or unprovided storeys are inferred.',
+      'Hours integrate transmission, without cosine, radiation or weather weighting. Elapsed hours count only supplied intervals; positive above-horizon time includes the separately reported near-horizon exclusion.',
+      'Flat groundElevationM = ' + options.groundElevationM + ' m; direct sun at or below ' + options.minSunAltitudeDeg + ' degrees altitude is excluded, not resolved as physical shade.'
+    ];
+    const ids = new Set();
+    const floorIds = new Set();
+    const sharedObstacles = new Map();
+    const casters = [];
+    const register = id => {
+      identifier(id, 'Geometry ID');
+      if (ids.has(id)) throw new RangeError('Duplicate geometry ID across sunlight scenes: ' + id + '. Use unique floor-prefixed wall, opening, obstacle and roof IDs.');
+      ids.add(id);
+    };
+    const sameRectangle = (a, b) => ['x', 'y', 'w', 'h'].every(key => a[key] === b[key]);
+    const inside = (point, rect) => point.x >= rect.x - rayEpsilon && point.x <= rect.x + rect.w + rayEpsilon &&
+      point.y >= rect.y - rayEpsilon && point.y <= rect.y + rect.h + rayEpsilon;
+    const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    const contained = (a, b) => inside(a, b) && inside({ x: a.x + a.w, y: a.y + a.h }, b);
+    const floors = scenes.map((scene, index) => {
+      const name = 'scenes[' + index + ']';
+      object(scene, name);
+      const floorId = scene.floorId === undefined && scenes.length === 1 ? null : identifier(scene.floorId, name + '.floorId');
+      if (floorIds.has(floorId)) throw new RangeError('Sunlight scenes must have unique floorId values: ' + floorId);
+      floorIds.add(floorId);
+      const plot = rectangle(scene.floor, name + '.floor (actual plot)');
+      if (own(scene, 'plot') && !sameRectangle(rectangle(scene.plot, name + '.plot'), plot)) {
+        throw new RangeError(name + '.floor must match its actual plot rectangle; provide all floor geometry in one plot-local frame, not an inner floor plate.');
+      }
+      const heading = ((finite(scene.headingDeg, name + '.headingDeg') % 360) + 360) % 360;
+      const building = rectangle(scene.building, name + '.building');
+      if (!contained(building, plot)) throw new RangeError(name + '.building must lie within the actual plot rectangle; correct its placement/setbacks.');
+      const geometry = sceneGeometry(scene, options);
+      const roof = geometry.surfaces.find(surface => surface.type === 'roof');
+      const roofTop = roof.patches[0].origin.z;
+      const roofUnderside = scene.floorElevationM + scene.wallHeightM;
+      register(roof.id);
+      for (const wall of scene.walls) {
+        register(wall.id);
+        if (wall.baseM < scene.floorElevationM - rayEpsilon || wall.baseM + wall.heightM > roofUnderside + rayEpsilon ||
+            !inside(wall.start, building) || !inside(wall.end, building)) {
+          throw new RangeError('Wall ' + wall.id + ' lies outside its declared floor building/elevation band; use absolute plot-local coordinates and review stacked geometry.');
+        }
+      }
+      scene.openings.forEach(opening => register(opening.id));
+      const repeatedObstacles = new Set();
+      for (const obstacle of scene.obstacles) {
+        register(obstacle.id);
+        if (obstacle.sourceId === undefined) continue;
+        const sourceId = identifier(obstacle.sourceId, 'obstacle.sourceId');
+        const properties = ['type', 'x', 'y', 'w', 'h', 'heightM', 'baseM', 'transmittance'];
+        const previous = sharedObstacles.get(sourceId);
+        if (previous) {
+          if (previous.index === index || !properties.every(key => previous.obstacle[key] === obstacle[key])) {
+            throw new RangeError('Shared obstacle sourceId ' + sourceId + ' has ambiguous repeated geometry/transmission; supply one consistent plot-local obstacle.');
+          }
+          repeatedObstacles.add(obstacle.id);
+        } else {
+          sharedObstacles.set(sourceId, { index, obstacle: Object.fromEntries(properties.map(key => [key, obstacle[key]])) });
+        }
+      }
+      if (repeatedObstacles.size) warnings.push('Identical obstacles repeated across floors with the same explicit sourceId are applied once, not as extra transmission layers.');
+      casters.push(...geometry.casters.filter(caster => !repeatedObstacles.has(caster.id)));
+      warnings.push(...geometry.warnings.slice(2).filter(warning => !warning.startsWith('Ground receiver is '))
+        .map(warning => 'Floor ' + (floorId === null ? '(unnamed)' : floorId) + ': ' + warning));
+      if (!geometry.surfaces.some(surface => surface.type === 'wall' && !surface.interior)) {
+        warnings.push('Floor ' + (floorId === null ? '(unnamed)' : floorId) + ' has no opaque exterior wall receivers; no walls were invented.');
+      }
+      return { floorId, plot, heading, building, base: scene.floorElevationM, roofTop, roof, geometry };
+    });
+    const frame = floors[0];
+    for (const floor of floors) {
+      if (!sameRectangle(floor.plot, frame.plot) || floor.heading !== frame.heading) {
+        throw new RangeError('All sunlight scenes must share the same plot rectangle and headingDeg; ambiguous floor coordinate frames cannot be aligned by guesswork.');
+      }
+      for (const higher of floors) {
+        if (floor === higher || floor.base > higher.base || !overlaps(floor.building, higher.building)) continue;
+        if (higher.base < floor.roofTop - rayEpsilon) {
+          throw new RangeError('Overlapping stacked geometry for floors ' + floor.floorId + ' and ' + higher.floorId +
+            ': the upper floor base must be at or above the lower roof slab top.');
+        }
+        const intervening = floors.some(middle => middle.base > floor.base && middle.base < higher.base &&
+          overlaps(middle.building, floor.building) && overlaps(middle.building, higher.building));
+        if (!intervening && higher.base > floor.roofTop + rayEpsilon) {
+          warnings.push('Floors ' + floor.floorId + ' and ' + higher.floorId + ' have an explicit vertical gap; only supplied walls and roof slabs cast shade, with no connecting geometry inferred.');
+        }
+        if (!contained(higher.building, floor.building)) {
+          warnings.push('Floor ' + higher.floorId + ' extends beyond floor ' + floor.floorId +
+            '; only supplied walls/roof slabs are modeled. Unspecified projecting floor undersides/supports may add shade and are not inferred.');
+        }
+      }
+    }
+    casters.push(...neighborScreens(options.neighbors, frame.plot, options.groundElevationM));
+    if (casters.some(caster => caster.transmittance > 0 && caster.transmittance < 1)) {
+      warnings.push('Supplied partial-transmission obstacles/apertures weight exposure: results are area/transmission-weighted direct-beam-equivalent hours, not binary unobstructed sunshine duration.');
+    }
+    const surfaces = [];
+    for (const floor of floors) {
+      const exclusions = floors.filter(higher => higher.base > floor.base).map(higher => higher.building);
+      for (let surface of floor.geometry.surfaces) {
+        if (surface.type !== 'roof' && (surface.type !== 'wall' || surface.interior)) continue;
+        if (surface.type === 'roof') {
+          const patches = rectangularRemainder(floor.building, exclusions, floor.roofTop);
+          if (!patches.length) {
+            warnings.push('Floor ' + floor.floorId + ' roof is fully covered by higher-storey footprints and is omitted from exposed receivers.');
+            continue;
+          }
+          surface = receiver(surface.id, 'roof', surface.normal, patches, surface.spanU, surface.spanV);
+        } else {
+          for (const patch of surface.patches) {
+            if (!inside(patch.origin, frame.plot) || !inside(add(patch.origin, patch.u, patch.width), frame.plot)) {
+              throw new RangeError('Exterior wall face ' + surface.id + ' extends outside the plot; correct wall thickness/placement before applying boundary neighbours.');
+            }
+          }
+        }
+        surfaces.push({
+          id: surface.id, floorId: floor.floorId, type: surface.type, normal: surface.normal, areaM2: surface.areaM2,
+          samples: sunlightSamples(surface, options.samplesPerAxis), opportunityMs: 0, firstSunUTC: null, lastSunUTC: null
+        });
+      }
+    }
+    let elapsedMs = 0;
+    let aboveHorizonMs = 0;
+    let nearHorizonMs = 0;
+    let intervalCount = 0;
+    let previousEnd = null;
+    let hasGaps = false;
+    const cutoff = Math.sin(options.minSunAltitudeDeg * radians);
+    const uniqueWarnings = [...new Set(warnings)];
+    const sampleCount = sum(surfaces.map(surface => surface.samples.length));
+
+    function addInterval(interval) {
+      keys(interval, ['startUTC', 'endUTC', 'sunENU'], 'interval');
+      const start = utcTimestamp(interval.startUTC, 'interval.startUTC');
+      const end = utcTimestamp(interval.endUTC, 'interval.endUTC');
+      if (end <= start) throw new RangeError('Sunlight interval endUTC must be after startUTC (a positive duration).');
+      if (previousEnd !== null && start < previousEnd) throw new RangeError('Sunlight intervals must be chronological and non-overlapping; startUTC precedes the previous endUTC.');
+      const direction = localSunVector(interval.sunENU, frame.heading);
+      const durationMs = computed(end - start, 'Sunlight interval duration');
+      const active = [];
+      if (direction.z > cutoff) {
+        for (const surface of surfaces) {
+          if (dot(surface.normal, direction) <= 1e-12) continue;
+          for (const sample of surface.samples) sample.transmission = beamTransmission(sample.point, direction, casters);
+          active.push(surface);
+        }
+      }
+      // Complete every ray before changing the accumulated result, so rejected intervals are atomic.
+      for (const surface of active) {
+        surface.opportunityMs += durationMs;
+        let anySun = false;
+        for (const sample of surface.samples) {
+          const term = durationMs * sample.transmission - sample.correction;
+          const next = sample.milliseconds + term;
+          sample.correction = (next - sample.milliseconds) - term;
+          sample.milliseconds = next;
+          anySun = anySun || sample.transmission > 0;
+        }
+        if (anySun) {
+          if (surface.firstSunUTC === null) surface.firstSunUTC = new Date(start).toISOString();
+          surface.lastSunUTC = new Date(end).toISOString();
+        }
+      }
+      elapsedMs += durationMs;
+      if (direction.z > 0) aboveHorizonMs += durationMs;
+      if (direction.z > 0 && direction.z <= cutoff) nearHorizonMs += durationMs;
+      hasGaps = hasGaps || (previousEnd !== null && start > previousEnd);
+      previousEnd = end;
+      intervalCount++;
+    }
+
+    function getResult() {
+      const resultWarnings = uniqueWarnings.slice();
+      if (nearHorizonMs > 0) resultWarnings.push('Positive sun altitude at/below ' + options.minSunAltitudeDeg +
+        ' degrees was excluded; nearHorizonExcludedHours is a numerical cutoff, not calculated obstruction.');
+      if (hasGaps) resultWarnings.push('Unprovided gaps between intervals are excluded from elapsedHours and every exposure total; no sun state is inferred for those gaps.');
+      return {
+        elapsedHours: elapsedMs / 3600000,
+        aboveHorizonHours: aboveHorizonMs / 3600000,
+        nearHorizonExcludedHours: nearHorizonMs / 3600000,
+        sampling: {
+          method: 'area-weighted midpoint rays', samplesPerAxis: options.samplesPerAxis, sampleCount, intervalCount,
+          timeIntegration: 'duration-weighted midpoint sun vectors', minSunAltitudeDeg: options.minSunAltitudeDeg
+        },
+        assumptions: assumptions.slice(), warnings: resultWarnings,
+        surfaces: surfaces.map(surface => {
+          const unobstructedHours = surface.opportunityMs / 3600000;
+          let minHours = unobstructedHours;
+          let maxHours = 0;
+          const weightedHours = surface.samples.map(sample => {
+            const hours = Math.max(0, Math.min(unobstructedHours, sample.milliseconds / 3600000));
+            minHours = Math.min(minHours, hours);
+            maxHours = Math.max(maxHours, hours);
+            return hours * sample.weight;
+          });
+          const averageHours = Math.max(minHours, Math.min(maxHours, sum(weightedHours)));
+          return {
+            id: surface.id, floorId: surface.floorId, type: surface.type, normal: { ...surface.normal },
+            areaM2: surface.areaM2, sampleCount: surface.samples.length,
+            averageHours, minHours, maxHours, unobstructedHours, blockedHours: unobstructedHours - averageHours,
+            firstSunUTC: surface.firstSunUTC, lastSunUTC: surface.lastSunUTC
+          };
+        })
+      };
+    }
+
+    return Object.freeze({ addInterval, getResult });
   }
 
   function surfaceExposure(scene, sunENU, radiation) {
@@ -958,5 +1255,5 @@
     };
   }
 
-  return Object.freeze({ assemblyProperties, shadowAt, surfaceExposure, solveAirflow, simulateThermal });
+  return Object.freeze({ assemblyProperties, shadowAt, surfaceExposure, solveAirflow, simulateThermal, createSunlightStudy });
 }));

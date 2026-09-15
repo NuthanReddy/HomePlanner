@@ -416,15 +416,32 @@
     const floor = rect({ x: 0, y: 0, w: g.W, h: g.D }, 'Floor');
     const building = rect({ x: g.outerX, y: g.outerY, w: g.outerW, h: g.outerD }, 'Building');
     if (!inside(building, floor)) fail('The building envelope extends outside the supplied floor plate.');
+    let plot = null;
+    if (plate.sitePlot) plot = rect(plate.sitePlot, 'Site plot');
+    else if (plate.localSetbacks && ['N', 'E', 'S', 'W'].every(edge =>
+      Number.isFinite(plate.localSetbacks[edge]) && plate.localSetbacks[edge] >= 0) &&
+      positive(plate.width) && positive(plate.rawDepth)) {
+      const setbacks = plate.localSetbacks;
+      plot = rect({ x: -setbacks.W, y: -setbacks.N,
+        w: plate.width + setbacks.W + setbacks.E,
+        h: plate.rawDepth + setbacks.N + setbacks.S }, 'Site plot');
+    }
+    if (plot && !inside(floor, plot)) fail('The floor plate extends outside the supplied plot boundary.');
+    const allowance = own(plate, 'maxFloors') ? plate.maxFloors : plate.floors;
     const diagnostics = [];
     const diagnostic = (level, message, ids = []) => diagnostics.push({ level, message, ids: unique(ids) });
     const scene = {
       revision: project.revision, floorId, headingDeg: DIRECTIONS[front], floorElevationM, wallHeightM,
       roofThicknessM: project.building.roofThicknessM,
-      floor, building, rooms: [], walls: [], openings: [], furniture: [],
+      floor, plot, building, rooms: [], walls: [], openings: [], furniture: [],
       regulatory: {
-        allowedFloors: Number.isSafeInteger(plate.floors) && plate.floors >= 0 ? plate.floors : null,
-        basis: 'Legacy Plot Optimizer estimate for the selected plate, height, road-cap and TDR inputs; habitable floors exclude stilt parking. Not independently validated planning permission.',
+        allowedFloors: Number.isSafeInteger(allowance) && allowance >= 0 ? allowance : null,
+        plannedFloors: Number.isSafeInteger(plate.floors) && plate.floors >= 0 ? plate.floors : null,
+        customSetbacks: plate.customSetbacks === true,
+        nonCompliantSetbacks: plate.nonCompliant === true,
+        requiredSetbacks: plate.requiredSetbacks ? copy(plate.requiredSetbacks) : null,
+        appliedSetbacks: plate.localSetbacks ? copy(plate.localSetbacks) : null,
+        basis: 'Plot Planner estimate for the selected plate, height, road-cap and TDR inputs; habitable floors exclude stilt parking. Not independently validated planning permission.',
         source: 'legacy-optimizer',
         plateId: typeof plate.id === 'string' ? plate.id : null,
         selectedHeightM: positive(plate.selectedHeight) ? plate.selectedHeight : null,

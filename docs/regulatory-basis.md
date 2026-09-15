@@ -29,6 +29,13 @@ The permitted result is the intersection of several controls, not one table:
 6. TDR adds benefits only when its qualifying plot/road/height conditions are
    met.
 
+The **Height band** control retains those regulatory bands. **Floors to plan**
+offers every count from G through the maximum allowed by the chosen band and
+road, including intermediate G+2 choices. Selecting fewer floors changes built-up
+area, costs and repeatable layout scenarios; it does not automatically lower the
+height band or its setback requirements. Editable storeys are created separately
+in Room Planner, not inferred from a regulatory allowance.
+
 ### The 30 ft road question
 
 A 30 ft road is approximately 9.14 m and falls below 12 m. The calculator
@@ -71,6 +78,26 @@ width.
 TDR is a design-stage entitlement only when all stated conditions and required
 development rights are satisfied. It is not the same as post-facto
 compounding.
+
+The checkbox's bracketed area note is **750-2,000 sq m** for the 18-21 m band,
+not 750-1,000 sq m. Additional-floor eligibility is a separate provision for
+plots **above 2,000 sq m** with qualifying roads, as stated in Rule 17(d)(xii).
+
+## Custom setback scenarios
+
+**Allow setback violations** enables user-entered front/rear/left/right setbacks
+in metres, relative to the selected frontage. The statutory table values are
+retained separately and shown alongside the custom values. Any lower setback
+marks the scenario as non-compliant in plot/layout results and exported scene
+metadata; it is not presented as permission-eligible.
+
+Applied setbacks affect footprint, cost and split-plot scenarios and the shared
+Room Planner geometry. Road-widening land, height/road limits and applicable
+open-space deductions remain in force. The separate 10% compounding comparison
+is disabled while custom setbacks are active: an arbitrary override is not
+automatically a compoundable or regularisable deviation. **Use rule setbacks**
+restores the current modeled minima; unchecking the option restores rule-based
+geometry without discarding the typed custom values.
 
 ## Ten-percent deviation and compounding
 
@@ -123,4 +150,3 @@ parking, fire, airport, buffer-zone, or title requirements.
 - [HMDA government orders](https://lrsbrs.hmda.gov.in/hmdaLMS/govtOrderpage)
 - [GHMC BRS](https://brs.ghmc.gov.in/)
 - [Telangana LRS](https://lrs.telangana.gov.in/)
-

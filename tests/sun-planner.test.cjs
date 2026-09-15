@@ -29,13 +29,14 @@ function element(id){
   };
 }
 
-async function planner(config=base){
+async function planner(config=base,modelOverrides={}){
   const nodes=new Map([...html.matchAll(/\bid="(sun\w+)"/g)].map(match=>[match[1],element(match[1])]));
   const calls={references:0,hours:0,annual:0},downloads=[];
   const api={...model,
     referencePaths(config){calls.references++;return model.referencePaths(config);},
     hourlyPaths(config){calls.hours++;return model.hourlyPaths(config);},
-    annualSamples(config){calls.annual++;return model.annualSamples(config);}
+    annualSamples(config){calls.annual++;return model.annualSamples(config);},
+    ...modelOverrides
   };
   for(const [field,id] of Object.entries(fieldIds))nodes.get(id).value=String(config[field]);
   nodes.get('sunShowMonths').checked=true;nodes.get('sunShowHours').checked=true;
@@ -107,6 +108,82 @@ test('layer controls retain seasonal and selected curves without rebuilding data
   ui.nodes.get('sunShowMonths').checked=true;
   await ui.nodes.get('sunShowMonths').emit('change');
   assert.equal(paths(ui.sky()).filter(item=>item['data-sun-month']).length,12);
+});
+
+test('one-foot pole shadow follows the selected instant and is unavailable at night',async()=>{
+  const config={...base,latitude:17.3262,longitude:78.5916,date:'2026-09-15',time:'10:44'};
+  const ui=await planner(config),shadow=ui.nodes.get('sunShadowLength'),note=ui.nodes.get('sunShadowNote');
+  assert.equal(shadow.textContent,'0.48 ft');
+  assert.match(note.textContent,/vertical 1 ft pole.*selected time.*level, unobstructed ground/);
+  await ui.configure({time:'09:35'});
+  const angle=model.calculate({...config,time:'09:35'}).altitude*Math.PI/180;
+  assert.equal(shadow.textContent,`${(1/Math.tan(angle)).toFixed(2)} ft`);
+  assert.notEqual(shadow.textContent,'0.48 ft');
+  await ui.configure({time:'23:00'});
+  assert.equal(shadow.textContent,'No direct sun');
+  assert.match(note.textContent,/sun is below the horizon/);
+  await ui.configure({time:'10:44',date:'2026-12-21'});
+  const winterAngle=model.calculate({...config,date:'2026-12-21'}).altitude*Math.PI/180;
+  assert.equal(shadow.textContent,`${(1/Math.tan(winterAngle)).toFixed(2)} ft`);
+});
+
+test('day summary shows daylight, twilight and golden-hour endpoints in the selected time zone',async()=>{
+  const config={...base,latitude:17.3262,longitude:78.5916,date:'2026-09-15',time:'10:44'};
+  const ui=await planner(config);
+  const expected={sunDaylightDuration:'12 h 14 min',sunRise:'06:03',sunNoon:'12:10',sunSet:'18:17',
+    sunCivilDawn:'05:41',sunCivilDusk:'18:39',sunNauticalDawn:'05:16',sunNauticalDusk:'19:04',
+    sunAstronomicalDawn:'04:51',sunAstronomicalDusk:'19:30',sunGoldenMorningEnd:'06:32',sunGoldenEveningStart:'17:49'};
+  for(const [id,value] of Object.entries(expected))assert.equal(ui.nodes.get(id).textContent,value,id);
+  assert.equal(ui.nodes.get('sunDaySummaryDate').textContent,'2026-09-15 | Asia/Kolkata');
+  assert.match(ui.nodes.get('sunDaylightNote').textContent,/elapsed time from sunrise to sunset, excluding twilight/);
+  assert.match(ui.nodes.get('sunDaylightNote').textContent,/not the neighbour-blocked/);
+  assert.match(ui.nodes.get('sunEventNote').textContent,/solar cycle near local noon/);
+  await ui.configure({time:'23:00'});
+  for(const [id,value] of Object.entries(expected))assert.equal(ui.nodes.get(id).textContent,value,id);
+  assert.equal(ui.nodes.get('sunShadowLength').textContent,'No direct sun');
+  await ui.configure({date:'2026-12-21'});
+  assert.notEqual(ui.nodes.get('sunDaylightDuration').textContent,expected.sunDaylightDuration);
+  assert.notEqual(ui.nodes.get('sunCivilDawn').textContent,expected.sunCivilDawn);
+  await ui.configure({timeZone:'UTC',date:config.date});
+  assert.equal(ui.nodes.get('sunCivilDawn').textContent,'00:11');
+  assert.equal(ui.nodes.get('sunAstronomicalDawn').textContent,'23:21 (2026-09-14)');
+});
+
+test('day summary exposes polar states without hiding twilight that still occurs',async()=>{
+  const config={...base,latitude:69.6492,longitude:18.9553,timeZone:'Europe/Oslo',date:'2026-12-21'};
+  const ui=await planner(config);
+  assert.equal(ui.nodes.get('sunDaylightDuration').textContent,'0 h 00 min');
+  assert.equal(ui.nodes.get('sunRise').textContent,'No event');
+  assert.equal(ui.nodes.get('sunSet').textContent,'No event');
+  assert.match(ui.nodes.get('sunCivilDawn').textContent,/^\d\d:\d\d$/);
+  assert.equal(ui.nodes.get('sunGoldenMorningEnd').textContent,'No crossing');
+  assert.equal(ui.nodes.get('sunGoldenEveningStart').textContent,'No crossing');
+  assert.match(ui.nodes.get('sunDaylightNote').textContent,/Polar night.*Twilight can still occur/);
+  await ui.configure({date:'2026-06-21'});
+  assert.equal(ui.nodes.get('sunDaylightDuration').textContent,'Continuous daylight');
+  assert.equal(ui.nodes.get('sunNauticalDawn').textContent,'No crossing');
+  assert.equal(ui.nodes.get('sunAstronomicalDusk').textContent,'No crossing');
+  assert.match(ui.nodes.get('sunDaylightNote').textContent,/not forced into a 24-hour/);
+  await ui.configure(base);
+  assert.match(ui.nodes.get('sunDaylightDuration').textContent,/^\d+ h \d\d min$/);
+  assert.doesNotMatch(ui.nodes.get('sunDaylightNote').textContent,/Polar/);
+});
+
+test('an incomplete event pair stays unavailable and malformed phase times are surfaced',async()=>{
+  const partial=await planner(base,{calculate(config){
+    const current=model.calculate(config);
+    return {...current,events:{...current.events,sunrise:null}};
+  }});
+  assert.equal(partial.nodes.get('sunDaylightDuration').textContent,'Not available');
+  assert.match(partial.nodes.get('sunDaylightNote').textContent,/complete sunrise\/sunset pair is unavailable/);
+  const malformed=await planner(base,{calculate(config){
+    const current=model.calculate(config);
+    return {...current,events:{...current.events,nauticalDawn:new Date(NaN)}};
+  }});
+  assert.equal(malformed.nodes.get('sunResults').hidden,true);
+  assert.equal(malformed.nodes.get('sunError').hidden,false);
+  assert.match(malformed.nodes.get('sunError').textContent,/invalid nauticalDawn event/);
+  assert.equal(malformed.nodes.get('sunDownload').disabled,true);
 });
 
 test('date/time scrubbing updates highlights but reuses the site-year reference grid',async()=>{

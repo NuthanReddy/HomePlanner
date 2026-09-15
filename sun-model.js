@@ -120,6 +120,50 @@
     return {...resolved,...position(resolved.instant,config.latitude,config.longitude),events};
   }
 
+  function daySummary(events){
+    if(!events||typeof events!=='object'||Array.isArray(events))
+      throw new InputError('The day summary needs solar events from the local solar calculation.','date','events');
+    const times={};
+    for(const name of ['sunrise','solarNoon','sunset','dawn','dusk','nauticalDawn','nauticalDusk',
+      'nightEnd','night','goldenHourEnd','goldenHour']){
+      const value=events[name];
+      if(value===null&&name!=='solarNoon'){times[name]=null;continue;}
+      if(!(value instanceof Date)||!Number.isFinite(value.getTime()))
+        throw new InputError(`SunCalc returned an invalid ${name} event. Check the date and location.`,'date','events');
+      times[name]=new Date(value.getTime());
+    }
+    for(const name of ['alwaysUp','alwaysDown']){
+      if(events[name]!==undefined&&typeof events[name]!=='boolean')
+        throw new InputError('SunCalc returned an invalid polar-day/night state.','date','events');
+    }
+    if(events.alwaysUp&&events.alwaysDown)
+      throw new InputError('SunCalc returned conflicting polar-day/night states.','date','events');
+    const daylight={status:'incomplete',durationMs:null};
+    if(times.sunrise&&times.sunset){
+      const durationMs=times.sunset-times.sunrise;
+      if(durationMs<0)
+        throw new InputError('SunCalc returned sunset before sunrise for this solar cycle.','date','events');
+      daylight.status='sunrise-sunset';daylight.durationMs=durationMs;
+    }else if(!times.sunrise&&!times.sunset){
+      if(events.alwaysUp)daylight.status='polar-day';
+      else if(events.alwaysDown){daylight.status='polar-night';daylight.durationMs=0;}
+    }
+    return {events:times,daylight};
+  }
+
+  function shadowLengthM(altitude,heightM){
+    if(!Number.isFinite(altitude)||altitude<-90||altitude>90)
+      throw new InputError('A pole-shadow estimate needs a solar elevation from -90 to 90 degrees.','time');
+    if(!Number.isFinite(heightM)||heightM<=0)
+      throw new InputError('Pole height must be a positive number of metres.','height');
+    if(altitude<=0)return null;
+    if(altitude===90)return 0;
+    const length=heightM/Math.tan(altitude*Math.PI/180);
+    if(!Number.isFinite(length))
+      throw new InputError('The sun is too close to the horizon for a finite pole-shadow estimate.','time');
+    return length;
+  }
+
   function dailySamples(config,stepMinutes=15){
     validate(config);
     if(!Number.isInteger(stepMinutes)||stepMinutes<1||stepMinutes>60)
@@ -132,6 +176,28 @@
         samples.push({instant,...position(instant,config.latitude,config.longitude)});
     }
     return samples;
+  }
+
+  function* dailyIntervals(config,stepMinutes=5){
+    const rows=dailySamples(config,stepMinutes),step=stepMinutes*MINUTE;
+    if(!rows.length)throw new InputError('This civil date has no available instants in the selected time zone.','date','gap');
+    const onDate=t=>dateAt(new Date(t),config.timeZone)===config.date;
+    function boundary(left,right,entering){
+      while(right-left>1){
+        const middle=Math.floor((left+right)/2);
+        if(onDate(middle)===entering)right=middle;else left=middle;
+      }
+      return right;
+    }
+    const first=rows[0].instant.getTime(),last=rows.at(-1).instant.getTime();
+    if(onDate(first-step)||onDate(last+step))
+      throw new InputError('This civil date extends beyond the supported day-sampling window.','date');
+    const start=boundary(first-step,first,true),end=boundary(last,last+step,false);
+    for(let t=start;t<end;t+=step){
+      const stop=Math.min(t+step,end),instant=new Date(Math.floor((t+stop)/2));
+      yield {startUTC:new Date(t).toISOString(),endUTC:new Date(stop).toISOString(),
+        instant,...position(instant,config.latitude,config.longitude)};
+    }
   }
 
   function daylightExtrema(samples){
@@ -232,6 +298,6 @@
       .map(row=>row.map(quote).join(',')).join('\r\n');
   }
 
-  return Object.freeze({InputError,validate,calculate,dailySamples,daylightExtrema,daylightSegments,
+  return Object.freeze({InputError,validate,calculate,daySummary,shadowLengthM,dailySamples,dailyIntervals,daylightExtrema,daylightSegments,
     annualSamples,referencePaths,hourlyPaths,resolveLocal,dateAt,daysInYear,dayOfYear,dateFromDay,csv});
 });

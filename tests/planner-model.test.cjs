@@ -713,6 +713,26 @@ test('read-only regulatory comparison exposes the selected optimizer estimate wi
   assert.equal(data.project.floors.length, 1);
 });
 
+test('plot boundaries retain setbacks separately from the buildable floor plate', () => {
+  const data = fixture('E', false);
+  assert.equal(data.scene().plot, null);
+  Object.assign(data.context.plate, {
+    rawDepth: 9, localSetbacks: { N: 3, E: 2, S: 4, W: 1 },
+    maxFloors: 4, floors: 3, customSetbacks: true, nonCompliant: true,
+    requiredSetbacks: { N: 3, E: 2, S: 2, W: 2 }
+  });
+  const scene = data.scene();
+  assert.deepEqual(scene.floor, { x: 0, y: 0, w: 10, h: 8 });
+  assert.deepEqual(scene.plot, { x: -1, y: -3, w: 13, h: 16 });
+  assert.equal(scene.regulatory.allowedFloors, 4);
+  assert.equal(scene.regulatory.plannedFloors, 3);
+  assert.equal(scene.regulatory.nonCompliantSetbacks, true);
+  data.context.plate.sitePlot = { x: -1, y: -3, w: 14, h: 17 };
+  assert.deepEqual(data.scene().plot, data.context.plate.sitePlot);
+  data.context.plate.sitePlot.w = 2;
+  assert.throws(data.scene, /outside.*plot boundary/);
+});
+
 test('absent or malformed optimizer allowance stays unknown instead of using editable-floor count', () => {
   const data = fixture('N', false);
   let scene = data.scene();

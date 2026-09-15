@@ -59,6 +59,11 @@ For read-only comparisons, additive `scene.regulatory` exposes:
 
 ```text
 allowedFloors: number | null
+plannedFloors: number | null
+customSetbacks: boolean
+nonCompliantSetbacks: boolean
+requiredSetbacks: object | null
+appliedSetbacks: object | null
 basis: string
 source: 'legacy-optimizer'
 plateId: string | null
@@ -67,12 +72,23 @@ floorToFloorM: number | null
 stiltParking: boolean | null
 ```
 
-`allowedFloors` is the existing `plate.floors` optimizer estimate for that
-selected plate/height and its road-cap/TDR configuration, not an independently
+`allowedFloors` is `plate.maxFloors` when supplied, or the older `plate.floors`
+estimate for backward compatibility. `plannedFloors` retains the selected count
+without replacing the maximum. These are Plot Planner scenarios for the
+selected plate/height and road-cap/TDR configuration, not an independently
 verified legal maximum or planning permission. It counts habitable floors,
 excluding stilt parking. Missing/malformed allowance stays `null`; the model
 does not substitute editable-floor count, enforce approval, or use the estimate
 to derive physical storey elevations. Consumers must display the supplied basis.
+
+`scene.floor` is the **buildable floor plate**, not necessarily the property.
+Additive `scene.plot` carries the actual net plot rectangle in that same local
+coordinate frame. Its origin may be negative because the front/left setbacks
+lie outside the buildable plate. It comes from `plate.sitePlot`, or is recovered
+from a complete legacy `localSetbacks`, `width` and pre-tot-lot `rawDepth`.
+Without that evidence it stays `null`; the model never calls the buildable
+plate the whole plot. Site-based sunlight analysis translates each scene to the
+common plot origin before measuring boundary gaps.
 
 Defaults are **Hyderabad EXAMPLE**, not detected position, and **ASSUMED preview
 dimensions**: 2.7432 m wall height, zero base elevation, 0.15 m roof thickness

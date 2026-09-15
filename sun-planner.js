@@ -8,6 +8,7 @@
   const layers={months:byId('sunShowMonths'),hours:byId('sunShowHours')};
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const sky={x:400,y:320,radius:240};
+  const footM=0.3048;
   let revision=0,annualKey='',annualRows=[],exportConfig=null,locationRequest=0;
   let referenceKey='',referenceCurves=[],hourCurves=[],activeConfig=null,activePosition=null;
 
@@ -33,10 +34,37 @@
       occurrence:fields.occurrence.value};
   }
 
-  function eventLabel(instant,config){
-    if(!(instant instanceof Date)||!Number.isFinite(instant.getTime()))return 'No event';
+  function eventLabel(instant,config,missing='No event'){
+    if(instant===null)return missing;
+    if(!(instant instanceof Date)||!Number.isFinite(instant.getTime()))
+      throw new model.InputError('A solar event time is invalid. Check the date and location.','date','events');
     const date=model.dateAt(instant,config.timeZone);
     return `${clock(instant,config.timeZone)}${date===config.date?'':` (${date})`}`;
+  }
+
+  function drawDaySummary(config,events){
+    const summary=model.daySummary(events),daylight=summary.daylight;
+    byId('sunDaySummaryDate').textContent=`${config.date} | ${config.timeZone}`;
+    const fields={sunRise:'sunrise',sunNoon:'solarNoon',sunSet:'sunset',
+      sunCivilDawn:'dawn',sunCivilDusk:'dusk',sunNauticalDawn:'nauticalDawn',sunNauticalDusk:'nauticalDusk',
+      sunAstronomicalDawn:'nightEnd',sunAstronomicalDusk:'night',
+      sunGoldenMorningEnd:'goldenHourEnd',sunGoldenEveningStart:'goldenHour'};
+    for(const [id,name] of Object.entries(fields))
+      byId(id).textContent=eventLabel(summary.events[name],config,
+        ['sunrise','solarNoon','sunset'].includes(name)?'No event':'No crossing');
+    if(daylight.durationMs!==null){
+      const minutes=Math.round(daylight.durationMs/60000);
+      byId('sunDaylightDuration').textContent=`${Math.floor(minutes/60)} h ${String(minutes%60).padStart(2,'0')} min`;
+    }else byId('sunDaylightDuration').textContent=daylight.status==='polar-day'?'Continuous daylight':'Not available';
+    const daylightNote=daylight.status==='polar-day'
+      ? 'Polar day: no sunrise or sunset in this solar cycle. Continuous daylight is not forced into a 24-hour civil-day duration.'
+      : daylight.status==='polar-night'
+        ? 'Polar night: no sunrise in this solar cycle. Twilight can still occur, even though sunrise-to-sunset daylight is zero.'
+        : daylight.status==='incomplete'
+          ? 'A complete sunrise/sunset pair is unavailable for this solar cycle, so no daylight duration is inferred from a missing event.'
+          : 'Daylight duration is elapsed time from sunrise to sunset, excluding twilight. Clock changes are accounted for using UTC instants, not subtraction of displayed clock times.';
+    byId('sunDaylightNote').textContent=daylightNote+' This is astronomical daylight, not the neighbour-blocked house sunlight duration below.';
+    byId('sunEventNote').textContent='Events refer to the solar cycle near local noon with an unobstructed ground-level horizon. Events outside the selected civil date include their date. "No crossing" means the sun does not cross that phase boundary in this cycle; it does not mean zero daylight or a fixed one-hour golden period.';
   }
 
   function skyPoint(sample){
@@ -279,15 +307,16 @@
       byId('sunAzimuth').textContent=degrees(current.azimuth);
       byId('sunAltitude').textContent=degrees(current.altitude);
       byId('sunZenith').textContent=degrees(current.zenith);
+      const poleShadow=model.shadowLengthM(current.altitude,footM);
+      byId('sunShadowLength').textContent=poleShadow===null
+        ? (current.altitude<0?'No direct sun':'At horizon'):`${(poleShadow/footM).toFixed(2)} ft`;
+      byId('sunShadowNote').textContent=poleShadow===null
+        ? (current.altitude<0?'No sun-cast pole shadow is available while the sun is below the horizon.':
+          'At the horizon, the ideal level-ground pole shadow has no finite length.')
+        : 'Shadow of a vertical 1 ft pole at the selected time, on level, unobstructed ground. Approximate, especially near sunrise and sunset.';
       byId('sunInstant').textContent=`${config.date} ${clock(current.instant,config.timeZone)} ${config.timeZone} | ${current.instant.toISOString().replace('.000Z',' UTC')}`;
       byId('sunState').textContent=current.altitude>=0?'Sun above the horizon':'Sun below the horizon';
-      byId('sunRise').textContent=eventLabel(current.events.sunrise,config);
-      byId('sunNoon').textContent=eventLabel(current.events.solarNoon,config);
-      byId('sunSet').textContent=eventLabel(current.events.sunset,config);
-      byId('sunEventNote').textContent=current.events.alwaysUp
-        ? 'Polar day: the sun does not set in this solar cycle.'
-        : current.events.alwaysDown?'Polar night: the sun does not rise in this solar cycle.'
-          : 'Events are for the solar cycle near local noon, assuming an unobstructed horizon at ground level. Events outside the selected day include their date.';
+      drawDaySummary(config,current.events);
       const year=Number(config.date.slice(0,4));
       byId('sunDay').max=String(model.daysInYear(year));byId('sunDay').value=String(model.dayOfYear(config.date));
       byId('sunDayValue').textContent=`${config.date} (${model.dayOfYear(config.date)} / ${model.daysInYear(year)})`;

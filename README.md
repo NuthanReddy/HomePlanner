@@ -6,9 +6,9 @@ planning.
 
 | Workspace | Capabilities |
 |---|---|
-| Plot Optimizer | Setbacks, floor allowances, plot splitting and indicative costs. Regulatory sources stay on this page. |
+| Plot Planner | Setbacks, selectable G+n floor counts, explicit non-compliant setback scenarios, plot splitting and indicative costs. Regulatory sources stay on this page. |
 | Room Planner | Independent floors, shared wall/opening geometry, click-to-inspect, door swings, removable internal partitions, bed-head preferences and optional stacked 3D. |
-| Sun Path | Local SunCalc angles/events, monthly and solstice/equinox paths, same-clock-time curves, daily/annual highlights, daylight Min/Max, coordinate detection on request and CSV export. |
+| Sun Path | Local SunCalc angles, daylight/twilight/golden-hour summary, monthly and seasonal paths, same-clock-time curves, 1 ft pole-shadow length, neighbour-blocked roof/exterior-wall sunlight hours, coordinate detection on request and CSV export. |
 | Environment | Local weather import, opt-in historical-weather fetch, geometric shadows, layer comparisons, wind proposals and explicitly supplied reduced-model experiments. |
 | Electrical | Per-floor points, wall/surface anchors, unknown-height states and ergonomic/professional-review guidance. |
 | Prohibited Properties | Telangana location dropdowns, source reports, local Tesseract OCR, searchable tables and a Markdown cache. Requires the local Flask server. |
@@ -86,6 +86,8 @@ requirements with TG-bPASS, GHMC/HMDA, and qualified professionals.
 
 Environmental results are uncalibrated scenarios for the supplied inputs.
 The application does not provide CFD, measured microclimate/tree cooling,
-automatic weather/airflow-to-thermal coupling, mutual-storey shadow analysis,
-or calibrated whole-building temperature predictions. Multiple editable floors
-do not establish structural safety or permission to add storeys.
+automatic weather/airflow-to-thermal coupling or calibrated whole-building
+temperature predictions. Environment's original shadow snapshots evaluate one
+scene at a time; Sun Path's explicit whole-house sunlight study includes the
+modeled storeys together. Multiple editable floors do not establish structural
+safety or permission to add storeys.

@@ -1,10 +1,12 @@
 # Building physics: reduced numerical scenarios
 
-`building-physics.js` exposes the same five pure functions through
+`building-physics.js` exposes the same six numerical entry points through
 `window.BuildingPhysics` and CommonJS. It needs no framework, DOM, network,
 astronomy implementation, dependencies, account or solver service. Inputs are
-not mutated; outputs contain ordinary JSON-compatible objects, arrays, finite
-numbers, strings and booleans.
+not mutated. Numerical results contain ordinary JSON-compatible objects, arrays,
+finite numbers, strings, booleans and nulls. The additive `createSunlightStudy`
+factory returns a frozen object with accumulator methods; its `getResult()`
+returns an independent, plain JSON snapshot.
 
 **These are uncalibrated numerical scenarios, not actual-site indoor-temperature
 predictions, CFD, daylight lux, structural analysis, HVAC sizing, moisture
@@ -236,6 +238,212 @@ Do not sum polygon areas or repeatedly alpha-paint overlapping pieces to infer
 energy. Use the independently sampled receiver fractions. No GPU/screenshot
 shadow maps enter the calculation.
 
+## `createSunlightStudy(scenes, options)`
+
+Incrementally integrate **potential direct sunlight on the planned house's
+exposed roofs/terraces and opaque exterior wall faces**, accounting for the
+supplied floor scenes, existing obstacles and all four neighbouring sides.
+This is geometric potential, optionally area/transmission-weighted, **not
+observed sunshine, weather-adjusted duration, PV production, daylight lux or
+indoor illumination**.
+
+This additive API shares the geometry, ENU rotation, aperture-transmission and
+ray-intersection helpers with `shadowAt`. Geometry and area-weighted sample
+points are compiled **once**, when the study is created, not for each interval.
+The existing `shadowAt` and `surfaceExposure` APIs remain single-scene and their
+results are unchanged; multi-storey accumulation belongs to this new API.
+
+### Plot frame and supported storeys
+
+- `scenes` is a nonempty array using the geometry contract above.
+  **`scene.floor` must be the actual selected Plot Planner plot rectangle**,
+  not the buildable floor plate. Building, wall, room and obstacle coordinates
+  must already describe their real placement in that plot-local frame, including
+  setbacks. If `scene.plot` is supplied, it must be a valid rectangle equal to
+  `scene.floor`; a missing/unknown plot cannot be repaired by inventing one.
+- Every scene must have exactly the same plot `x,y,w,h` and equivalent
+  `headingDeg` modulo 360. No recentering, per-storey offset or orientation is
+  guessed. The heading convention is unchanged: local x right, y rear, z up.
+  Sun vectors undergo the existing inverse ENU rotation exactly once; returned
+  normals remain local.
+- Multiple scenes require unique nonempty `floorId` values. A single scene may
+  omit `floorId`, producing `floorId: null` and roof ID `roof`. Other geometry IDs
+  retain their supplied values; floor-prefixed wall/opening/obstacle IDs and
+  generated roof IDs must be globally unique, not ambiguously reused between
+  scenes.
+- Elevations are absolute metres relative to the shared datum. Buildings must
+  lie inside the plot. Wall centerlines must lie within their declared building
+  rectangle and their vertical extent within that floor's
+  `[floorElevationM, floorElevationM + wallHeightM]` band. Exterior receiver
+  faces, including their half-wall-thickness offset, must remain inside the plot.
+  Invalid offsets are rejected rather than silently treated as clear space
+  outside a neighbouring screen.
+- Where building footprints overlap, an upper floor's base cannot intersect
+  the lower roof slab: it must be at or above the lower roof top, within the
+  existing `1e-7` m intersection tolerance. Inconsistent stacked volumes fail.
+  Explicit vertical gaps and projecting storey footprints produce warnings.
+  Only supplied walls and roof slabs cast rays; connecting floor slabs,
+  projecting floor undersides and structural supports are not inferred.
+  Unspecified projecting undersides can add shade that this geometry does not
+  resolve.
+- Each roof receiver is the rectangular remainder after subtracting the union
+  of **all higher-storey building footprints**. Fully covered intermediate slabs
+  are omitted, not reported as sunlit roofs. Covered portions are excluded even
+  across an explicitly supplied vertical gap. The full supplied roof slabs
+  remain casters, and casters from every floor can shade other floors' walls and
+  exposed terraces.
+- Wall receivers include only exterior **opaque masonry faces**, excluding all
+  window, door and passage aperture areas. No aperture, internal wall, ground or
+  obstacle face is returned as a receiver. Missing/removed walls are not invented;
+  a floor without opaque exterior wall receivers produces a warning.
+  Interior walls, apertures and explicitly supplied obstacles still cast rays.
+- Planner environment obstacles may be copied into several floor scenes with
+  different floor-prefixed IDs. Copies carrying the **same explicit `sourceId`**
+  and identical type, rectangle, base, height and transmission are applied once.
+  Inconsistent copies fail. Distinct obstacle identities without a shared
+  `sourceId` are not merged merely because their footprints overlap; their
+  supplied transmissions multiply as in `shadowAt`.
+
+### Four-side neighbour approximation and options
+
+`options.neighbors` is required, with **every** key `front`, `right`, `rear`,
+`left` explicitly supplied. Each side is exactly one of:
+
+```js
+{ state: 'clear' }
+{ state: 'block', heightM: 9, gapM: 2 } // illustrative supplied metres, not defaults
+```
+
+An unknown, absent or malformed side is an error, not clear space. A block needs
+a positive finite `heightM` and nonnegative finite `gapM`; numeric strings,
+missing dimensions, negative values and nonfinite values fail. Width/depth
+inputs and other unsupported fields are rejected.
+
+A block is approximated by a **continuous opaque vertical side screen**, from
+`groundElevationM` to `groundElevationM + heightM`, extending indefinitely in
+both directions along that side. Its position is:
+
+```text
+front: y = plot.y - gapM
+rear:  y = plot.y + plot.h + gapM
+left:  x = plot.x - gapM
+right: x = plot.x + plot.w + gapM
+```
+
+Thus gap is measured from the **plot boundary**, not the house wall. House
+setbacks add their actual distance to the blocker. There is no finite neighbour
+footprint/depth, opening, individual roof shape or terrain invented. Unlimited
+along-side extent is a conservative obstruction approximation compared with
+finite buildings of that height and boundary gap, not a reconstructed survey.
+Existing explicitly supplied scene obstacles are additional geometry, not a
+reason to omit any of the four side declarations.
+
+| `options` field | Default | Allowed/support meaning |
+|---|---:|---|
+| `neighbors` | Required | Complete four-side declarations above |
+| `samplesPerAxis` | 8 | Integer 1–128; patch-grid refinement as for `shadowAt` |
+| `groundElevationM` | 0 | Finite shared flat ground datum, metres |
+| `minSunAltitudeDeg` | 1 | Greater than 0, less than 90 |
+| `windowTransmittance` | 1 | Existing closed-window geometric transmission, [0,1] |
+
+There is no new arbitrary maximum building dimension, neighbour height or gap.
+Finite numerical range and coordinate-resolution checks still apply. This API
+does not project ground polygons, so `maxShadowDistanceM` is not an option and
+does not truncate distant neighbour rays.
+
+### Interval contract and duration units
+
+```js
+const study = BuildingPhysics.createSunlightStudy(scenes, {
+  neighbors: {
+    front: { state: 'block', heightM: 9, gapM: 2 },
+    right: { state: 'clear' },
+    rear: { state: 'clear' },
+    left: { state: 'clear' }
+  },
+  samplesPerAxis: 8
+});
+study.addInterval({
+  startUTC: '2026-09-15T06:00:00Z',
+  endUTC: '2026-09-15T06:05:00Z',
+  sunENU: midpointSunENU // unit vector toward the sun at 06:02:30 UTC
+});
+const result = study.getResult();
+```
+
+`addInterval` accepts only `startUTC`, `endUTC` and `sunENU`. Times must be valid
+UTC ISO calendar strings with seconds and `Z`, optionally 1–3 fractional-second
+digits. Each duration must be positive and finite. Intervals must be
+chronological and non-overlapping; adjacent endpoints are allowed. Gaps are
+allowed but warned about and excluded from **all** time totals, including
+`elapsedHours`, which sums supplied durations rather than their enclosing span.
+Rejected intervals leave the accumulated result unchanged.
+
+The caller supplies a unit ENU vector at each interval's **midpoint**, using the
+same norm/roundoff validation as `shadowAt`. No ephemeris, calendar, time zone,
+DST inference, weather or interpolation is added here. The caller owns interval
+selection, yields between calls and cancellation by discarding its study.
+
+For each outward-facing sampled point above the numerical altitude cutoff:
+
+```text
+pointHours += intervalDurationHours * beamTransmission
+averageHours = sum(pointHours * sampleArea) / receiverArea
+```
+
+The direction-facing test uses the existing dot-product tolerance. There is
+**no cosine or irradiance weighting of time**: an unobstructed facing point gets
+the whole interval duration. Partial-transmission obstacles/apertures instead
+contribute fractional equivalent hours, explicitly identified in warnings.
+Area weights matter when different-sized roof remainders or masonry patches
+contain different numbers of samples.
+
+- `elapsedHours`: total duration of accepted supplied intervals.
+- `aboveHorizonHours`: intervals with positive sun altitude, **including** the
+  separately excluded low-sun band.
+- `nearHorizonExcludedHours`: positive altitude at/below the configured cutoff;
+  zero exposure there is a numerical exclusion, not a resolved obstruction.
+- Per surface, `averageHours`, `minHours`, `maxHours`: respectively the
+  area-weighted mean, minimum and maximum of integrated sampled-point hours.
+- `unobstructedHours`: facing/horizon/cutoff opportunity with **all** casters and
+  neighbours removed. `blockedHours = unobstructedHours - averageHours`; the
+  near-horizon exclusion is not counted as time blocked by geometry.
+- `firstSunUTC` / `lastSunUTC`: canonical UTC start/end bounds of the first/last
+  interval with any positive sample transmission, or `null` if never lit.
+  There may be arbitrarily many shaded gaps between these bounds; they are
+  neither exact shadow-transition instants nor a continuous-sun duration.
+
+Exact result shape:
+
+```js
+{
+  elapsedHours, aboveHorizonHours, nearHorizonExcludedHours,
+  sampling: {
+    method: 'area-weighted midpoint rays',
+    samplesPerAxis, sampleCount, intervalCount,
+    timeIntegration: 'duration-weighted midpoint sun vectors',
+    minSunAltitudeDeg
+  },
+  assumptions: [/* strings */],
+  warnings: [/* strings */],
+  surfaces: [{
+    id, floorId, type, // type: 'roof' or 'wall'; floorId is null only for an unnamed single scene
+    normal: { x, y, z }, // local outward unit normal
+    areaM2, sampleCount,
+    averageHours, minHours, maxHours, unobstructedHours, blockedHours,
+    firstSunUTC, lastSunUTC
+  }]
+}
+```
+
+`sampling.sampleCount` totals the compiled receiver points;
+`sampling.intervalCount` counts accepted intervals. Before any interval,
+all hours are zero and first/last bounds are null. `getResult()` produces a fresh,
+finite plain-JSON snapshot; changing it cannot change the accumulator. Spatial
+and temporal midpoint sampling can alias thin features or brief shadow events.
+Refine both grids and interval lengths for a convergence check; no universal
+hour-error bound or measured sunshine accuracy is claimed.
+
 ## `surfaceExposure(scene, sunENU, radiation)`
 
 Required nonnegative finite fields are `dniWm2`, `dhiWm2`, `ghiWm2`.
@@ -461,6 +669,11 @@ Fixtures check:
   sampled partial/overlap shade, wall reveals,
   window/door operation, tree transmission, removed masonry, ground areas,
   cutoff bounds, diffuse/beam separation and grid refinement.
+- Incremental sunlight hours on roofs/exterior masonry, complete four-side
+  validation, actual plot-boundary gaps/setbacks, continuous neighbour screens,
+  cardinal/noncardinal headings, unequal/fractional intervals, cutoff accounting,
+  area-weighted point ranges, supplied/repeated obstacles, multi-storey roof
+  coverage and mutual shading, invalid frames/times and immutable finite results.
 - Zero forcing, sealed/closed paths, pressure reversal, equal/unequal/three-link
   series orifices, branched nodal balance, disconnected gauges/circulation,
   invalid links, unsupported physics and numerical stalling.

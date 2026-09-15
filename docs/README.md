@@ -1,4 +1,4 @@
-# GHMC / HMDA Plot Optimizer documentation
+# HomePlanner documentation
 
 This folder documents the assumptions and behavior of
 `../index.html`, a browser tool for comparing

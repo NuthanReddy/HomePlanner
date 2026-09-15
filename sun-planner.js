@@ -5,7 +5,11 @@
   const fields={latitude:byId('sunLatitude'),longitude:byId('sunLongitude'),date:byId('sunDate'),
     time:byId('sunTime'),timeZone:byId('sunTimeZone'),occurrence:byId('sunOccurrence')};
   const download=byId('sunDownload'),annualStatus=byId('sunAnnualStatus');
+  const layers={months:byId('sunShowMonths'),hours:byId('sunShowHours')};
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const sky={x:400,y:320,radius:240};
   let revision=0,annualKey='',annualRows=[],exportConfig=null,locationRequest=0;
+  let referenceKey='',referenceCurves=[],hourCurves=[],activeConfig=null,activePosition=null;
 
   if(!model){
     errorBox.hidden=false;errorBox.textContent='The local solar scripts could not load. Keep sun-model.js, sun-planner.js and the vendor folder beside index.html, then reload.';
@@ -17,6 +21,11 @@
   const clock=(instant,timeZone)=>new Intl.DateTimeFormat('en-GB',{
     timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'
   }).format(instant);
+  const shortDate=date=>`${monthNames[Number(date.slice(5,7))-1]} ${Number(date.slice(8,10))}`;
+  const referenceCacheKey=config=>JSON.stringify([
+    config.latitude,config.longitude,config.date.slice(0,4),config.timeZone,config.occurrence
+  ]);
+  const annualCacheKey=config=>JSON.stringify([referenceCacheKey(config),config.time]);
 
   function readConfig(){
     return {latitude:fields.latitude.valueAsNumber,longitude:fields.longitude.valueAsNumber,
@@ -31,9 +40,9 @@
   }
 
   function skyPoint(sample){
-    const radius=140*(1-Math.max(0,Math.min(90,sample.altitude))/90);
+    const radius=sky.radius*(1-Math.max(0,Math.min(90,sample.altitude))/90);
     const angle=sample.azimuth*Math.PI/180;
-    return {x:230+radius*Math.sin(angle),y:185-radius*Math.cos(angle)};
+    return {x:sky.x+radius*Math.sin(angle),y:sky.y-radius*Math.cos(angle)};
   }
 
   function pathFor(rows,pointFor,valid=()=>true){
@@ -47,14 +56,119 @@
     return path;
   }
 
+  const skyPath=segments=>segments.map(segment=>pathFor(segment,skyPoint)).join('');
+
+  function skyGrid(){
+    let markup='';
+    for(let altitude=0;altitude<90;altitude+=10){
+      const r=sky.radius*(1-altitude/90);
+      markup+=`<circle class="sun-plot-grid" cx="${sky.x}" cy="${sky.y}" r="${r}"/>`;
+    }
+    for(let azimuth=0;azimuth<360;azimuth+=15){
+      const point=skyPoint({altitude:0,azimuth});
+      markup+=`<path class="sun-plot-grid" d="M${sky.x} ${sky.y}L${point.x} ${point.y}"/>`;
+    }
+    const directions=['N','NE','E','SE','S','SW','W','NW'];
+    directions.forEach((direction,index)=>{
+      const angle=index*Math.PI/4,radius=sky.radius+30;
+      markup+=`<text class="sun-plot-text sun-direction" x="${sky.x+radius*Math.sin(angle)}" `+
+        `y="${sky.y-radius*Math.cos(angle)+4}" text-anchor="middle">${direction} / ${index*45}\u00b0</text>`;
+    });
+    for(let altitude=0;altitude<=90;altitude+=10){
+      const y=sky.y-sky.radius*(1-altitude/90);
+      markup+=`<text class="sun-plot-text sun-plot-label" x="${sky.x+7}" y="${y+12}">${altitude}\u00b0</text>`;
+    }
+    return markup;
+  }
+
+  function referenceStyle(curve,config){
+    if(curve.kind==='monthly')return 'sun-month-path';
+    if(curve.kind.endsWith('equinox'))return 'sun-equinox-path';
+    const longest=(curve.kind==='june-solstice')===(config.latitude>=0);
+    return longest?'sun-longest-path':'sun-shortest-path';
+  }
+
+  function referenceLabel(curve,config){
+    if(curve.kind==='monthly')return `${shortDate(curve.date)} monthly reference`;
+    if(curve.kind.endsWith('equinox'))
+      return `${curve.kind==='march-equinox'?'March':'September'} equinox reference`;
+    const season=curve.kind==='june-solstice'?'June':'December';
+    const longest=(curve.kind==='june-solstice')===(config.latitude>0);
+    return `${season} solstice reference${config.latitude===0?'':` (${longest?'longest':'shortest'}-day reference)`}`;
+  }
+
+  function monthLabels(curves){
+    const labels=[];
+    for(const curve of curves){
+      if(!curve.month)continue;
+      const visible=curve.segments.flat(),side=curve.month<=6?1:-1;
+      const candidates=visible.filter(row=>(skyPoint(row).x-sky.x)*side>=0);
+      if(!candidates.length)continue;
+      const sample=candidates.reduce((lowest,row)=>row.altitude<lowest.altitude?row:lowest);
+      const point=skyPoint(sample);
+      labels.push({date:curve.date,side,point,y:point.y});
+    }
+    for(const side of [-1,1]){
+      const group=labels.filter(label=>label.side===side).sort((a,b)=>a.y-b.y);
+      group.forEach((label,index)=>{
+        label.y=Math.max(100,Math.min(550,label.y),index?group[index-1].y+22:100);
+      });
+      if(group.length&&group.at(-1).y>550){
+        group.at(-1).y=550;
+        for(let i=group.length-2;i>=0;i--)group[i].y=Math.min(group[i].y,group[i+1].y-22);
+      }
+    }
+    return labels.map(label=>{
+      const x=label.side>0?710:90,end=x-label.side*8;
+      return `<path class="sun-label-leader" d="M${label.point.x} ${label.point.y}L${end} ${label.y}"/>`+
+        `<text class="sun-plot-text sun-plot-label sun-month-label" x="${x}" y="${label.y+4}" `+
+        `text-anchor="${label.side>0?'start':'end'}">${shortDate(label.date)}</text>`;
+    }).join('');
+  }
+
   function drawDaily(config,current){
-    const rows=model.dailySamples(config);
-    const path=pathFor(rows,skyPoint,row=>row.altitude>=0);
+    const rows=model.dailySamples(config,5);
+    const path=skyPath(model.daylightSegments(rows));
     const extrema=model.daylightExtrema(rows);
+    const referenceReady=referenceKey===referenceCacheKey(config),annualReady=annualKey===annualCacheKey(config);
+    const curves=referenceReady?referenceCurves
+      .filter(curve=>layers.months.checked||curve.kind!=='monthly')
+      .map(curve=>({...curve,segments:model.daylightSegments(curve.samples)})):[];
+    const referenceMarkup=curves.map(curve=>
+      `<path class="sun-reference-path ${referenceStyle(curve,config)}" data-sun-reference="${curve.kind}" `+
+      `${curve.month?`data-sun-month="${curve.month}" `:''}data-date="${curve.date}" d="${skyPath(curve.segments)}">`+
+      `<title>${referenceLabel(curve,config)}: ${curve.date} in ${config.timeZone}${curve.segments.length?'':' (below the horizon all day)'}</title></path>`
+    ).join('');
+    let hourMarkup='',hourLabels='';
+    if(referenceReady&&layers.hours.checked){
+      for(const curve of hourCurves){
+        if(curve.time===config.time)continue;
+        const segments=model.daylightSegments(curve.samples),visible=segments.flat();
+        hourMarkup+=`<path class="sun-hour-path" data-sun-hour="${curve.time}" d="${skyPath(segments)}">`+
+          `<title>${curve.time} local clock time across ${config.date.slice(0,4)} in ${config.timeZone}</title></path>`;
+        if(!visible.length)continue;
+        const peak=visible.reduce((highest,row)=>row.altitude>highest.altitude?row:highest),point=skyPoint(peak);
+        hourLabels+=`<text class="sun-plot-text sun-plot-label sun-hour-label" x="${point.x+5}" y="${point.y-7}">${curve.time}</text>`;
+      }
+    }
+    const timeSegments=annualReady?model.daylightSegments(annualRows):[];
+    const timePeak=annualReady?model.daylightExtrema(annualRows.filter(row=>row.instant))?.max:null;
+    let timeLabel='';
+    if(timePeak){
+      const point=skyPoint(timePeak);
+      timeLabel=`<text class="sun-plot-text sun-plot-label sun-time-label" x="${point.x+10}" y="${point.y+18}">${config.time} all year</text>`;
+    }
+    const dateMarkers=annualReady?curves.map(curve=>{
+      const row=annualRows.find(sample=>sample.date===curve.date);
+      if(!row?.instant||row.altitude<0)return '';
+      const point=skyPoint(row);
+      return `<circle class="sun-reference-point" cx="${point.x}" cy="${point.y}" r="3">`+
+        `<title>${shortDate(curve.date)} at ${config.time} in ${config.timeZone}</title></circle>`;
+    }).join(''):'';
     const p=skyPoint(current);
     const mark=(sample,label,kind)=>{
-      const point=skyPoint(sample),left=point.x>=230;
-      const x=point.x+(left?-20:20),y=Math.max(30,Math.min(330,point.y+(kind==='max'?-28:28)));
+      const point=skyPoint(sample),left=point.x>=sky.x;
+      const x=point.x+(left?-20:20),y=Math.max(30,Math.min(615,point.y+(kind==='max'?-28:28)));
       const anchor=left?'end':'start';
       return `<g class="sun-extrema sun-extrema-${kind}">`+
         `<path d="M${point.x} ${point.y} L${x} ${y}" fill="none" stroke="currentColor"/>`+
@@ -63,20 +177,49 @@
         `<text x="${x}" y="${y+12}" text-anchor="${anchor}">${clock(sample.instant,config.timeZone)}</text></g>`;
     };
     byId('sunDaily').innerHTML=
-      '<title>Daily sky path, geographic north up</title>'+
-      '<desc>Equidistant altitude diagram. The centre is the zenith at 90 degrees; the outer circle is the horizon at zero degrees. Only above-horizon samples are connected.</desc>'+
-      [140,140*2/3,140/3].map(r=>`<circle class="sun-plot-grid" cx="230" cy="185" r="${r}"/>`).join('')+
-      '<path class="sun-plot-grid" d="M230 45V325M90 185H370"/>'+
-      '<g class="sun-plot-text" text-anchor="middle"><text x="230" y="25">N / 0\u00b0</text><text x="404" y="190">E / 90\u00b0</text>'+
-      '<text x="230" y="350">S / 180\u00b0</text><text x="50" y="190">W / 270\u00b0</text></g>'+
-      '<g class="sun-plot-text"><text x="238" y="53">0\u00b0</text><text x="238" y="99">30\u00b0</text><text x="238" y="146">60\u00b0</text><text x="238" y="182">90\u00b0</text></g>'+
-      `<path class="sun-plot-path" d="${path}"/>`+
-      (extrema?mark(extrema.min,'Min','min')+mark(extrema.max,'Max','max'):'')+
+      `<title>Monthly and seasonal sun paths for ${config.date.slice(0,4)}, geographic north up</title>`+
+      '<desc>Equidistant altitude diagram: the centre is the zenith at 90 degrees and the outer circle is the horizon. '+
+      'Month lines trace complete days; dashed hour curves join the same local clock time across dates. '+
+      'Solstice and equinox reference paths are distinguished from the blue selected date and amber selected-time curve. '+
+      'Below-horizon portions, skipped times and clock-offset jumps are not connected.</desc>'+
+      skyGrid()+`<g id="sunHourTracks">${hourMarkup}</g><g id="sunReferenceTracks">${referenceMarkup}</g>`+
+      `<path class="sun-time-path" data-sun-selected-time="${config.time}" d="${skyPath(timeSegments)}"/>`+
+      `<path class="sun-plot-path" data-sun-selected-date="${config.date}" d="${path}"/>`+
+      dateMarkers+monthLabels(curves)+hourLabels+timeLabel+
+      (extrema?mark(extrema.min,'Day min','min')+mark(extrema.max,'Day max','max'):'')+
       (current.altitude>=0?`<circle class="sun-plot-selected" cx="${p.x}" cy="${p.y}" r="6"/>`:'');
-    byId('sunDailyCaption').textContent=`${config.date} in ${config.timeZone}. Blue: 15-minute samples for this civil date. ${
-      current.altitude>=0?'Amber: selected time.':'The selected sun position is below the horizon.'} ${
+    byId('sunLongestLabel').textContent=config.latitude===0?'June solstice ref. (Jun 21)':
+      `Longest-day ref. (${config.latitude>0?'Jun 21':'Dec 21'})`;
+    byId('sunShortestLabel').textContent=config.latitude===0?'December solstice ref. (Dec 21)':
+      `Shortest-day ref. (${config.latitude>0?'Dec 21':'Jun 21'})`;
+    byId('sunSelectedTimeLabel').textContent=`${config.time} across the year`;
+    const invisible=curves.filter(curve=>!curve.segments.length);
+    byId('sunDiagramStatus').textContent=!referenceReady?'Calculating month and hourly paths locally...':
+      !annualReady?'Calculating the selected-time curve...':
+      `Below-horizon portions and clock-change jumps are left as gaps.${invisible.length
+        ?` No above-horizon path on ${invisible.map(curve=>shortDate(curve.date)).join(', ')}.`:''}`;
+    byId('sunDailyCaption').textContent=`${config.date} in ${config.timeZone}. Blue: 5-minute samples for this civil date. Amber: ${
+      config.time} across ${config.date.slice(0,4)}; small dots mark reference dates. ${
+      current.altitude>=0?'The large dot is the selected date and time.':'The selected sun position is below the horizon.'} ${
       extrema?`Daylight elevation ranges from ${degrees(extrema.min.altitude)} at ${clock(extrema.min.instant,config.timeZone)} to ${degrees(extrema.max.altitude)} at ${clock(extrema.max.instant,config.timeZone)} (sampled extrema, not exact horizon crossings).`
         :'There are no above-horizon samples, so daylight minimum and maximum are unavailable.'} This diagram does not include buildings, trees or terrain.`;
+  }
+
+  async function refreshReferences(config,token){
+    const references=[],hours=[];
+    results.setAttribute('aria-busy','true');download.disabled=true;
+    for(const curve of model.referencePaths(config)){
+      if(token!==revision)return;
+      references.push(curve);
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    for(const curve of model.hourlyPaths(config)){
+      if(token!==revision)return;
+      hours.push(curve);
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    if(token!==revision)return;
+    referenceCurves=references;hourCurves=hours;referenceKey=referenceCacheKey(config);
   }
 
   function drawAnnual(config,rows){
@@ -93,7 +236,7 @@
     for(let month=1;month<=12;month++){
       const date=`${config.date.slice(0,4)}-${String(month).padStart(2,'0')}-01`;
       const x=48+(model.dayOfYear(date)-1)/(rows.length-1)*584;
-      const name=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1];
+      const name=monthNames[month-1];
       labels+=`<text class="sun-plot-text" x="${x}" y="244" text-anchor="middle">${name}</text>`;
     }
     byId('sunAnnual').innerHTML='<title>Annual apparent solar elevation at the selected local clock time</title>'+
@@ -117,7 +260,7 @@
     }
     if(token!==revision)return;
     annualRows=rows;
-    annualKey=JSON.stringify([config.latitude,config.longitude,config.date.slice(0,4),config.time,config.timeZone,config.occurrence]);
+    annualKey=annualCacheKey(config);
     exportConfig={...config};
     drawAnnual(config,rows);
     results.setAttribute('aria-busy','false');download.disabled=false;
@@ -150,11 +293,19 @@
       byId('sunDayValue').textContent=`${config.date} (${model.dayOfYear(config.date)} / ${model.daysInYear(year)})`;
       byId('sunMinute').value=String(+config.time.slice(0,2)*60 + +config.time.slice(3));
       byId('sunMinuteValue').textContent=config.time;
+      activeConfig=config;activePosition=current;
       drawDaily(config,current);
-      const key=JSON.stringify([config.latitude,config.longitude,config.date.slice(0,4),config.time,config.timeZone,config.occurrence]);
+      if(referenceKey!==referenceCacheKey(config)){
+        await refreshReferences(config,token);
+        if(token!==revision)return;
+        drawDaily(config,current);
+      }
+      const key=annualCacheKey(config);
       if(key===annualKey){
+        exportConfig={...config};
         drawAnnual(config,annualRows);results.setAttribute('aria-busy','false');download.disabled=false;
       }else await refreshAnnual(config,token);
+      if(token===revision)drawDaily(config,current);
     }catch(error){
       if(!(error instanceof model.InputError))throw error;
       if(token!==revision)return;
@@ -167,6 +318,9 @@
 
   form.addEventListener('submit',event=>{event.preventDefault();update();});
   Object.values(fields).forEach(field=>field.addEventListener('input',update));
+  Object.values(layers).forEach(layer=>layer.addEventListener('change',()=>{
+    if(activeConfig&&!results.hidden)drawDaily(activeConfig,activePosition);
+  }));
   document.addEventListener('homeplanner:project-context',()=>{
     locationRequest++;
     byId('sunLocate').disabled=false;

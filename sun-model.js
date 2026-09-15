@@ -120,11 +120,13 @@
     return {...resolved,...position(resolved.instant,config.latitude,config.longitude),events};
   }
 
-  function dailySamples(config){
+  function dailySamples(config,stepMinutes=15){
     validate(config);
+    if(!Number.isInteger(stepMinutes)||stepMinutes<1||stepMinutes>60)
+      throw new InputError('The daily sampling interval must be a whole number from 1 to 60 minutes.','time');
     const midnight=epoch(parseDate(config.date)),samples=[];
     // Filter UTC samples by civil date, retaining 23/25-hour DST days without a fixed offset.
-    for(let t=midnight-18*60*MINUTE;t<midnight+42*60*MINUTE;t+=15*MINUTE){
+    for(let t=midnight-18*60*MINUTE;t<midnight+42*60*MINUTE;t+=stepMinutes*MINUTE){
       const instant=new Date(t);
       if(dateText(partsAt(instant,config.timeZone))===config.date)
         samples.push({instant,...position(instant,config.latitude,config.longitude)});
@@ -144,9 +146,34 @@
     return min?{min,max}:null;
   }
 
+  function daylightSegments(samples){
+    const segments=[];
+    let segment=[],previous=null;
+    const finish=()=>{if(segment.length)segments.push(segment);segment=[];};
+    for(const sample of samples){
+      if(sample.instant===null){finish();previous=null;continue;}
+      if(!(sample.instant instanceof Date)||!Number.isFinite(sample.instant.getTime())||
+        !Number.isFinite(sample.altitude)||!Number.isFinite(sample.azimuth))
+        throw new InputError('A sun-path sample has an invalid instant or angle.','date');
+      // A civil-clock offset change is a jump, not a continuous seasonal sun trajectory.
+      if(previous&&sample.utcOffsetMinutes!==previous.utcOffsetMinutes){finish();previous=null;}
+      if(previous&&(previous.altitude<0)!==(sample.altitude<0)){
+        const fraction=previous.altitude/(previous.altitude-sample.altitude);
+        const azimuthChange=(sample.azimuth-previous.azimuth+540)%360-180;
+        segment.push({altitude:0,azimuth:(previous.azimuth+fraction*azimuthChange+360)%360,
+          instant:new Date(previous.instant.getTime()+fraction*(sample.instant-previous.instant))});
+        if(sample.altitude<0)finish();
+      }
+      if(sample.altitude>=0)segment.push(sample);
+      previous=sample;
+    }
+    finish();
+    return segments;
+  }
+
   function* annualSamples(config){
     validate(config);
-    const year=parseDate(config.date).year;
+    const year=parseDate(config.date).year,time=parseTime(config.time);
     const first=epoch({year,month:1,day:1}),last=epoch({year:year+1,month:1,day:1});
     for(let t=first;t<last;t+=DAY){
       const day=new Date(t),date=dateText({year,month:day.getUTCMonth()+1,day:day.getUTCDate()});
@@ -154,7 +181,30 @@
       if(!candidates.length){yield {date,instant:null,status:'skipped local time'};continue;}
       const instant=candidates[config.occurrence==='later'?candidates.length-1:0];
       const status=candidates.length>1?`${config.occurrence||'earlier'} repeated time`:'available';
-      yield {date,instant,status,...position(instant,config.latitude,config.longitude)};
+      const utcOffsetMinutes=(t+(time.hour*60+time.minute)*MINUTE-instant.getTime())/MINUTE;
+      yield {date,instant,status,utcOffsetMinutes,...position(instant,config.latitude,config.longitude)};
+    }
+  }
+
+  function* referencePaths(config){
+    validate(config);
+    const year=config.date.slice(0,4),dates=[];
+    for(let month=1;month<=12;month++){
+      dates.push({date:`${year}-${pad(month)}-21`,month,
+        kind:month===6?'june-solstice':month===12?'december-solstice':'monthly'});
+    }
+    dates.push({date:`${year}-03-20`,month:null,kind:'march-equinox'},
+      {date:`${year}-09-22`,month:null,kind:'september-equinox'});
+    dates.sort((a,b)=>a.date.localeCompare(b.date));
+    for(const reference of dates)
+      yield {...reference,samples:dailySamples({...config,date:reference.date},5)};
+  }
+
+  function* hourlyPaths(config){
+    validate(config);
+    for(let hour=0;hour<24;hour++){
+      const time=`${pad(hour)}:00`;
+      yield {time,samples:[...annualSamples({...config,time})]};
     }
   }
 
@@ -182,6 +232,6 @@
       .map(row=>row.map(quote).join(',')).join('\r\n');
   }
 
-  return Object.freeze({InputError,validate,calculate,dailySamples,daylightExtrema,annualSamples,resolveLocal,
-    dateAt,daysInYear,dayOfYear,dateFromDay,csv});
+  return Object.freeze({InputError,validate,calculate,dailySamples,daylightExtrema,daylightSegments,
+    annualSamples,referencePaths,hourlyPaths,resolveLocal,dateAt,daysInYear,dayOfYear,dateFromDay,csv});
 });

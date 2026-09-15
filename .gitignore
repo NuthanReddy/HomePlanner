@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+prohibited-properties/parsed/**/_sources/
+prohibited-properties/parsed/**/*.tmp
+prohibited-properties/reports/

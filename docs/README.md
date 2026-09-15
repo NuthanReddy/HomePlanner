@@ -28,6 +28,16 @@ layouts in the GHMC/HMDA context.
 - [Cost model](cost-model.md): included cost layers, equations, and confidence.
 - [Sun path](sun-path.md): local SunCalc integration, timezone handling,
   daily/annual plots, CSV export, and analysis boundaries.
+- [Sun path research and gap plan](research/sunpath.md): supplied Simulations4All
+  reference, live-tool observations, scientific caveats, and phased missing-feature
+  plan (not implemented capabilities).
+- [Building-performance research references](research/building-performance.md):
+  nine additional Simulations4All references covering HVAC, daylight, ventilation,
+  humidity, exhaust and energy assessment, with dedicated article and live-tool
+  research notes.
+- [Building analysis toolchain](research/building-analysis-toolchain.md):
+  supplied OpenStudio, EnergyPlus and Ladybug Tools setup guide, learning path,
+  sun/ventilation/lighting coverage, and moisture/mold limitations.
 - [Environment workspace](environment-analysis.md): weather, shadows, materials,
   wind proposals, explicit numerical experiments and expert exports.
 - [Building physics](building-physics.md): supported equations, units, assumptions

@@ -1,7 +1,8 @@
 (function (root, factory) {
   'use strict';
   const commonJS = typeof module === 'object' && module.exports;
-  const api = factory(root, commonJS ? require('./planner-storage.js') : root.HomePlannerStorage);
+  const api = factory(root, commonJS ? require('./planner-storage.js') : root.HomePlannerStorage,
+    commonJS ? require('./planner-drafts.js') : root.HomePlannerDrafts);
   if (commonJS) { module.exports = api; return; }
   root.HomePlannerPersistence = api;
   function start() {
@@ -18,7 +19,7 @@
     if (root.HomePlanner || root.document.readyState !== 'loading') start();
     else root.document.addEventListener('DOMContentLoaded', start, { once: true });
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (root, Storage) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (root, Storage, Drafts) {
   'use strict';
 
   const cancelled = error => error && error.code === 'SaveCancelledError';
@@ -72,7 +73,8 @@
       const dirty = savedKey !== currentKey;
       return { ...state, busy: actionBusy || preferenceBusy,
         current: { id: current.id, name: storage.projectName(current), revision: current.revision },
-        dirty, projects: state.projects.map(record => ({ ...record, error: record.error && { ...record.error } })),
+        dirty, draftCount: Drafts.pending(planner, current.id).length,
+        projects: state.projects.map(record => ({ ...record, error: record.error && { ...record.error } })),
         error: state.error && { ...state.error },
         status: state.error ? 'error' : state.saving ? 'saving' :
           state.connecting || actionBusy || preferenceBusy ? 'busy' : dirty ? 'unsaved' : 'saved' };
@@ -210,6 +212,7 @@
         }
       } catch (error) { reportError(error, 'action'); }
     });
+    const unsubscribeDrafts = Drafts.subscribe(planner, emit);
 
     function applyProject(work) {
       suppressEvents = true;
@@ -217,9 +220,10 @@
       finally { suppressEvents = false; syncCurrent(); }
     }
 
-    function checkUnchanged(expectedActivity, expectedKey) {
+    function checkUnchanged(expectedActivity, expectedKey, expectedDrafts) {
       syncCurrent();
-      if (expectedActivity !== activity || expectedKey !== currentKey)
+      if (expectedActivity !== activity || expectedKey !== currentKey ||
+          (expectedDrafts !== undefined && expectedDrafts !== Drafts.token(planner)))
         throw ownError('ProjectChangedError',
           'The layout changed while this action was waiting. Your edits were kept. Choose the action again when ready.');
     }
@@ -252,7 +256,8 @@
             if (destroyed) return;
             if (!record) throw ownError('MissingProjectError', 'The remembered browser project no longer exists. Your current layout was kept.');
             syncCurrent();
-            if (activity === 0 && currentKey === initialKey && preferenceIntent === 0 && !actionBusy) {
+            if (activity === 0 && currentKey === initialKey && preferenceIntent === 0 && !actionBusy &&
+                !Drafts.hasPending(planner, current.id)) {
               applyProject(() => planner.replaceProject(storage.cloneJSON(record.document)));
               savedKey = storage.fingerprint(record.document);
               state.lastSavedAt = record.updatedAt;
@@ -330,12 +335,12 @@
 
     async function beforeReplacement() {
       syncCurrent();
-      const expectedActivity = activity, expectedKey = currentKey;
+      const expectedActivity = activity, expectedKey = currentKey, expectedDrafts = Drafts.token(planner);
       queue.cancel(current.id);
       // An already-started transaction must finish before Open reads that project's latest copy.
       await queue.flush().catch(() => {});
-      checkUnchanged(expectedActivity, expectedKey);
-      return { activity: expectedActivity, key: expectedKey };
+      checkUnchanged(expectedActivity, expectedKey, expectedDrafts);
+      return { activity: expectedActivity, key: expectedKey, drafts: expectedDrafts };
     }
 
     async function setAutosave(enabled) {
@@ -385,7 +390,7 @@
       subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
       reportError,
       setNotice(message) { state.notice = message; emit(); },
-      revisionToken() { return `${activity}:${currentKey}`; },
+      revisionToken() { return `${activity}:${currentKey}:drafts-${Drafts.token(planner)}`; },
       saveNow,
       setAutosave,
       async refresh() {
@@ -420,7 +425,7 @@
           const expected = await beforeReplacement(), db = await availableStore();
           const record = await db.load(id);
           if (!record) throw ownError('MissingProjectError', 'This browser project no longer exists. Refresh the list.');
-          checkUnchanged(expected.activity, expected.key);
+          checkUnchanged(expected.activity, expected.key, expected.drafts);
           queue.forget(id);
           applyProject(() => planner.replaceProject(storage.cloneJSON(record.document)));
           clearError('save');
@@ -507,6 +512,7 @@
         destroyed = true;
         stopTimer();
         unsubscribe();
+        unsubscribeDrafts();
         listeners.clear();
         queue.close();
         if (store) store.close();
@@ -520,6 +526,9 @@
   function mount(host, planner, options = {}) {
     const document = host.ownerDocument, view = document.defaultView || root;
     const controller = createController(planner, options);
+    const nameDrafts = Drafts.createStore(planner, 'Project name');
+    const nameScope = () => ({ projectId: controller.getState().current.id, entityId: 'project-name' });
+    let nameProjectId = null;
     const downloads = new Map();
     let confirmation = null, importReading = false, destroyed = false, lastListKey = '';
     function node(tag, className, text) {
@@ -539,8 +548,8 @@
       return element;
     }
     function perform(work) {
-      Promise.resolve().then(() => { if (!destroyed) return work(); })
-        .catch(error => { if (!cancelled(error)) controller.reportError(error); });
+      return Promise.resolve().then(() => { if (!destroyed) return work(); })
+        .catch(error => { if (!cancelled(error)) controller.reportError(error); return false; });
     }
     function dateText(value) {
       return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'no readable timestamp';
@@ -556,6 +565,7 @@
     nameInput.type = 'text'; nameInput.maxLength = 150;
     nameInput.id = 'hp-storage-project-name';
     nameInput.autocomplete = 'off';
+    nameInput.title = 'Enter or Rename applies the name to the project. Escape discards this input draft.';
     nameLabel.htmlFor = nameInput.id;
     const rename = button('Rename');
     const projectMeta = node('p', 'hp-storage-meta');
@@ -568,6 +578,8 @@
     autosave.type = 'checkbox'; autosave.id = 'hp-storage-autosave';
     autoLabel.append(autosave, document.createTextNode(' Autosave in this browser'));
     const save = button('Save now'), fresh = button('New project'), exportButton = button('Export JSON'), importButton = button('Import JSON');
+    save.dataset.workspaceAction = 'save';
+    exportButton.dataset.workspaceAction = 'export-project';
     const file = node('input', 'hp-storage-file');
     file.type = 'file'; file.accept = '.json,application/json'; file.hidden = true;
     file.setAttribute('aria-label', 'Import a HomePlanner JSON project');
@@ -600,13 +612,17 @@
       confirmMessage.textContent = message;
       confirmButton.textContent = label;
       confirmBox.hidden = false;
+      const menu = document.getElementById?.('workspaceProjectMenu');
+      if (menu) menu.open = true;
       render(controller.getState());
       cancelButton.focus();
     }
 
     function replaceAction(label, work) {
-      if (controller.getState().dirty)
-        ask(`The current project has changes not saved in this browser. Export JSON first to keep a backup. ${label}?`,
+      const state = controller.getState();
+      if (state.dirty || state.draftCount)
+        ask(`${state.dirty ? 'The current project has changes not saved in this browser. Export JSON first to keep a backup. ' : ''}` +
+          `${state.draftCount ? `${state.draftCount} pending input draft(s) are NOT included in project saves or JSON. Apply them first, or continue keeping those drafts only in this session under their original project. ` : ''}${label}?`,
           label, work);
       else perform(work);
     }
@@ -614,7 +630,9 @@
     function render(state) {
       if (destroyed) return;
       const blocked = state.busy || state.connecting || !!confirmation;
-      if (document.activeElement !== nameInput) nameInput.value = state.current.name;
+      if (document.activeElement !== nameInput || nameProjectId !== state.current.id)
+        nameInput.value = nameDrafts.get({ projectId: state.current.id, entityId: 'project-name' })?.value ?? state.current.name;
+      nameProjectId = state.current.id;
       projectMeta.textContent = `Project ID: ${state.current.id} · Revision ${state.current.revision}`;
       autosave.checked = state.autosave;
       autosave.disabled = state.connecting || state.busy || !!confirmation;
@@ -627,12 +645,13 @@
       refresh.disabled = blocked || !state.available;
       retry.hidden = state.available && !state.error;
       retry.disabled = blocked;
-      const listKey = JSON.stringify(state.projects);
+      const listKey = JSON.stringify([state.connecting, state.available, state.projects]);
       if (lastListKey !== listKey || !list.options.length) {
         lastListKey = listKey;
         list.replaceChildren();
         if (!state.projects.length) {
-          const option = node('option', '', state.connecting ? 'Checking browser projects…' : 'No browser projects');
+          const option = node('option', '', state.connecting ? 'Checking browser projects…' :
+            state.available ? 'No browser projects' : 'Browser projects unavailable');
           option.value = '';
           list.append(option);
         }
@@ -668,14 +687,26 @@
       else status.textContent = `Saved in this browser · revision ${state.current.revision} · ${dateText(state.lastSavedAt)}${state.autosave ?
         ' · autosave on' : ' · autosave off'}.`;
       if (state.paused) status.textContent += ' Autosave is paused; use Save now to retry or turn it off.';
+      if (state.draftCount) status.textContent += ` ${state.draftCount} pending input draft(s) are not included in this project copy; apply them in their workbenches first.`;
       notice.textContent = state.notice;
       notice.hidden = !state.notice;
     }
 
-    rename.addEventListener('click', () => perform(() => controller.renameProject(nameInput.value)));
+    const applyName = () => perform(() => {
+      const scope = nameScope(), pending = nameDrafts.get(scope);
+      if (pending && pending.base !== controller.getState().current.name)
+        throw ownError('ProjectChangedError', 'The project name changed while editing. Your name draft is retained; copy it or press Escape to reload the current name.');
+      controller.renameProject(nameInput.value); nameDrafts.remove(scope);
+    });
+    rename.addEventListener('click', applyName);
+    nameInput.addEventListener('input', () => {
+      const scope = nameScope(), name = controller.getState().current.name;
+      if (nameInput.value === name) nameDrafts.remove(scope);
+      else nameDrafts.put(scope, { value: nameInput.value, base: nameDrafts.get(scope)?.base ?? name });
+    });
     nameInput.addEventListener('keydown', event => {
-      if (event.key === 'Enter') { event.preventDefault(); perform(() => controller.renameProject(nameInput.value)); }
-      if (event.key === 'Escape') nameInput.value = controller.getState().current.name;
+      if (event.key === 'Enter') { event.preventDefault(); applyName(); }
+      if (event.key === 'Escape') { nameDrafts.remove(nameScope()); nameInput.value = controller.getState().current.name; }
     });
     autosave.addEventListener('change', () => {
       const checked = autosave.checked;
@@ -713,7 +744,8 @@
       if (event.key === 'Escape') { event.preventDefault(); hideConfirmation(); }
     });
 
-    exportButton.addEventListener('click', () => perform(() => {
+    const requestExportJSON = () => perform(() => {
+      if (controller.getState().busy) throw ownError('OperationBusyError', 'Wait for the current local project action to finish.');
       const exported = controller.exportJSON();
       if (!view.URL || typeof view.URL.createObjectURL !== 'function')
         throw ownError('DownloadUnavailableError', 'This browser cannot create a JSON download. Use a browser that supports Blob downloads.');
@@ -729,8 +761,18 @@
         const timerId = view.setTimeout(() => { view.URL.revokeObjectURL(url); downloads.delete(url); }, 1000);
         downloads.set(url, timerId);
       }
-    }));
-    importButton.addEventListener('click', () => perform(() => file.click()));
+      return true;
+    });
+    const requestImportJSON = () => perform(() => {
+      const state = controller.getState();
+      if (state.busy || state.connecting || confirmation || importReading)
+        throw ownError('OperationBusyError', 'Wait for the current project action or confirmation before importing JSON.');
+      file.click(); return true;
+    });
+    controller.requestExportJSON = requestExportJSON;
+    controller.requestImportJSON = requestImportJSON;
+    exportButton.addEventListener('click', requestExportJSON);
+    importButton.addEventListener('click', requestImportJSON);
     file.addEventListener('change', async () => {
       const selected = file.files && file.files[0];
       if (!selected) return;
@@ -763,7 +805,7 @@
       } catch (error) { controller.reportError(error, 'import'); }
     });
     const beforeUnload = event => {
-      if (controller.getState().dirty || controller.getState().saving) {
+      if (controller.getState().dirty || controller.getState().saving || Drafts.hasPending(planner)) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -774,10 +816,13 @@
     controller.ready.catch(() => {});
     return {
       controller,
+      requestExportJSON,
+      requestImportJSON,
       destroy() {
         destroyed = true;
         unsubscribe();
         controller.destroy();
+        nameDrafts.dispose();
         view.removeEventListener('beforeunload', beforeUnload);
         for (const [url, timeout] of downloads) { view.clearTimeout(timeout); view.URL.revokeObjectURL(url); }
         downloads.clear();

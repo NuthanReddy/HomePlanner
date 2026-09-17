@@ -1,0 +1,7 @@
+*** Begin Patch
+*** Update File: planner-projection.js
+@@
+     scene.furniture=scene.furniture.map(item=>({...item,rect:shift(item.rect)}));
++    if(scene.balconies)scene.balconies=scene.balconies.map(item=>({...item,rect:shift(item.rect)}));
+     scene.obstacles=scene.obstacles.map(shift);
+*** End Patch

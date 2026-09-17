@@ -2,6 +2,7 @@
   'use strict';
   const clone=value=>JSON.parse(JSON.stringify(value));
   const FLOOR_FIELDS=['wallEdits','doorEdits','windowEdits','furnitureEdits','obstacles','electrical'];
+  const Projection=typeof module==='object'&&module.exports?require('./planner-projection.js'):root.HomePlannerProjection;
   const freshId=prefix=>`${prefix}-${root.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
   function freeze(value){
     if(value&&typeof value==='object'&&!Object.isFrozen(value)){
@@ -13,18 +14,35 @@
     if(!Number.isFinite(value)||(positive&&value<=0))throw new Error(`${label} must be ${positive?'positive and ':''}finite.`);
     return value;
   }
-  function remapFloor(value,oldId,newId,key='id'){
+  function remapFloor(value,oldId,newId){
     const scoped=text=>text===oldId||text.startsWith(oldId+':')||text.startsWith(oldId+'/');
-    if(typeof value==='string'){
-      if((key==='id'||/Ids?$/.test(key)||scoped(key))&&scoped(value))
-        return newId+value.slice(oldId.length);
+    const roomSources=new Set((value?.legacy?.context?.plan?.placed||[]).map(room=>{
+      const req=room.req||room;
+      return req.id||room.id||(Number.isSafeInteger(req.seq)?`room-${req.type||'space'}-seq-${req.seq}`:null);
+    }));
+    const balconySources=new Set((value?.legacy?.context?.g?.balconies||[]).map(item=>item.id));
+    function visit(value,key='id',mode=''){
+      if(typeof value==='string'){
+        // Legacy source identities are opaque. The compiler adds the floor
+        // namespace, including when the source already looks floor-scoped.
+        if(mode==='legacy'&&(key==='id'||/^sourceIds?$/.test(key)||
+          (/^(roomIds?|targetRoomId|attachedRoomId)$/.test(key)&&roomSources.has(value))||
+          (key==='balconyId'&&balconySources.has(value))))return value;
+        if(mode==='obstacles'&&key==='id'&&!value.startsWith(oldId+':'))return value;
+        if((key==='id'||/Ids?$/.test(key)||scoped(key))&&scoped(value))
+          return newId+value.slice(oldId.length);
+        return value;
+      }
+      if(Array.isArray(value))return value.map(item=>visit(item,key,mode));
+      if(value&&typeof value==='object'){
+        if(typeof value.floorId==='string'&&value.floorId!==oldId)return clone(value);
+        return Object.fromEntries(Object.entries(value).map(([field,item])=>[
+          scoped(field)&&!(mode==='legacy'&&(roomSources.has(field)||balconySources.has(field)))?newId+field.slice(oldId.length):field,
+          visit(item,field,mode||(['legacy','obstacles'].includes(field)?field:''))]));
+      }
       return value;
     }
-    if(Array.isArray(value))return value.map(item=>remapFloor(item,oldId,newId,key));
-    if(value&&typeof value==='object')
-      return Object.fromEntries(Object.entries(value).map(([field,item])=>[
-        scoped(field)?newId+field.slice(oldId.length):field,remapFloor(item,oldId,newId,field)]));
-    return value;
+    return visit(value);
   }
 
   function createController(adapter,Model){
@@ -79,6 +97,35 @@
       return getScenes().find(scene=>scene.floorId===project.activeFloorId)||
         (project.legacy.context?freeze(sceneFor(project.legacy.context)):null);
     }
+    const sameNumber=(a,b)=>a===b||Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=1e-7;
+    const sameRect=(a,b)=>a===b||a&&b&&['x','y','w','h'].every(key=>sameNumber(a[key],b[key]));
+    function assertRoomLayout(before,after,{changedId=null,removedId=null}={}){
+      if(!before)return;
+      const expected=(before.rooms||[]).filter(room=>room.id!==removedId),actual=after?.rooms||[];
+      if(!after||before.floorId!==after.floorId||expected.length!==actual.length||
+        expected.some(room=>{
+          const next=actual.find(item=>item.id===room.id);
+          return !next||room.id!==changedId&&(!sameRect(room.rect,next.rect)||!sameRect(room.module,next.module));
+        }))throw new Error('This action would re-layout unrelated rooms. The edit was rolled back; the existing room footprints must be preserved.');
+    }
+    function assertHistoryLayout(expected,actual){
+      assertRoomLayout(expected,actual);
+      if(!expected)return;
+      for(const key of ['balconies','furniture']){
+        const prior=expected[key]||[],next=actual[key]||[];
+        if(prior.length!==next.length||prior.some(item=>{
+          const restored=next.find(value=>value.id===item.id);
+          return !restored||!sameRect(item.rect,restored.rect)||
+            key==='furniture'&&['roomId','headLocal','pinned'].some(field=>item[field]!==restored[field]);
+        }))throw new Error('History could not restore the exact component layout. No replacement layout was accepted.');
+      }
+      const prior=expected.openings||[],next=actual.openings||[];
+      if(prior.length!==next.length||prior.some(item=>{
+        const restored=next.find(value=>value.id===item.id);
+        return !restored||['wallId','kind','hinge','swing'].some(field=>item[field]!==restored[field])||
+          ['offsetM','widthM','sillM','heightM','openFraction'].some(field=>!sameNumber(item[field],restored[field]));
+      }))throw new Error('History could not restore the exact opening layout. Its saved attachments were not replaced.');
+    }
     function emit(type){
       const event={type,project:getProject(),scene:getScene(),selection};
       listeners.forEach(listener=>listener(event));
@@ -89,9 +136,9 @@
         project.building.wallHeightM=project.legacy.context.cfg.ceilingHeight;
       syncActive(project);invalidate();
     }
-    function commit(label,work,{restore=false,render=true,remember=true}={}){
+    function commit(label,work,{restore=false,render=true,remember=true,verify=null}={}){
       if(busy)throw new Error('A project edit is already in progress.');
-      const before=clone(project);
+      const before=clone(project),beforeSelection=selection;
       busy=true;project=clone(project);invalidate();
       try{
         work(project);
@@ -101,12 +148,13 @@
         if(restore)adapter.restore(project.legacy);
         if(render)adapter.render();
         capture();
+        if(verify)verify();
         project.revision=before.revision+1;
         project.updatedAt=new Date().toISOString();
         syncActive(project);Model.validateProject(project);invalidate();
         if(remember){history.push({label,project:before});if(history.length>40)history.shift();future=[];}
       }catch(error){
-        project=before;invalidate();
+        project=before;selection=beforeSelection;invalidate();
         adapter.restore(before.legacy);adapter.render();
         throw error;
       }finally{busy=false;}
@@ -116,29 +164,82 @@
     function acceptLegacy(label='Edit layout'){
       if(busy||gesture)return;
       const next=adapter.capture();
-      if(JSON.stringify(next)===JSON.stringify(project.legacy))return;
+      const authoredLegacy=value=>{
+        const result=clone(value);delete result.controls.roomZoom;return result;
+      };
+      if(JSON.stringify(authoredLegacy(next))===JSON.stringify(authoredLegacy(project.legacy)))return;
       commit(label,()=>{},{render:false});
     }
     function find(kind,id){
       const scene=getScene();
       const collection=kind==='room'?scene?.rooms:kind==='furniture'?scene?.furniture:
-        kind==='wall'?scene?.walls:scene?.openings;
+        kind==='balcony'?scene?.balconies:kind==='wall'?scene?.walls:scene?.openings;
       const entity=collection?.find(item=>item.id===id);
-      if(!entity)throw new Error('The selected object is no longer on this floor.');
+      if(!entity||(kind==='window'&&entity.kind!=='window')||
+        (kind==='door'&&!['hinged','sliding'].includes(entity.kind)))
+        throw new Error('The selected object is no longer on this floor.');
       return entity;
+    }
+    function checkPartition(wall){
+      if(wall.exterior!==false||!['unknown','non-structural'].includes(wall.structuralRole))
+        throw new Error('Exterior, protected or unclassified walls cannot be removed or trimmed.');
+    }
+    function checkOpening(wall,values,kind,id=null){
+      if(wall.removed||typeof wall.exterior!=='boolean'||!['unknown','non-structural'].includes(wall.structuralRole))
+        throw new Error('Choose a surviving wall without a protected or unclassified structural role.');
+      const {startM,endM}=Model.retainedWallSpan(wall);
+      const offset=finite(values.offsetM,'Opening offset'),width=finite(values.widthM,'Opening width',true);
+      const sill=finite(values.sillM,'Sill height'),height=finite(values.heightM,'Opening height',true);
+      if(offset<startM||offset+width>endM+1e-7)throw new Error('The opening must fit within the retained host wall span.');
+      if(sill<0||sill+height>wall.heightM+1e-7)throw new Error('The opening must fit vertically within its host wall.');
+      if(width<(kind==='window'?.3:.68))throw new Error(kind==='window'
+        ?'The schematic window editor supports spans of at least 0.30 m.'
+        :'The schematic circulation model requires a door span of at least 0.68 m.');
+      if(!Number.isFinite(values.openFraction)||values.openFraction<0||values.openFraction>1)
+        throw new Error('Opening fraction must be between zero and one.');
+      if(kind==='hinged'){
+        if(!['start','end'].includes(values.hinge))throw new Error('Choose a valid hinge end.');
+        if(!['left','right'].includes(values.swing))throw new Error('Choose a valid swing side.');
+      }
+      if(getScene().openings.some(other=>other.id!==id&&other.wallId===wall.id&&
+        offset<other.offsetM+other.widthM-1e-7&&offset+width>other.offsetM+1e-7&&
+        sill<other.sillM+other.heightM-1e-7&&sill+height>other.sillM+1e-7))
+        throw new Error('The opening would overlap another opening or a removed part of the wall.');
     }
     function execute(command){
       if(!command||typeof command.type!=='string')throw new Error('Choose a valid editor action.');
       acceptLegacy();
       const type=command.type;
-      const render=!['update-site','update-solar-inputs','set-environment','rename-project'].includes(type);
-      const restore=['select-floor','add-floor','delete-floor'].includes(type);
-      const entityTypes={'update-room':'room','update-furniture':'furniture','rotate-furniture':'furniture',
+      if(type==='select-floor')return navigateFloor(command.id);
+      const featureCommand=['set-authored','upsert-authored','delete-authored','set-documentation','set-site-datum'].includes(type);
+      if(featureCommand)Model.assertJSON(command);
+      const render=!featureCommand&&!['update-site','update-solar-inputs','set-environment','rename-project'].includes(type);
+      const restore=['add-floor','delete-floor'].includes(type);
+      const entityTypes={'update-room':'room','delete-room':'room','delete-balcony':'balcony','update-furniture':'furniture','rotate-furniture':'furniture',
         'delete-furniture':'furniture','update-door':'door','update-window':'window','delete-opening':'opening',
-        'open-wall':'wall','restore-wall':'wall'};
+        'open-wall':'wall','restore-wall':'wall','trim-wall':'wall'};
       const entity=entityTypes[type]?find(entityTypes[type],command.id):null;
+      const beforeLayout=entity||type==='add-window'||type==='add-door'?getScene():null;
+      let added=null,deletedBalcony=null;
       return commit(type,doc=>{
-        if(type==='rename-project'){
+        if(type==='set-authored'){
+          if(command.value===null)delete active(doc).authored;
+          else active(doc).authored=clone(command.value);
+        }else if(type==='upsert-authored'||type==='delete-authored'){
+          const floor=active(doc),keys=Object.keys(Model.emptyAuthored()).filter(key=>key!=='version');
+          if(!keys.includes(command.collection))throw new Error('Choose a supported authored collection.');
+          if(!floor.authored)floor.authored=Model.emptyAuthored();
+          const list=floor.authored[command.collection],id=type==='delete-authored'?command.id:command.value?.id;
+          const index=list.findIndex(item=>item.id===id);
+          if(type==='delete-authored'){
+            if(index<0)throw new Error('The authored record no longer exists.');
+            list.splice(index,1);
+          }else if(index<0)list.push(clone(command.value));
+          else list[index]=clone(command.value);
+        }else if(type==='set-documentation'||type==='set-site-datum'){
+          const key=type==='set-documentation'?'documentation':'siteDatum';
+          if(command.value===null)delete doc[key];else doc[key]=clone(command.value);
+        }else if(type==='rename-project'){
           if(typeof command.name!=='string'||!command.name.trim())throw new Error('Enter a project name.');
           doc.name=command.name.trim().slice(0,150);
         }else if(type==='update-site'){
@@ -155,14 +256,29 @@
         }else if(type==='set-environment'){
           if(!command.patch||typeof command.patch!=='object'||Array.isArray(command.patch))throw new Error('Provide a valid analysis configuration.');
           doc.environment={...doc.environment,...clone(command.patch)};
+        }else if(type==='delete-room'){
+          if(command.confirmRemoval!==true)throw new Error('Confirm removal of the selected room and its room-owned components.');
+          if(typeof adapter.deleteRoom!=='function')throw new Error('Room removal is unavailable in this layout adapter.');
+          const scene=getScene();
+          adapter.deleteRoom(entity);
+          scene.furniture.filter(item=>item.roomId===entity.id).forEach(item=>{delete doc.furnitureEdits[item.id];});
+          scene.openings.filter(item=>item.roomId===entity.id||item.targetRoomId===entity.id).forEach(item=>{
+            delete doc.doorEdits[item.id];delete doc.windowEdits[item.id];
+          });
+          selection=null;
+        }else if(type==='delete-balcony'){
+          if(command.confirmRemoval!==true)throw new Error('Confirm removal of the selected balcony.');
+          if(typeof adapter.deleteBalcony!=='function')throw new Error('Balcony removal is unavailable in this layout adapter.');
+          const scene=getScene();
+          deletedBalcony={id:entity.id,survivors:scene.balconies.filter(item=>item.id!==entity.id)};
+          adapter.deleteBalcony(entity);
+          scene.openings.filter(item=>item.balconyId===entity.id).forEach(item=>{
+            delete doc.doorEdits[item.id];delete doc.windowEdits[item.id];
+          });
+          selection=null;
         }else if(type==='reset-floor-layout'){
           ['wallEdits','doorEdits','windowEdits','furnitureEdits'].forEach(key=>{doc[key]={};});
           adapter.resetLayout();
-        }else if(type==='select-floor'){
-          syncActive(doc);
-          const floor=doc.floors.find(item=>item.id===command.id);
-          if(!floor)throw new Error('Choose an existing floor.');
-          loadFloor(doc,floor);selection=null;
         }else if(type==='add-floor'){
           syncActive(doc);
           const source=command.copyFromId?doc.floors.find(item=>item.id===command.copyFromId):null;
@@ -172,7 +288,7 @@
             {id,heightM:3,wallHeightM:doc.building.wallHeightM,legacy:clone(doc.legacy)};
           floor.id=id;floor.name=typeof command.name==='string'&&command.name.trim()?command.name.trim():`Floor ${doc.floors.length}`;
           if(!source){
-            floor.legacy.manualLayouts=[];floor.legacy.context=null;
+            floor.legacy.manualLayouts=[];floor.legacy.context=null;delete floor.legacy.roomIdentities;
             Object.keys(floor.legacy.controls).filter(key=>/^(living|bed|kitchen|bath|pooja|balcony|lift|stair)Count$/.test(key))
               .forEach(key=>{floor.legacy.controls[key]={value:'0'};});
             FLOOR_FIELDS.forEach(key=>{floor[key]=['obstacles','electrical'].includes(key)?[]:{};});
@@ -194,7 +310,7 @@
           loadFloor(doc,doc.floors[Math.min(index,doc.floors.length-1)]);selection=null;
         }else if(type==='update-door'||type==='update-window'){
           const record={...(doc[type==='update-door'?'doorEdits':'windowEdits'][entity.id]||{})};
-          const keys=type==='update-door'?['hinge','swing','widthM','openFraction']:['widthM','sillM','heightM','openFraction'];
+          const keys=type==='update-door'?['hinge','swing','offsetM','widthM','heightM','openFraction']:['offsetM','widthM','sillM','heightM','openFraction'];
           keys.forEach(key=>{if(command[key]!==undefined)record[key]=command[key];});
           if(record.widthM!==undefined)finite(record.widthM,'Opening width',true);
           if(record.widthM!==undefined&&record.widthM<(type==='update-door'?.68:.3))
@@ -205,9 +321,9 @@
             throw new Error('Opening fraction must be between zero and one.');
           if(record.hinge!==undefined&&!['start','end'].includes(record.hinge))throw new Error('Choose a valid hinge end.');
           if(record.swing!==undefined&&!['left','right'].includes(record.swing))throw new Error('Choose a valid swing side.');
-          const wall=find('wall',entity.wallId),length=Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y);
-          if(entity.offsetM+(record.widthM??entity.widthM)>length+1e-7)throw new Error('The opening would extend past its wall.');
-          if(command.widthM!==undefined&&Math.abs(command.widthM-entity.widthM)>1e-7){
+          const wall=find('wall',entity.wallId);
+          checkOpening(wall,{...entity,...record},entity.kind,entity.id);
+          if(!entity.hosted&&command.widthM!==undefined&&Math.abs(command.widthM-entity.widthM)>1e-7){
             const host=getScene().rooms.find(room=>room.id===entity.roomId);
             if(host?.module){
               const alongX=Math.abs(wall.end.x-wall.start.x)>=Math.abs(wall.end.y-wall.start.y);
@@ -219,47 +335,114 @@
                 throw new Error('The current opening adapter needs a small end margin; use a smaller span or another position.');
             }
           }
-          const sill=record.sillM??entity.sillM,height=record.heightM??entity.heightM;
-          if(sill+height>wall.heightM+1e-7)throw new Error('The opening would extend above its wall.');
-          const overlap=getScene().openings.some(other=>other.id!==entity.id&&other.wallId===wall.id&&
-            other.kind!=='passage'&&entity.offsetM<other.offsetM+other.widthM-1e-7&&
-            entity.offsetM+(record.widthM??entity.widthM)>other.offsetM+1e-7&&
-            sill<other.sillM+other.heightM-1e-7&&sill+height>other.sillM+1e-7);
-          if(overlap)throw new Error('The opening would overlap another door or window.');
           doc[type==='update-door'?'doorEdits':'windowEdits'][entity.id]=record;
         }else if(type==='delete-opening'){
           adapter.deleteOpening(entity);
           delete doc.doorEdits[entity.id];delete doc.windowEdits[entity.id];
         }else if(type==='open-wall'){
-          if(entity.exterior||entity.structuralRole==='structural')throw new Error('Exterior or protected walls cannot be removed.');
+          checkPartition(entity);
           if(command.confirmConceptual!==true)throw new Error('Confirm this is a conceptual internal partition edit, not permission to demolish.');
+          if(command.toEnd===true&&command.widthM!==undefined)
+            throw new Error('To wall end computes an exact width; omit the separate width.');
+          const span=Model.wallOpeningSpan(entity,command),prior=doc.wallEdits[entity.id];
+          doc.wallEdits[entity.id]={...(prior?.retainedSpan?{retainedSpan:prior.retainedSpan}:{}),
+            full:command.full,...(command.toEnd?{toEnd:true,offsetM:span.offsetM}:span)};
+        }else if(type==='trim-wall'){
+          checkPartition(entity);
+          if(command.confirmConceptual!==true)throw new Error('Confirm this is a conceptual internal partition trim, not permission to demolish.');
+          const requested={startM:finite(command.startM,'Retained wall start'),
+            endM:command.endM===null?null:finite(command.endM,'Retained wall end',true)};
+          const span=Model.retainedWallSpan(entity,requested),prior=doc.wallEdits[entity.id]||{};
+          if(Object.prototype.hasOwnProperty.call(prior,'full'))
+            Model.wallOpeningSpan({...entity,retainedSpan:span},prior);
           const length=Math.hypot(entity.end.x-entity.start.x,entity.end.y-entity.start.y);
-          const offsetM=command.full?0:finite(command.offsetM,'Opening offset');
-          const widthM=command.full?length:finite(command.widthM,'Opening width',true);
-          if(offsetM<0||offsetM+widthM>length+1e-7)throw new Error('The open connection must remain within the wall span.');
-          doc.wallEdits[entity.id]={full:!!command.full,offsetM,widthM};
+          const retainedSpan={startM:span.startM,endM:span.endM===length?null:span.endM};
+          doc.wallEdits[entity.id]={...prior,retainedSpan};
         }else if(type==='restore-wall'){
+          checkPartition(entity);
+          if(command.confirmConceptual!==true)throw new Error('Confirm conceptual wall restoration before applying it.');
           const authored=Object.prototype.hasOwnProperty.call(doc.wallEdits,entity.id);
           delete doc.wallEdits[entity.id];
           const restored=adapter.restoreWall(entity);
           if(!authored&&!restored)throw new Error('There is no removed partition to restore. Edit or remove the hosted opening instead.');
-        }else if(type==='add-window'){
-          adapter.addWindow(command,find('wall',command.wallId));
+        }else if(type==='add-window'||type==='add-door'){
+          const wall=find('wall',command.wallId),kind=type==='add-window'?'window':'hinged';
+          if(command.kind!==undefined&&command.kind!==kind)throw new Error('The opening kind must match the requested door or window action.');
+          const values={...command,sillM:kind==='window'?command.sillM:0};
+          if(kind==='hinged'&&command.sillM!==undefined&&command.sillM!==0)
+            throw new Error('A door opening starts at the floor; sill height must be zero.');
+          checkOpening(wall,values,kind);
+          if(typeof adapter.addOpening!=='function')throw new Error('Wall-hosted opening placement is unavailable in this layout adapter.');
+          const preserved=getScene();
+          const sourceId=adapter.addOpening({...values,kind},wall);
+          if(typeof sourceId!=='string'||!sourceId)throw new Error('The added opening did not return a stable source ID.');
+          added={sourceId,wallId:wall.id,kind,values,preserved};
         }else if(entityTypes[type]){
           adapter.edit(command,entity,doc);
         }else throw new Error('This editor action is not supported.');
-      },{restore,render,remember:type!=='select-floor'});
+      },{restore,render,verify:()=>{
+        if(beforeLayout){
+          assertRoomLayout(beforeLayout,getScene(),{
+            changedId:type==='update-room'?entity.id:null,removedId:type==='delete-room'?entity.id:null
+          });
+        }
+        if(deletedBalcony){
+          const balconies=getScene()?.balconies||[];
+          if(balconies.some(item=>item.id===deletedBalcony.id)||deletedBalcony.survivors.some(prior=>{
+            const next=balconies.find(item=>item.id===prior.id);
+            return !next||['x','y','w','h'].some(key=>Math.abs(next.rect[key]-prior.rect[key])>1e-7);
+          }))throw new Error('The balcony deletion could not preserve the other balconies. The edit was rolled back.');
+        }
+        if(!added)return;
+        const item=getScene()?.openings.find(item=>item.sourceId===added.sourceId&&item.wallId===added.wallId&&item.kind===added.kind);
+        if(!item||['offsetM','widthM','heightM','sillM','openFraction'].some(key=>Math.abs(item[key]-added.values[key])>1e-7))
+          throw new Error('The opening could not retain its exact host and dimensions. The placement was rolled back.');
+        const scene=getScene();
+        if(added.preserved.openings.some(prior=>{
+          const next=scene.openings.find(value=>value.id===prior.id);
+          return !next||next.wallId!==prior.wallId||['offsetM','widthM','sillM','heightM','openFraction']
+            .some(key=>Math.abs(next[key]-prior[key])>1e-7);
+        }))throw new Error('The opening would replace or move an existing aperture. Placement was rolled back; edit the existing opening instead.');
+        if(added.preserved.furniture.some(prior=>{
+          const next=scene.furniture.find(value=>value.id===prior.id);
+          return !next||['x','y','w','h'].some(key=>Math.abs(next.rect[key]-prior.rect[key])>1e-7)
+            ||next.headLocal!==prior.headLocal;
+        }))throw new Error('The opening would displace existing furniture. Placement was rolled back; relocate the affected furniture first.');
+        selection=Object.freeze({kind:added.kind==='window'?'window':'door',id:item.id});
+      }});
     }
-    function restoreHistory(from,to){
-      if(!from.length)return false;
-      const target=from.pop(),before=clone(project);
+    function navigateFloor(id){
+      if(busy)throw new Error('A project edit is already in progress.');
+      const floor=project.floors.find(item=>item.id===id);
+      if(!floor)throw new Error('Choose an existing floor.');
+      if(id===project.activeFloorId)return getProject();
+      const before=project,beforeSelection=selection;
       busy=true;
       try{
-        project=clone(target.project);invalidate();adapter.restore(project.legacy);adapter.render();
-        capture();project.revision=before.revision+1;syncActive(project);invalidate();
+        project=clone(project);loadFloor(project,floor);invalidate();
+        Model.validateProject(project);
+        adapter.restore(project.legacy);adapter.render();selection=null;
+      }catch(error){
+        project=before;selection=beforeSelection;invalidate();
+        adapter.restore(before.legacy);adapter.render();throw error;
+      }finally{busy=false;}
+      emit('navigation');return getProject();
+    }
+    function restoreHistory(from,to){
+      if(busy)throw new Error('A project edit is already in progress. Finish it before using Undo or Redo.');
+      if(!from.length)return false;
+      const target=from.pop(),before=clone(project),beforeSelection=selection;
+      busy=true;
+      try{
+        project=clone(target.project);invalidate();
+        const expected=getScene();
+        adapter.restore(project.legacy);adapter.render();
+        capture();assertHistoryLayout(expected,getScene());project.revision=before.revision+1;
+        project.updatedAt=new Date().toISOString();
+        syncActive(project);Model.validateProject(project);invalidate();
         to.push({label:target.label,project:before});selection=null;
       }catch(error){
-        project=before;from.push(target);invalidate();adapter.restore(before.legacy);adapter.render();throw error;
+        project=before;selection=beforeSelection;from.push(target);invalidate();adapter.restore(before.legacy);adapter.render();throw error;
       }finally{busy=false;}
       emit('restore');return true;
     }
@@ -279,6 +462,9 @@
     }
     const api={
       getProject,getScene,getScenes,getSelection:()=>selection,execute,
+      getDrawingScene:()=>Projection.build(getProject()),
+      createSnapshot:options=>Projection.snapshot(getProject(),options),
+      inputFingerprint:inputs=>Model.inputFingerprint(getProject(),inputs),
       select(ref){
         if(ref!==null&&(!ref||typeof ref.id!=='string'||typeof ref.kind!=='string'))throw new Error('Choose a valid object.');
         if(selection?.kind===ref?.kind&&selection?.id===ref?.id)return;
@@ -305,7 +491,8 @@
         acceptLegacy('Move or resize');
       },
       selectSource(kind,sourceId){
-        const scene=getScene(),list=kind==='room'?scene?.rooms:kind==='furniture'?scene?.furniture:scene?.openings;
+        const scene=getScene(),list=kind==='room'?scene?.rooms:kind==='balcony'?scene?.balconies:
+          kind==='furniture'?scene?.furniture:kind==='wall'?scene?.walls:scene?.openings;
         const item=list?.find(value=>value.sourceId===sourceId||value.id===sourceId);
         if(item)api.select({kind,id:item.id});
       },
@@ -357,10 +544,11 @@
         const unit=document.querySelector(`#roadInputs select[data-dir="${input.dataset.dir}"]`);
         return [input.dataset.dir,{width:input.value,unit:unit.value}];
       }));
-      return {controls:readControls(),roads,splitAxis:splitAxisEdge()||null,
+      return {controls:readControls(),roads,splitAxis:splitAxisEdge()||null,roomIdentities:clone(roomIdentityState),
         manualLayouts:clone([...roomManualLayouts.entries()]),context:contextSnapshot()};
     },
     restore(legacy){
+      roomIdentityState=clone(legacy.roomIdentities||{});
       const states={...initialControls,...legacy?.controls};
       if(states.face?.value!==undefined){
         const face=document.getElementById('face');
@@ -438,6 +626,31 @@
       if(!item||item.kind!=='opening')throw new Error('Only added openings can be deleted. Generated access openings follow the room programme.');
       roomDeleteOpening(ctx,item);
     },
+    deleteRoom(entity){
+      const ctx=root.__roomPlanner;
+      if(!ctx)throw new Error('Generate a valid floor layout before removing rooms.');
+      roomRemoveFromPlan(ctx,entity.sourceId);
+    },
+    deleteBalcony(entity){
+      const ctx=root.__roomPlanner,input=document.getElementById('balconyCount');
+      if(!ctx||!ctx.g.balconies.some(item=>item.id===entity.sourceId))
+        throw new Error('The selected balcony is no longer on this floor.');
+      const count=input?.valueAsNumber;
+      if(!Number.isSafeInteger(count)||count<1)throw new Error('The balcony quantity is inconsistent. Reopen this floor before deleting.');
+      roomStableIds('balcony',count);
+      const identities=roomIdentityState.balcony,index=identities.ids.indexOf(entity.sourceId);
+      if(index<0)throw new Error('The balcony identity is not in the current programme.');
+      roomSaveManualLayout(ctx);
+      const saved=clone(roomManualLayouts.get(ctx.signature));
+      delete saved.balconies[entity.sourceId];
+      saved.openings=saved.openings.filter(item=>item.balconyId!==entity.sourceId);
+      saved.wallOpenings=saved.wallOpenings.filter(item=>item.balconyId!==entity.sourceId);
+      saved.preserveRooms=true;
+      identities.ids.splice(index,1);input.value=String(count-1);
+      const cfg=roomPlannerConfig();
+      makeRoomRequests(cfg);
+      roomManualLayouts.set(roomPlanSignature(ctx.plate,cfg),saved);
+    },
     setCeiling(height){document.getElementById('ceilingHeight').value=String(finite(height,'Wall height',true)/.3048);},
     restoreWall(wall){
       const ctx=root.__roomPlanner;if(!ctx)return false;
@@ -484,53 +697,21 @@
       }
       roomSaveManualLayout(ctx);
     },
-    addWindow(command,wall){
+    addOpening(command,wall){
       const ctx=root.__roomPlanner;if(!ctx)throw new Error('Generate a valid floor plate first.');
-      if(!wall.exterior||wall.removed)throw new Error('Choose a surviving exterior wall.');
-      const length=Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y);
-      const offset=finite(command.offsetM,'Window offset'),width=finite(command.widthM,'Window width',true);
-      if(width<.3)throw new Error('The legacy window editor supports spans of at least 0.30 m.');
-      if(offset<0||offset+width>length)throw new Error('The window must fit within the wall.');
-      const roomId=wall.roomIds[0],scene=controller.getScene(),room=scene.rooms.find(item=>item.id===roomId);
-      if(!room)throw new Error('This exterior wall is not attached to an editable room.');
-      const p=ctx.plan.placed.find(item=>item.req.id===room.sourceId);
-      const point=Model.wallPoint(wall,offset+width/2);
-      const candidate=['N','E','S','W'].map(edge=>roomPointToEdge(p.module,edge,point)).sort((a,b)=>a.distance-b.distance)[0];
-      if(!roomExteriorEdges(p.module,ctx.g).includes(candidate.edge))throw new Error('That room edge is not exterior.');
-      const height=finite(command.heightM,'Window height',true),sill=finite(command.sillM,'Window sill');
-      if(sill<0||sill+height>controller.getProject().building.wallHeightM)throw new Error('The window must fit vertically in the wall.');
-      if(scene.openings.some(opening=>opening.wallId===wall.id&&offset<opening.offsetM+opening.widthM-1e-7&&
-        offset+width>opening.offsetM+1e-7&&sill<opening.sillM+opening.heightM-1e-7&&sill+height>opening.sillM+1e-7))
-        throw new Error('The new window overlaps an existing opening. Edit that opening or choose another span.');
-      const fraction=command.openFraction;
-      if(!Number.isFinite(fraction)||fraction<0||fraction>1)throw new Error('Window opening fraction must be between zero and one.');
-      const record={id:freshId('window'),type:'window',roomId:p.req.id,edge:candidate.edge,
-        fraction:candidate.fraction,width,height,sillM:sill,openFraction:fraction,
-        operability:ctx.cfg.window.operability,windowType:'manual',label:`${p.req.label} window`};
-      const built=roomOpeningSegmentFromRecord(record,p);
-      if(Math.abs(built.width-width)>1e-6)throw new Error('The window needs room at the ends of its host wall.');
-      const horizontal=candidate.edge==='N'||candidate.edge==='S';
-      const actualCentre=horizontal?(built.segment.x1+built.segment.x2)/2:(built.segment.y1+built.segment.y2)/2;
-      if(Math.abs(actualCentre-(horizontal?point.x:point.y))>1e-6)
-        throw new Error('The window centre needs clearance from the room-wall ends.');
-      const existing=(ctx.plan.customOpenings||[]).slice();
-      // Legacy manual windows replace a room's generated set. Preserve that set
-      // explicitly so the shared add-window command really is additive.
-      for(const opening of scene.openings.filter(item=>item.kind==='window'&&item.roomId===room.id)){
-        const aliases=[opening.sourceId,...(opening.sourceIds||[])];
-        if(existing.some(item=>aliases.includes(item.id)))continue;
-        const original=ctx.plan.openings.windows.find(item=>aliases.includes(item.id));
-        if(!original)throw new Error('An existing window could not be preserved. Reload the layout before adding another.');
-        const middle={x:(original.segment.x1+original.segment.x2)/2,y:(original.segment.y1+original.segment.y2)/2};
-        const anchor=roomPointToEdge(p.module,original.edge,middle);
-        const preserved={id:original.id,type:'window',roomId:p.req.id,edge:original.edge,fraction:anchor.fraction,
-          width:opening.widthM,height:opening.heightM,sillM:opening.sillM,openFraction:opening.openFraction,
-          operability:original.operability,windowType:original.windowType,label:original.label,
-          origin:'preserved-generated'};
-        existing.push({...preserved,...roomOpeningSegmentFromRecord(preserved,p),custom:true});
-      }
-      ctx.plan.customOpenings=[...existing,{...record,...built,custom:true}];
+      const scene=controller.getScene(),room=scene.rooms.find(item=>item.id===wall.roomIds[0]);
+      const target=scene.rooms.find(item=>item.id===wall.roomIds[1]);
+      const type=command.kind==='window'?'window':'door';
+      const record={id:freshId(type),type,kind:command.kind,wallId:wall.id,
+        roomId:room?.sourceId||null,targetRoomId:target?.sourceId||null,
+        offsetM:command.offsetM,widthM:command.widthM,heightM:command.heightM,sillM:command.sillM,
+        width:command.widthM,height:command.heightM,openFraction:command.openFraction,custom:true,
+        label:`${room?.label||'Wall'} ${type}`};
+      if(type==='door'){record.hinge=command.hinge;record.swing=command.swing;}
+      else if(Number.isFinite(ctx.cfg.window?.operability))record.operability=ctx.cfg.window.operability;
+      ctx.plan.customOpenings=[...(ctx.plan.customOpenings||[]),record];
       roomSaveManualLayout(ctx);
+      return record.id;
     }
   };
   controller=createController(adapter,Model);
@@ -540,27 +721,47 @@
     const plate=root.__roomPlanner?.g===g?root.__roomPlanner.plate:{id:'whole',frontEdge:g.frontEdge,width:g.W,depth:g.D};
     return {plate:{...plate,frontEdge:g.frontEdge,width:g.W,depth:g.D},g,plan,cfg};
   }
+  controller.prepareHostedOpenings=(g,plan,cfg)=>{
+    const hosted=(plan.customOpenings||[]).filter(record=>record.wallId);
+    if(!plan.openings)return;
+    for(const kind of ['doors','windows'])
+      plan.openings[kind]=(plan.openings[kind]||[]).filter(record=>!record.projectHosted);
+    if(!hosted.length)return;
+    const scene=Model.buildScene(renderContext(g,plan,cfg),controller.getProject());
+    for(const record of hosted){
+      const opening=scene.openings.find(item=>item.sourceId===record.id||item.sourceIds?.includes(record.id));
+      if(!opening)continue;
+      Object.assign(record,{segment:{...opening.segment},width:opening.widthM,height:opening.heightM,projectHosted:true});
+      const room=plan.placed.find(item=>item.req.id===record.roomId);
+      if(room){
+        const middle={x:(opening.segment.x1+opening.segment.x2)/2,y:(opening.segment.y1+opening.segment.y2)/2};
+        const edge=['N','E','S','W'].map(edge=>roomPointToEdge(room.module,edge,middle)).sort((a,b)=>a.distance-b.distance)[0];
+        record.edge=edge.edge;
+        record.fraction=edge.fraction;
+      }
+      plan.openings[opening.kind==='window'?'windows':'doors'].push(record);
+    }
+  };
   controller.preparePartitions=(g,plan,cfg)=>{
     plan.wallOpenings=(plan.wallOpenings||[]).filter(item=>!item.projectOverlay);
     const scene=Model.buildScene(renderContext(g,plan,cfg),controller.getProject());
     const edits=controller.getProject().wallEdits;
     scene.walls.filter(wall=>edits[wall.id]&&!wall.exterior).forEach(wall=>{
-      const edit=edits[wall.id],length=Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y);
-      const width=edit.full?length:edit.widthM,offset=edit.full?0:edit.offsetM;
-      const start=Model.wallPoint(wall,offset),end=Model.wallPoint(wall,offset+width);
+      const length=Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y);
       const rooms=wall.roomIds.map(id=>scene.rooms.find(room=>room.id===id)).filter(Boolean);
-      rooms.forEach(room=>{
+      wall.openings.filter(opening=>opening.kind==='passage').forEach((opening,index)=>rooms.forEach(room=>{
+        const width=opening.widthM,start=Model.wallPoint(wall,opening.offsetM),end=Model.wallPoint(wall,opening.offsetM+width);
         const placed=plan.placed.find(item=>item.req.id===room.sourceId);
         if(!placed)return;
         const mid={x:(start.x+end.x)/2,y:(start.y+end.y)/2};
         const nearest=['N','E','S','W'].map(edge=>roomPointToEdge(placed.module,edge,mid)).sort((a,b)=>a.distance-b.distance)[0];
         const target=rooms.find(item=>item.id!==room.id);
-        plan.wallOpenings.push({id:`project-${wall.id}-${room.id}`,projectOverlay:true,
+        plan.wallOpenings.push({id:`project-${wall.id}-${room.id}-${index}`,projectOverlay:true,
           type:'wall-opening',roomId:room.sourceId,targetRoomId:target?.sourceId||null,
-          edge:nearest.edge,fraction:nearest.fraction,width,full:edit.full,
+          edge:nearest.edge,fraction:nearest.fraction,width,full:opening.offsetM===0&&Math.abs(width-length)<1e-7,
           segment:{x1:start.x,y1:start.y,x2:end.x,y2:end.y},
           targetLabel:target?.label||'Internal passage',label:'Open internal partition'});
-      });
+      }));
     });
   };
   controller.applyOpeningEdits=(g,plan,cfg)=>{
@@ -568,7 +769,8 @@
     for(const record of [...(plan.openings?.doors||[]),...(plan.openings?.windows||[])]){
       const opening=scene.openings.find(item=>item.sourceId===record.id||item.sourceIds?.includes(record.id));
       if(!opening)continue;
-      record.width=opening.widthM;record.segment={...opening.segment};
+      record.width=opening.widthM;record.height=opening.heightM;record.segment={...opening.segment};
+      record.openFraction=opening.openFraction;
       record.hinge=opening.hinge;record.swing=opening.swing;
       if(record.custom){
         const room=plan.placed.find(item=>item.req.id===record.roomId);
@@ -665,16 +867,26 @@
     const timeZone=document.getElementById('sunTimeZone').value.trim();
     const sunSelection={date:document.getElementById('sunDate').value,time:document.getElementById('sunTime').value,
       occurrence:document.getElementById('sunOccurrence').value};
-    if(!Number.isFinite(latitude)||Math.abs(latitude)>90||!Number.isFinite(longitude)||Math.abs(longitude)>180)return;
-    try{root.HomeSun.calculate({latitude,longitude,timeZone,...sunSelection});}
-    catch(error){if(error instanceof root.HomeSun.InputError)return;throw error;}
+    root.HomeSun.calculate({latitude,longitude,timeZone,...sunSelection});
     const current=controller.getProject().site;
     if(current.latitude!==latitude||current.longitude!==longitude||current.timeZone!==timeZone||
       JSON.stringify(controller.getProject().environment.sunSelection)!==JSON.stringify(sunSelection))
       controller.execute({type:'update-solar-inputs',site:{latitude,longitude,timeZone},sunSelection});
   };
-  solarIds.forEach(id=>document.getElementById(id)?.addEventListener('input',syncSolar));
-  document.addEventListener('homeplanner:sun-change',syncSolar);
+  document.getElementById('sunApplyProject')?.addEventListener('click',()=>{
+    const status=document.getElementById('sunProjectStatus');
+    try{syncSolar();status.textContent='Solar location and time applied to this project. Verify site coordinates in Site; this is not a survey.';}
+    catch(error){status.textContent=`Not applied: ${error.message}`;}
+  });
+  document.getElementById('sunUseProject')?.addEventListener('click',()=>{
+    const project=controller.getProject(),site=project.site,saved=project.environment.sunSelection;
+    const values=[String(site.latitude),String(site.longitude),site.timeZone,
+      saved?.date||document.getElementById('sunDate').value,
+      saved?.time||document.getElementById('sunTime').value,saved?.occurrence||''];
+    solarIds.forEach((id,i)=>{document.getElementById(id).value=values[i];});
+    document.getElementById('sunLatitude').dispatchEvent(new Event('input',{bubbles:true}));
+    document.getElementById('sunProjectStatus').textContent='Project defaults copied into this exploration. Further edits stay here until explicitly applied.';
+  });
   controller.subscribe(event=>{
     if(event.type==='selection'){
       const focused=document.activeElement,within=focused?.closest?.('#roomPlan');
@@ -689,14 +901,6 @@
     }
     if(event.type==='project'||event.type==='restore')
       document.dispatchEvent(new CustomEvent('homeplanner:project-context'));
-    const site=event.project.site;
-    const saved=event.project.environment.sunSelection;
-    const values=[String(site.latitude),String(site.longitude),site.timeZone,
-      saved?.date||document.getElementById('sunDate').value,
-      saved?.time||document.getElementById('sunTime').value,saved?.occurrence||''];
-    let changed=false;
-    solarIds.forEach((id,i)=>{const el=document.getElementById(id);if(el&&el.value!==values[i]){el.value=values[i];changed=true;}});
-    if(changed)document.getElementById('sunLatitude').dispatchEvent(new Event('input',{bubbles:true}));
     const status=document.getElementById('plannerBridgeStatus'),floor=event.project.floors.find(item=>item.id===event.project.activeFloorId);
     if(status&&floor){
       const limit=root.__roomPlanner?.plate.maxFloors??root.__roomPlanner?.plate.floors;

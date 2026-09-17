@@ -6,6 +6,11 @@ this feature. It does not upload project or weather data.
 
 ## Using the controls
 
+Project name, **Save now** and the single save status are in the persistent
+project bar. **Projects & backups** opens management/import/autosave controls;
+**Report** exposes the existing project JSON export. All are the same live
+persistence controller, not separate saves.
+
 - **Project name / Rename** changes the current project's name through the
   shared planner command API. Project IDs, not names, identify saved copies.
 - **Autosave in this browser** is initially **off**. Enabling it saves the
@@ -17,10 +22,13 @@ this feature. It does not upload project or weather data.
   is not treated as a committed transaction.
 - **Saved in this browser / Open** loads the selected ID, including its
   inactive floors, independent floor edits, electrical points, weather
-  records, analysis configuration and provenance.
+  records, analysis configuration and provenance. The list distinguishes
+  checking storage, a successfully loaded empty list (**No browser projects**),
+  and **Browser projects unavailable** with a visible storage error.
 - **New project** keeps existing saved projects. New and Open use an in-app
-  confirmation when current work is not saved. If the planner changes while
-  a restore is waiting, restoration stops rather than replacing those edits.
+  confirmation when current work is not saved **or a workbench has pending input
+  drafts**. If the planner or pending fields change while a restore is waiting,
+  restoration stops rather than replacing those edits.
 - **Delete local copy** always requires an in-app confirmation. It removes
   only that ID, not the working layout or downloaded files. Deleting the
   current ID first turns autosave off so this tab does not recreate it.
@@ -35,9 +43,17 @@ this feature. It does not upload project or weather data.
   validation, cancelled reads and file-read errors leave current work intact
   and display an error. The file input resets so the same file can be retried.
 
+`planner-drafts.js` registers session-only input drafts, not another authored
+project store. The save status separately identifies pending fields that are
+**not included** in a committed browser copy or JSON export. New/Open/import
+confirmations account for those fields even when the model itself is already
+saved. Parked drafts keep their original project/floor/record identity and return
+when that owner is revisited. Before-unload protection also includes parked
+drafts. They are not durable backups: explicitly apply wanted inputs first.
+
 The remembered project is automatically opened **only on initial startup and
 only when autosave was previously enabled**. A startup ID/revision/content
-guard prevents delayed loading from overwriting edits made while IndexedDB
+guard, including pending form drafts, prevents delayed loading from overwriting edits made while IndexedDB
 opens. In that case the remembered project remains selected for an explicit
 Open, and autosave is paused. Its checked box reflects the previous opt-in:
 choose Save now to keep and resume saving the current layout, Open to restore
@@ -92,7 +108,8 @@ The coordinator owns these additions to `index.html`:
 <div id="plannerPersistence"></div>
 ```
 
-Load `planner-storage.js`, then `planner-persistence.js`, **after**
+Load `planner-drafts.js` before the workbench modules. Load `planner-storage.js`,
+then `planner-persistence.js`, **after**
 `planner-model.js`, existing inline startup and `planner-bridge.js`.
 `HomePlanner` must already be available. The persistence UI mounts only
 `#plannerPersistence`; it does not own history/floor controls or listen to
@@ -122,11 +139,20 @@ keyboard nudges still follow the chosen dimension unit. This prevents a reload
 or floor switch from changing plot geometry through display rounding.
 
 `HomePlannerPersistence.mount(host, planner, options?)` returns
-`{controller, destroy}`. Browser scripts mount automatically once.
+`{controller, requestExportJSON, requestImportJSON, destroy}`. Browser scripts mount automatically once.
 `host.homePlannerPersistence` refers to the controller; the module also
 exposes `HomePlannerPersistence.instance`. `destroy()` unsubscribes and
 releases pending downloads/connections. CommonJS exports permit dependency-
 injected controller tests without a DOM or new framework.
+
+The mounted controller and mount handle both expose `requestExportJSON()` and
+`requestImportJSON()`. A model/2D toolbar should call these methods from its button
+activation, not implement another file format. Export uses the existing complete
+editable-project codec, download/URL lifecycle and honest requested-download
+notice. Import opens the same file picker, validates before replacement, allocates
+a new project ID and uses the same in-app confirmation. A confirmation requested
+outside Projects & backups opens that menu so it is visible. These methods do
+not enable autosave, truncate to the active floor or replace old saved IDs.
 
 ## Storage API and format
 

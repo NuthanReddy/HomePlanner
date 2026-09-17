@@ -25,6 +25,14 @@ test('equivalent UTC and local clock inputs give the same position',()=>{
   assert.deepEqual(a.vector,b.vector);
 });
 
+test('public interval helpers preserve the existing angles and explicit DST candidates',()=>{
+  const instant=new Date('2026-09-08T06:30:00Z'),position=model.position(instant,base.latitude,base.longitude);
+  assert.deepEqual(position.vector,model.calculate(base).vector);
+  const candidates=model.localCandidates('2026-11-01','01:30','America/New_York');
+  assert.equal(candidates.length,2);
+  assert.equal(candidates[1]-candidates[0],3600000);
+});
+
 test('day summary reuses SunCalc event boundaries and derives exact sunrise-to-sunset duration',()=>{
   const config={...base,latitude:17.3262,longitude:78.5916,date:'2026-09-15',time:'10:44'};
   const direct=SunCalc.getTimes(model.resolveLocal(config.date,'12:00',config.timeZone).instant,

@@ -371,6 +371,20 @@ test('surface anchors are light-only, lie on a known room surface, and need expl
   assert.deepEqual(Electrical.resolveAnchor({ ...point, anchor: { kind: 'floor', x: 2, y: 3 }, elevationM: 0 }, sceneFixture()).position, { x: 2, y: 3, z: 3 });
 });
 
+test('surface points cannot use a host-room footprint reserved by a lift or staircase',()=>{
+  const scene=sceneFixture();
+  scene.rooms[0].usableRegions=[{x:0,y:0,w:6,h:1},{x:0,y:1,w:1,h:4},{x:4,y:1,w:2,h:4}];
+  const point={...pointFixture({type:'light',elevationM:0,elevationReference:'mounting-point'}),anchor:{kind:'floor',x:2,y:3}};
+  const before=clone(point),blocked=Electrical.resolveAnchor(point,scene);
+  assert.equal(blocked.drawable,false);
+  assert.ok(blocked.checks.some(check=>check.code==='reserved-room-area'));
+  assert.deepEqual(point,before);
+  const available=Electrical.resolveAnchor({...point,anchor:{kind:'floor',x:0.5,y:3}},scene);
+  assert.equal(available.drawable,true);
+  scene.rooms[0].usableRegions=[];
+  assert.equal(Electrical.resolveAnchor(point,scene).drawable,false);
+});
+
 test('validation rejects invented ratings/types, bad numerics, missing purpose, and cross-floor records', () => {
   assert.deepEqual(Electrical.validatePoint(pointFixture()), []);
   for (const overrides of [

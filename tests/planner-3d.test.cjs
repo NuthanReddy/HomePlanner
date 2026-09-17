@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const View = require('../planner-3d.js');
 const Model = require('../planner-model.js');
+const Regions = require('../planner-regions.js');
 
 const close = (actual, expected) =>
   assert.ok(Math.abs(actual - expected) < 1e-7, `Expected ${actual} ≈ ${expected}`);
@@ -46,6 +47,85 @@ function stackedFixture() {
   ] };
   return { scene, wall, holes, exact };
 }
+
+test('usable floor fragments exclude full service reservations and preserve room picking at rotated headings', async () => {
+  const THREE = await import('../vendor/three/three.module.min.js');
+  const { scene } = fixture(), rect = { x: 1, y: 1, w: 6, h: 5 };
+  const footprint = { x: 3, y: 2, w: 1.2, h: 2 }, service = { x: 3.1, y: 2.1, w: 1, h: 1.8 };
+  const usableRegions = Regions.subtractRectangle(rect, [footprint]);
+  const project = freeze({ activeFloorId: 'ground', building: { roofThicknessM: .15 },
+    floors: [{ id: 'ground', name: 'Ground' }] });
+  for (const headingDeg of [0, 37, 90, 180, 270]) {
+    const floor = freeze({ ...scene, coordinateSpace: 'site-local', plot: scene.floor, headingDeg, floorElevationM: 2.5,
+      rooms: [
+        { id: 'ground:host', label: 'Living', rect, usableRegions },
+        { id: 'ground:lift', label: 'Lift', rect: service, usableRegions: [service], reservesSpace: true, reservationFootprint: footprint }
+      ] });
+    const before = JSON.stringify([floor, project]), content = View.buildContent(THREE, [floor], project, Model, { cutaway: true });
+    try {
+      const host = content.refs.get('room\0ground:host'), lift = content.refs.get('room\0ground:lift');
+      assert.equal(host.objects.length, usableRegions.length);
+      assert.equal(lift.objects.length, 1);
+      close(host.objects.reduce((area, mesh) => area + mesh.geometry.parameters.width * mesh.geometry.parameters.depth, 0),
+        rect.w * rect.h - footprint.w * footprint.h);
+      assert.ok(host.objects.every(mesh => mesh.material === host.objects[0].material));
+      for (const [index, region] of usableRegions.entries()) {
+        const mesh = host.objects[index];
+        assert.deepEqual(mesh.userData.entityRef, { kind: 'room', id: 'ground:host' });
+        assert.ok(content.pickables.includes(mesh));
+        close(mesh.geometry.parameters.width, region.w); close(mesh.geometry.parameters.depth, region.h);
+        close(mesh.position.y, 2.5 + View.PREVIEW.finishM / 2);
+        const point = View.toThree({ x: region.x + region.w / 2, y: region.y + region.h / 2 }, floor, 4);
+        const ray = new THREE.Raycaster(new THREE.Vector3(point.x, point.y, point.z), new THREE.Vector3(0, -1, 0));
+        assert.ok(ray.intersectObjects(host.objects).length > 0);
+      }
+      const center = View.toThree({ x: service.x + service.w / 2, y: service.y + service.h / 2 }, floor, 4);
+      const ray = new THREE.Raycaster(new THREE.Vector3(center.x, center.y, center.z), new THREE.Vector3(0, -1, 0));
+      assert.equal(ray.intersectObjects(host.objects).length, 0, 'host finish must not cover or steal picking inside the service');
+      assert.equal(ray.intersectObjects(lift.objects)[0].object.userData.entityRef.id, 'ground:lift');
+      assert.equal(JSON.stringify([floor, project]), before);
+    } finally { View.disposeObject(content.group); }
+  }
+});
+
+test('explicit empty usable regions render no floor, while omitted legacy regions retain the rectangle', async () => {
+  const THREE = await import('../vendor/three/three.module.min.js'), { scene } = fixture();
+  const project = { activeFloorId: 'ground', building: { roofThicknessM: .15 }, floors: [{ id: 'ground', name: 'Ground' }] };
+  const content = View.buildContent(THREE, [{ ...scene, rooms: [
+    { id: 'ground:empty', rect: { x: 1, y: 1, w: 2, h: 2 }, usableRegions: [] },
+    { id: 'ground:legacy', rect: { x: 4, y: 1, w: 2, h: 3 } }
+  ] }], project, Model);
+  try {
+    assert.equal(content.refs.has('room\0ground:empty'), false);
+    const legacy = content.refs.get('room\0ground:legacy');
+    assert.equal(legacy.objects.length, 1);
+    close(legacy.objects[0].geometry.parameters.width * legacy.objects[0].geometry.parameters.depth, 6);
+  } finally { View.disposeObject(content.group); }
+});
+
+test('valid narrow derived regions retain their exact footprint instead of disappearing at the legacy box threshold', async () => {
+  const THREE = await import('../vendor/three/three.module.min.js'), { scene } = fixture();
+  const region = { x: 1, y: 1, w: 1e-8, h: 2 };
+  const project = { activeFloorId: 'ground', building: {}, floors: [{ id: 'ground', name: 'Ground' }] };
+  const content = View.buildContent(THREE, [{ ...scene, rooms: [
+    { id: 'ground:sliver', rect: { x: 1, y: 1, w: 2, h: 2 }, usableRegions: [region] }
+  ] }], project, Model);
+  try {
+    const mesh = content.refs.get('room\0ground:sliver').objects[0];
+    assert.equal(mesh.geometry.parameters.width, region.w);
+    assert.equal(mesh.geometry.parameters.depth, region.h);
+    assert.ok(content.pickables.includes(mesh));
+  } finally { View.disposeObject(content.group); }
+});
+
+test('invalid supplied regions fail instead of being filled with their editable bounding rectangle', async () => {
+  const THREE = await import('../vendor/three/three.module.min.js'), { scene } = fixture();
+  const rect = { x: 1, y: 1, w: 2, h: 2 };
+  const project = { activeFloorId: 'ground', building: {}, floors: [{ id: 'ground', name: 'Ground' }] };
+  for (const usableRegions of [null, [rect, rect], [{ ...rect, x: 5 }]])
+    assert.throws(() => View.buildContent(THREE, [{ ...scene, rooms: [{ id: 'ground:room', rect, usableRegions }] }], project, Model),
+      /regions|rectangles|bounding-box/);
+});
 
 async function checkWallRays(wall, openings, scene, samples) {
   const THREE = await import('../vendor/three/three.module.min.js');

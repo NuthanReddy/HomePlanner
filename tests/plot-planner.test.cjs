@@ -146,12 +146,21 @@ test('sensitivity curves apply custom setbacks and the selected floor-count cap'
 });
 
 test('product heading is shared but regulatory introduction belongs only to Plot Planner',()=>{
-  const header=html.match(/<header>([^]*?)<\/header>/)[1];
+  const header=html.match(/<header class="hp-project-bar">([^]*?)<\/header>/)[1];
   assert.match(header,/<h1>HomePlanner<\/h1>/);
   assert.doesNotMatch(header,/G\.O\.Ms|GHMC|TG-bPASS/);
-  assert.match(html,/<button data-page="optimizer"[^>]*>Plot Planner<\/button>/);
+  assert.match(html,/<button type="button" data-workspace="site"[^>]*>Site · Plot Planner<\/button>/);
   assert.match(html,/<div class="app-page on" id="page-optimizer">\s*<div class="plot-introduction">/);
   assert.match(html,/750–2,000 sq m plots: 18–21 m band; extra floors: above 2,000 sq m/);
+});
+
+test('core plot controls and generated road fields have explicit accessible names',()=>{
+  for(const id of ['face','dunit','pEW','pNS','use','ffh','plotRate','govRate','flatRate','buildRate','stiltRate','stampPct','gstPct'])
+    assert.match(html,new RegExp(`<label[^>]*for="${id}"`),id);
+  for(const id of ['cat','plotRateUnit','govRateUnit'])
+    assert.match(html,new RegExp(`<select id="${id}"[^>]*aria-label="[^"]+"`),id);
+  assert.ok(html.includes('aria-label="${DIRNAME[d]} road width"'));
+  assert.ok(html.includes('aria-label="${DIRNAME[d]} road width units"'));
 });
 
 test('intermediate room rebuilds cannot combine new geometry with old plot boundaries',()=>{

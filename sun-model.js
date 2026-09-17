@@ -299,5 +299,5 @@
   }
 
   return Object.freeze({InputError,validate,calculate,daySummary,shadowLengthM,dailySamples,dailyIntervals,daylightExtrema,daylightSegments,
-    annualSamples,referencePaths,hourlyPaths,resolveLocal,dateAt,daysInYear,dayOfYear,dateFromDay,csv});
+    annualSamples,referencePaths,hourlyPaths,resolveLocal,localCandidates,position,dateAt,daysInYear,dayOfYear,dateFromDay,csv});
 });

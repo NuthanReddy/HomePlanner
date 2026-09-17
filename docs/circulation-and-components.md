@@ -15,10 +15,18 @@ The planner creates an access graph after room placement:
 - A bedroom receives at most one ensuite.
 - Requests above one common bathroom plus one per bedroom remain unplaced and
   are reported.
-- Lifts and stairs overlay the side-corridor band and open to its remaining
-  side/front/rear circulation, never through the home. Their occupied area is
-  deducted from corridor/service totals once; compliant unobstructed widths
-  still require professional design.
+- Lifts and stairs can move inside the dwelling and reserve footprints within
+  ordinary rooms. Their full wall-inclusive footprints are removed from host
+  usable floor regions and cannot overlap another service reservation.
+- Direct corridor or valid internal access is evaluated separately from free
+  placement. Missing access is flagged rather than snapping the service back
+  to a fixed location. Shafts, floor openings, landings and compliant escape
+  routes still require professional design.
+- New lift proposals prefer the side of a staircase's shared passage. Its
+  full wall-inclusive footprint cannot block an existing stair entrance
+  passage or the configured along-stair clearance guide. Move/resize rejection
+  preserves the old plan and does not shift another room or passage to make
+  space. Manual non-adjacent positions remain available where valid.
 
 Shared-wall openings use the actual overlap segment. Small gaps up to one
 internal-wall thickness may be bridged when packing has left a wall module
@@ -38,6 +46,12 @@ between otherwise adjacent spaces.
 
 New-item dimensions are read when the item is added. Changing a component
 default does not resize furniture already on the plan.
+Rotation first tries the current centre. If blocked, it searches valid
+same-room positions based on room/obstacle edges and door-sweep boundaries,
+keeping the swapped dimensions and the requested head direction. It does not
+rotate only in place or change another component to make room. No valid found
+placement leaves the original item intact. Rotation/repositioning is one
+Undoable edit.
 
 ## Doors and windows
 
@@ -79,7 +93,9 @@ group. Exterior walls cannot be removed.
 
 ## Keyboard and pointer controls
 
-- Drag a room/component to move it.
+- Drag a room/component to preview its destination, then release to commit.
+  Objects may cross blocked intermediate positions; only the final position
+  is committed. Invalid destinations or cancellation retain the old placement.
 - Drag a room edge, cupboard edge, or kitchen-counter edge to resize.
 - Use arrow keys for incremental movement.
 - Use Shift+arrow on resizable furniture to resize.

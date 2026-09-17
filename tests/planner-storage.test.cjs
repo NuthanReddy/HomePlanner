@@ -254,6 +254,37 @@ test('save uses one readwrite transaction and resolves only after commit, not pu
   await assert.rejects(store.load(input.id), code('StorageClosedError'));
 });
 
+test('versioned authored data traverses real bridge and IndexedDB request path without projection loss', async t => {
+  const Model = require('../planner-model.js');
+  const Fixtures = require('./fixtures/drawing-fixtures.cjs');
+  const planner = Fixtures.controllerFor(Fixtures.createFixture('multiple-floors').project);
+  const authored = Model.emptyAuthored();
+  authored.annotations.push({ id: 'ground:authored:note', text: 'Preserve me',
+    anchor: { kind: 'entity', floorId: 'upper', entityId: 'upper:study', entityKind: 'room' } });
+  planner.execute({ type: 'set-authored', value: authored });
+  const script = scriptedDatabase(), store = await Storage.open(script.factory);
+  t.after(() => store.close());
+  const saved = store.save(planner.getProject()), saveTx = script.transactions[1];
+  saveTx.requests[0].succeed(undefined);
+  const envelope = copy(saveTx.requests[1].value);
+  assert.deepEqual(envelope.document.floors[0].authored, authored);
+  saveTx.requests[1].succeed(envelope.id); saveTx.complete();
+  await saved;
+  const loaded = store.load(envelope.id), loadTx = script.transactions[2];
+  loadTx.requests[0].succeed(envelope); loadTx.complete();
+  const other = Fixtures.controllerFor(Model.createProject());
+  other.replaceProject((await loaded).document);
+  assert.deepEqual(other.getProject(), planner.getProject());
+  other.execute({ type: 'select-floor', id: 'upper' });
+  const same = store.save(other.getProject()), sameTx = script.transactions[3];
+  sameTx.requests[0].succeed(envelope);
+  assert.deepEqual(sameTx.requests[1].value, envelope);
+  sameTx.requests[1].succeed(envelope.id); sameTx.complete(); await same;
+  const invalid = copy(other.getProject()); invalid.floors[0].authored.version = 2;
+  await assert.rejects(store.save(invalid), code('ProjectValidationError'));
+  assert.equal(script.transactions.length, 4);
+});
+
 test('quota errors and explicit transaction aborts reject a save', async () => {
   for (const quota of [true, false]) {
     const script = scriptedDatabase(), store = await Storage.open(script.factory);
@@ -470,6 +501,31 @@ test('first launch is opt-in: no project writes, no restore and no autosave for 
   assert.equal(store.saves.length, 0);
   assert.equal(controller.getState().dirty, true);
   assert.equal(planner.replacements, 0);
+});
+
+test('real bridge floor navigation neither dirties saved inputs nor causes same-revision save conflicts', async t => {
+  const Model = require('../planner-model.js');
+  const Fixtures = require('./fixtures/drawing-fixtures.cjs');
+  const planner = Fixtures.controllerFor(Fixtures.createFixture('multiple-floors').project);
+  const store = memoryStore(), { controller, timer } = controllerFor(t, planner, store, { model: Model });
+  await controller.ready;
+  await controller.saveNow();
+  const before = planner.getProject(), token = controller.revisionToken();
+  planner.execute({ type: 'select-floor', id: 'upper' });
+  planner.select({ kind: 'room', id: 'upper:study' });
+  assert.equal(controller.getState().dirty, false);
+  assert.equal(controller.revisionToken(), token);
+  assert.equal(timer.pending, 0);
+  await controller.saveNow();
+  assert.equal(planner.getProject().revision, before.revision);
+  const authored = Model.emptyAuthored();
+  authored.annotations.push({ id: 'upper:authored:note', text: 'Only upper',
+    anchor: { kind: 'entity', floorId: 'upper', entityId: 'upper:study', entityKind: 'room' } });
+  planner.execute({ type: 'set-authored', value: authored });
+  assert.equal(controller.getState().dirty, true);
+  await controller.saveNow();
+  assert.deepEqual(store.records.get(before.id).document.floors[1].authored, authored);
+  assert.equal('authored' in store.records.get(before.id).document.floors[0], false);
 });
 
 test('Save now works without enabling autosave and a later reload does not secretly restore it', async t => {
@@ -801,13 +857,15 @@ function domHarness() {
   }
   const view = {
     Blob,
+    listeners: new Map(),
     URL: {
       createObjectURL(blob) { const url = `blob:test-${++sequence}`; blobs.set(url, blob); return url; },
       revokeObjectURL(url) { revoked.push(url); }
     },
     setTimeout(fn) { const id = ++sequence; timers.set(id, fn); return id; },
     clearTimeout(id) { timers.delete(id); },
-    addEventListener() {}, removeEventListener() {}
+    addEventListener(name, listener) { this.listeners.set(name, listener); },
+    removeEventListener(name) { this.listeners.delete(name); }
   };
   document = {
     defaultView: view, activeElement: null,
@@ -834,6 +892,22 @@ function mounted(t, extra = {}) {
   return { dom, planner, store, ui };
 }
 
+test('mounted empty project list leaves loading state after the database connects', async t => {
+  const { dom, ui } = mounted(t);
+  assert.match(dom.host.textContent, /Checking browser projects/);
+  await ui.controller.ready;
+  assert.match(dom.host.textContent, /No browser projects/);
+  assert.doesNotMatch(dom.host.textContent, /Checking browser projects/);
+});
+
+test('mounted unavailable database does not claim an empty or still-loading project list', async t => {
+  const { dom, ui } = mounted(t, { openStore: () => Promise.reject({ name: 'SecurityError' }) });
+  await assert.rejects(ui.controller.ready, { code: 'SecurityError' });
+  assert.match(dom.host.textContent, /Browser projects unavailable/);
+  assert.doesNotMatch(dom.host.textContent, /Checking browser projects|No browser projects/);
+  assert.match(dom.host.textContent, /SecurityError/);
+});
+
 test('mounted New uses an in-app confirmation and Cancel preserves current edits', async t => {
   const { dom, planner, ui } = mounted(t);
   await ui.controller.ready;
@@ -848,6 +922,97 @@ test('mounted New uses an in-app confirmation and Cancel preserves current edits
   dom.button('Create a new project').click();
   await tick();
   assert.equal(planner.getProject().id, 'new-project-1');
+});
+
+test('saved model plus pending form draft still guards New and unload without claiming the draft was saved', async t => {
+  const Drafts = require('../planner-drafts.js');
+  const { dom, planner, ui } = mounted(t);
+  await ui.controller.ready; await ui.controller.saveNow();
+  const drafts = Drafts.createStore(planner, 'Structure');
+  t.after(() => drafts.dispose());
+  const scope = { projectId: planner.getProject().id, floorId: planner.getProject().activeFloorId, entityId: 'new' };
+  drafts.put(scope, { label: 'Not an authored record' });
+  assert.equal(ui.controller.getState().dirty, false);
+  assert.equal(ui.controller.getState().draftCount, 1);
+  assert.match(dom.byClass('hp-storage-status').textContent, /pending input draft.*not included/);
+  dom.button('New project').click();
+  assert.equal(dom.byClass('hp-storage-confirm').hidden, false);
+  assert.match(dom.byId('hp-storage-confirm-message').textContent, /NOT included/);
+  assert.equal(planner.replacements, 0);
+  dom.button('Cancel').click();
+  assert.equal(drafts.get(scope).label, 'Not an authored record');
+  let prevented = false;
+  dom.view.listeners.get('beforeunload')({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  const token = ui.controller.revisionToken(); drafts.put(scope, { label: 'More typing' });
+  assert.notEqual(ui.controller.revisionToken(), token, 'confirmation guards also observe uncommitted typing');
+});
+
+test('project-name input remains a registered draft until explicit Rename or Escape', async t => {
+  const { dom, planner, ui } = mounted(t);
+  await ui.controller.ready; await ui.controller.saveNow();
+  const name = dom.byId('hp-storage-project-name');
+  name.value = 'Pending name'; await name.dispatch('input');
+  assert.equal(ui.controller.getState().dirty, false);
+  assert.equal(ui.controller.getState().draftCount, 1);
+  planner.change(project => { project.extra = 'An unrelated edit'; });
+  assert.equal(name.value, 'Pending name');
+  await dom.button('Rename').dispatch('click');
+  assert.equal(planner.getProject().name, 'Pending name');
+  assert.equal(ui.controller.getState().draftCount, 0);
+  name.value = 'Unapplied second name'; await name.dispatch('input');
+  planner.change(project => { project.name = 'Changed elsewhere'; });
+  await dom.button('Rename').dispatch('click');
+  assert.equal(planner.getProject().name, 'Changed elsewhere');
+  assert.equal(name.value, 'Unapplied second name');
+  await name.dispatch('keydown', { key: 'Escape' });
+  assert.equal(name.value, 'Changed elsewhere');
+  assert.equal(ui.controller.getState().draftCount, 0);
+});
+
+test('reusable import/export requests use the mounted complete-project JSON flows and preserve old saved IDs', async t => {
+  const Drafts = require('../planner-drafts.js');
+  const { dom, planner, store, ui } = mounted(t);
+  await ui.controller.ready; await ui.controller.saveNow();
+  const original = copy(planner.getProject()), saved = copy(store.records.get(original.id));
+  assert.equal(dom.host.homePlannerPersistence.requestExportJSON, ui.requestExportJSON);
+  assert.equal(await ui.controller.requestExportJSON(), true);
+  const exported = JSON.parse(await dom.blobs.get(dom.downloads[0].href).text());
+  assert.deepEqual(exported, original);
+  const input = dom.byClass('hp-storage-file'), click = input.click.bind(input);
+  let pickers = 0; input.click = () => { pickers++; click(); };
+  assert.equal(await ui.requestImportJSON(), true); assert.equal(pickers, 1);
+  const drafts = Drafts.createStore(planner, 'Electrical');
+  t.after(() => drafts.dispose());
+  drafts.put({ projectId: original.id, entityId: 'point' }, { name: 'Pending point' });
+  const text = JSON.stringify(exported);
+  input.files = [{ size: text.length, text: async () => text }];
+  await input.dispatch('change');
+  assert.equal(dom.byClass('hp-storage-confirm').hidden, false);
+  assert.equal(planner.getProject().id, original.id);
+  dom.button('Import JSON as a separate project').click(); await tick();
+  const imported = planner.getProject();
+  assert.notEqual(imported.id, original.id);
+  assert.deepEqual({ ...imported, id: original.id, name: original.name }, original);
+  assert.deepEqual(store.records.get(original.id), saved);
+  assert.equal(Drafts.hasPending(planner, original.id), true, 'old input draft is retained under its original ID');
+});
+
+test('uncommitted typing during delayed automatic restore protects startup work', async t => {
+  const Drafts = require('../planner-drafts.js'), gate = deferred();
+  const saved = Storage.createRecord(project('remembered', 5), undefined, time);
+  const store = memoryStore([saved], { [Storage.AUTOSAVE_SETTING]: true, [Storage.LAST_PROJECT_SETTING]: 'remembered' });
+  store.beforeLoad = () => gate.promise;
+  const planner = fakePlanner(), { controller } = controllerFor(t, planner, store);
+  await tick();
+  const drafts = Drafts.createStore(planner, 'Site');
+  t.after(() => drafts.dispose());
+  drafts.put({ projectId: planner.getProject().id, entityId: 'site' }, { latitude: '19.5' });
+  gate.resolve(); await controller.ready;
+  assert.equal(planner.replacements, 0);
+  assert.equal(controller.getState().pendingRestoreId, 'remembered');
+  assert.equal(controller.getState().paused, true);
+  assert.equal(controller.getState().draftCount, 1);
 });
 
 test('mounted Delete changes no browser data before its explicit confirmation', async t => {

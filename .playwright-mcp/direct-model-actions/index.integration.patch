@@ -1,0 +1,29 @@
+*** Begin Patch
+*** Update File: index.html
+@@
+-  const balconies=[];
++  const balconies=[],balconyIds=roomStableIds('balcony',cfg.counts.balcony);
+@@
+-      balconies.push({id:`balcony-${i+1}`,type:'balcony',label:`Balcony ${i+1}`,
++      balconies.push({id:balconyIds[i],type:'balcony',label:`Balcony ${balconyIds[i].slice(8)}`,
+@@
+ function roomApplySavedOpenings(g,plan,cfg,signature){
+   const saved=roomManualLayouts.get(signature)||{};
+   const customOpenings=[];
+-  const manualWindowRooms=new Set((saved.openings||[]).filter(o=>o.type==='window').map(o=>o.roomId));
++  const hosted=(saved.openings||[]).filter(record=>record.wallId);
++  const legacyOpenings=(saved.openings||[]).filter(record=>!record.wallId);
++  const manualWindowRooms=new Set(legacyOpenings.filter(o=>o.type==='window').map(o=>o.roomId));
+   plan.openings.windows=plan.openings.windows.filter(o=>!manualWindowRooms.has(o.roomId));
+-  (saved.openings||[]).forEach(record=>{
++  legacyOpenings.forEach(record=>{
+@@
+-  plan.customOpenings=customOpenings;
++  plan.customOpenings=[...customOpenings,...hosted.map(record=>({...record,custom:true}))];
+@@
+     return built?{...record,...built,label:record.label||`${p.req.label} open partition`,custom:true}:null;
+   }).filter(Boolean);
++  window.HomePlanner?.prepareHostedOpenings(g,plan,cfg);
+   window.HomePlanner?.preparePartitions(g,plan,cfg);
+   window.HomePlanner?.applyOpeningEdits(g,plan,cfg);
+*** End Patch

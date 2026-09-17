@@ -1,6 +1,6 @@
 # Sun path
 
-The **Sun Path** tab reuses the locally bundled **SunCalc 2.0.1** script. It does
+**Environment > Sun Path & shading** reuses the locally bundled **SunCalc 2.0.1** script. It does
 not implement astronomical algorithms, fetch weather or require an API key.
 Location detection runs only when **Detect current location** is clicked.
 Open `index.html` with the accompanying scripts and `vendor` folder,
@@ -76,9 +76,13 @@ handling and leaves skipped times as gaps, never invented positions.
 
 CSV export includes local date/time, timezone, coordinates, UTC instant, angle
 units, availability and engine version. Calculations and exports stay local.
-Site coordinates and the selected date/time are part of the shared project.
-Use explicit JSON backup or the opt-in local project database to retain them
-across reloads; without a save/export they remain memory-only.
+Coordinates and date/time here are exploratory drafts. **Use project defaults**
+copies saved project inputs into this exploration; **Use for this project**
+explicitly validates and applies the exploration to the shared project. Only
+applied values enter project JSON backups or opt-in local saves. Navigation and
+unrelated edits retain drafts, but reloading does not save unapplied exploration.
+Authoritative site verification and weather controls live in **Site > Location,
+surroundings & weather**. See [workspace navigation](workspace-navigation.md).
 
 ## Day summary
 

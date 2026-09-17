@@ -135,6 +135,17 @@
   background: var(--panel2);
   padding: 7px 10px;
 }
+#planner3d .hp3d-dimension-schedule {
+  white-space: pre-wrap;
+  max-height: 18rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+#planner3d .hp3d-dimension-schedule:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+#planner3d .hp3d-light-study .hp3d-dimension-schedule {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
 #planner3d .hp3d-assumptions {
   margin-top: 12px;
   border-top: 1px solid var(--line);

@@ -1,0 +1,78 @@
+/* Operate: inherit the workbench's ink, surfaces and borders. A compact study
+   header leads directly to the plan; numerical evidence follows native disclosures. */
+.homePlannerLight {
+  color: var(--txt, #20242a);
+  background: var(--panel, #fff);
+  padding: 12px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  line-height: 1.45;
+}
+.homePlannerLight *, .homePlannerLight *::before, .homePlannerLight *::after { box-sizing: border-box; }
+.homePlannerLight h2 { margin: 0; font-size: 1.25rem; line-height: 1.3; }
+.homePlannerLight p { margin: 6px 0; overflow-wrap: anywhere; }
+.homePlannerLight .light-warning, .homePlannerLight .light-status { font-size: .85rem; }
+.homePlannerLight .light-view-status { padding: 10px 12px; border: 1px solid var(--line, #707880); background: var(--panel2, var(--panel, #fff)); font-size: .9rem; }
+.homePlannerLight .light-view-status[data-state="blocked"], .homePlannerLight .light-view-status[data-state="unavailable"], .homePlannerLight .light-view-status[data-state="empty"] { font-weight: 600; }
+.homePlannerLight .light-scale { font-size: .8rem; }
+.homePlannerLight .light-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.homePlannerLight button, .homePlannerLight input, .homePlannerLight select, .homePlannerLight textarea {
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--line, #707880);
+  border-radius: 6px;
+  color: inherit;
+  background: var(--panel, #fff);
+  font: inherit;
+  padding: 8px 10px;
+}
+.homePlannerLight button { cursor: pointer; white-space: normal; margin: 4px 6px 4px 0; }
+.homePlannerLight .light-actions button { margin: 0; font-size: .85rem; }
+.homePlannerLight #light-run { color: var(--panel, #fff); background: var(--txt, #20242a); border-color: var(--txt, #20242a); }
+.homePlannerLight button:hover:not(:disabled) { text-decoration: underline; }
+.homePlannerLight button:disabled, .homePlannerLight input:disabled, .homePlannerLight select:disabled { cursor: not-allowed; opacity: .65; }
+.homePlannerLight :focus-visible { outline: 3px solid var(--txt, #20242a); outline-offset: 3px; }
+.homePlannerLight label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: .9rem; overflow-wrap: anywhere; }
+.homePlannerLight input[type="checkbox"] { width: 44px; align-self: start; margin: 0; accent-color: var(--txt, #20242a); }
+.homePlannerLight input[type="range"] { width: 100%; accent-color: var(--txt, #20242a); }
+.homePlannerLight input::placeholder, .homePlannerLight textarea::placeholder { color: inherit; opacity: .85; }
+.homePlannerLight .light-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; margin: 12px 0; }
+.homePlannerLight details { margin: 0; border-top: 1px solid var(--line, #707880); min-width: 0; }
+.homePlannerLight details details { margin: 8px 0; }
+.homePlannerLight summary { color: inherit; min-height: 44px; padding: 11px 2px; font-size: .95rem; font-weight: 600; cursor: pointer; overflow-wrap: anywhere; list-style: disclosure-closed inside; }
+.homePlannerLight details[open] > summary { list-style-type: disclosure-open; }
+.homePlannerLight summary::before { content: none; }
+.homePlannerLight summary::-webkit-details-marker { display: inline; }
+.homePlannerLight .light-viewport {
+  min-height: 280px;
+  height: clamp(280px, 48vh, 580px);
+  width: 100%;
+  margin: 4px 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line, #707880);
+  background: var(--panel2, var(--panel, #fff));
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  text-align: center;
+}
+.homePlannerLight .light-viewport img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.homePlannerLight .light-error { color: inherit; border: 1px solid currentColor; padding: 10px; font-weight: 600; }
+.homePlannerLight .light-error[hidden] { display: none; }
+.homePlannerLight fieldset { margin: 14px 0; padding: 12px; min-width: 0; border: 1px solid var(--line, #707880); }
+.homePlannerLight legend { font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
+.homePlannerLight li { margin: 8px 0; overflow-wrap: anywhere; }
+.homePlannerLight pre { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.homePlannerLight textarea { width: 100%; resize: vertical; }
+.homePlannerLight .light-table-region { overflow-x: auto; max-width: 100%; margin: 12px 0; border: 1px solid var(--line, #707880); }
+.homePlannerLight table { border-collapse: collapse; min-width: 680px; width: 100%; font-size: .85rem; }
+.homePlannerLight caption { text-align: left; padding: 12px; font-weight: 600; }
+.homePlannerLight th, .homePlannerLight td { padding: 10px; text-align: left; border-top: 1px solid var(--line, #707880); vertical-align: top; max-width: 32rem; overflow-wrap: anywhere; }
+.homePlannerLight th { background: var(--panel2, var(--panel, #fff)); }
+@media (max-width: 600px) {
+  .homePlannerLight { padding: 10px; }
+  .homePlannerLight .light-fields { grid-template-columns: minmax(0, 1fr); }
+  .homePlannerLight .light-actions button { padding: 8px; }
+  .homePlannerLight .light-viewport { height: 340px; }
+}

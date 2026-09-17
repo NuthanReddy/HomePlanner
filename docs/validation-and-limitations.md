@@ -21,8 +21,9 @@
 
 ## Deterministic planner limitations
 
-The floor planner is a rectangle-packing and adjacency heuristic. It does not
-perform:
+The automatic floor planner is a rectangle-packing and adjacency heuristic.
+Separate Design tools support explicit conceptual structure and service intent;
+the generator does not automatically design or certify:
 
 - Structural grids, beams, columns, shear walls, foundations, or seismic
   design.
@@ -45,10 +46,24 @@ experiments and a lumped sensible-heat RC solver. Inputs and omitted physics are
 stated; they are not actual-site temperature or comfort predictions.
 
 There is no automatic weather/airflow/solar-to-thermal coupling, calibrated
-warmup, moisture/HVAC model, detailed microclimate/tree cooling, or mutual-storey
-shading. All-floor exposure runs evaluate the floor scenes separately and say so.
+warmup, moisture/HVAC model or detailed microclimate/tree cooling.
+The room light study uses registered all-floor walls, apertures, supplied roofs,
+facades and neighboring boxes for physical occlusion. Its normalized
+cosine-weighted sky access is a reduced geometric/optical metric, not lux,
+daylight factor or artificial-light coverage. Unknown context remains unknown.
+Legacy exterior exposure runs evaluate the floor scenes separately and say so;
+they must not be mistaken for the newer all-floor workplane study.
 Reference fixtures and conservation do not substitute for physical/site
 calibration or professional review.
+
+## Drawing and package boundaries
+
+Fixed-scale sheets and coordinated packages are conceptual review documents.
+Geometric falls, connectivity, clearances and member schedules are not hydraulic
+capacity, safe penetration/discharge, reinforcement or structural safety checks.
+Package generation neither runs missing analyses nor fills unknown dimensions.
+Unavailable views/evidence remain visible; a successful export does not establish
+design completeness, sanction, physical printer calibration or construction readiness.
 
 ## Regulatory limitations
 

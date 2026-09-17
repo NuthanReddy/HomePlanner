@@ -1,12 +1,16 @@
 # Building physics: reduced numerical scenarios
 
-`building-physics.js` exposes the same six numerical entry points through
+`building-physics.js` exposes its numerical entry points through
 `window.BuildingPhysics` and CommonJS. It needs no framework, DOM, network,
 astronomy implementation, dependencies, account or solver service. Inputs are
 not mutated. Numerical results contain ordinary JSON-compatible objects, arrays,
 finite numbers, strings, booleans and nulls. The additive `createSunlightStudy`
 factory returns a frozen object with accumulator methods; its `getResult()`
 returns an independent, plain JSON snapshot.
+
+The additive `createReceiverKernel` factory shares the optical intersections
+with room workplane studies; its contract is below. Existing `shadowAt`,
+`surfaceExposure`, whole-house sunlight and airflow behavior is unchanged.
 
 **These are uncalibrated numerical scenarios, not actual-site indoor-temperature
 predictions, CFD, daylight lux, structural analysis, HVAC sizing, moisture
@@ -444,6 +448,50 @@ and temporal midpoint sampling can alias thin features or brief shadow events.
 Refine both grids and interval lengths for a convergence check; no universal
 hour-error bound or measured sunshine accuracy is claimed.
 
+## `createReceiverKernel(scenes, {windowTransmittance})`
+
+This additive pure factory compiles **all supplied floors** for arbitrary
+point receivers. It returns a frozen `{trace, metadata}` handle, not a JSON
+result. `trace({x,y,z}, directionENU)` returns the [0,1] path-transmission product
+using the exact existing `localSunVector`, `intersectsBox`, `intersectsPanel`
+and `beamTransmission` implementations. Directions are unit vectors toward the
+source; points are physical coordinates, not normal-biased surface probes.
+Each physical aperture/obstacle applies once per ray, with finite sill/lintel/
+jamb reveals. No second intersection or wall-tessellation model is introduced.
+
+Unlike the legacy exterior shadow receiver factory, this API:
+
+- Requires nonempty scenes with unique `floorId`, `coordinateSpace:"site-local"`,
+  identical projected `plot` rectangles and heading. No translation or floor
+  stacking is performed. Floor/wall/obstacle bases remain absolute project-local
+  z. The minimum supplied base is used only for the existing geometry validator's
+  flat reference; no terrain or ground obstruction is inserted.
+- Builds no outdoor ground/wall receiver grids. All supplied canonical walls,
+  apertures, rectangular obstacles and explicit roofs remain casters.
+- Requires explicit `windowTransmittance` [0,1] (no implicit clear default).
+  Its interpretation belongs to the consumer: the light study explicitly passes
+  ideal-clear geometric or visible optical transmission, never inferred VLT
+  from the irradiance module's solar setting.
+- Creates a roof only when both `wallHeightM` and `roofThicknessM` are supplied.
+  Explicit zero thickness means an opaque plane. Unknown height or missing/null
+  thickness does **not** create the legacy assumed roof. The caller must preserve
+  that uncertainty; `metadata.omittedRoofFloorIds` identifies those floors.
+- Namespaces caster IDs by exact floor ID. Identical obstacles across floors
+  with the same explicit `sourceId` are applied once; differing geometry/
+  transmission or same-floor repetition is rejected. Generated roof-ID
+  collisions and ambiguous physical IDs are rejected.
+- Caps preparation at 64 floors, 32,768 physical entities, 100,000 potential
+  wall-tessellation pieces and 8,000,000 preparation comparisons; rejects before
+  tessellation, never truncates. Callers separately preflight total receiver
+  rays × `metadata.casterCount`.
+
+Metadata is frozen JSON: `{casterCount,preparationPieceUpperBound,
+preparationComparisons,rayEpsilonM,receiverBiasM,omittedRoofFloorIds,headingDeg}`.
+Tolerance is 1e-7 m; `receiverBiasM` is 0. No daylight value, horizon cutoff,
+ray-distance clipping, time integration or sunshine-hour semantics are assigned
+by this low-level trace API. `planner-light.js` owns those explicit definitions
+and chunked execution; see [Room light foundation](light-visualizer.md).
+
 ## `surfaceExposure(scene, sunENU, radiation)`
 
 Required nonnegative finite fields are `dniWm2`, `dhiWm2`, `ghiWm2`.
@@ -518,11 +566,20 @@ The solver:
 2. Fixes the external reference to 0 Pa. A disconnected component fixes its first
    listed zone to an arbitrary 0 Pa gauge with a warning. A sealed node has zero
    flow; no phantom outside link is inserted.
-3. Balances unknown nodes by cyclic safeguarded scalar bracketing. The monotone
+3. Peels non-reference degree-one nodes from the active solver graph. A steady
+   dead-end branch must carry zero net flow, so it need not constrain its
+   neighbour using a lagging pressure during iteration. Degrees count individual
+   positive-area links, not distinct neighbours: parallel links remain active
+   circulation paths. Outside and disconnected gauge references are never peeled.
+4. Balances the remaining unknown nodes by cyclic safeguarded scalar bracketing. The monotone
    nodal residual is bracketed by neighbour-pressure/forcing targets, so no
-   singular square-root derivative at zero pressure is needed.
-4. Checks the actual signed orifice flows and **every zone's residual**, including
-   the reference zone in a disconnected component.
+   singular square-root derivative at zero pressure is needed. After each sweep,
+   back-substitutes branch pressures in reverse peel order using the signed
+   forcing and the updated parent pressure. Entire trees can be solved this way
+   without an active core; references and isolated nodes remain at 0 Pa.
+5. Checks the actual signed orifice flows on **all original links** and **every
+   zone's residual**, including peeled nodes and the reference zone in a
+   disconnected component. No branch flow is snapped to zero.
 
 At most 4096 sweeps and 110 bisections per scalar root are attempted. Unchanged
 pressures or 256 sweeps without residual improvement report `stalled`; exhaustion
@@ -541,7 +598,11 @@ flow at zero gauge pressures. Returned diagnostics make this explicit:
 
 A nonconverged result is diagnostic only, not a balanced ventilation estimate.
 Extreme coefficient ratios can make pressure loss too small to represent;
-the solver reports that failure rather than inventing leakage.
+even a back-substituted branch can retain a nonzero residual when the original
+`pi - pj + pressurePa` arithmetic cannot cancel at floating-point precision.
+The solver reports these failures rather than inventing leakage or declaring
+the reduced graph alone converged. Peeling does not change the equations or the
+initial-zero-pressure flow scale used for tolerance.
 
 For `K = cd*A`, series restrictions satisfy
 `Kequivalent = (Σ(1/Ki²))^(-1/2)`. Two equal restrictions have K/√2, not 2K.

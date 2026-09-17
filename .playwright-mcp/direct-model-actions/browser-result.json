@@ -1,0 +1,25 @@
+{
+  "stagedIndexIntegration": true,
+  "indexStaging": [
+    "stable-balcony-ids",
+    "hosted-openings",
+    "draft-script-order"
+  ],
+  "staircaseDragOneUndo": true,
+  "visibleCanvasHistory": true,
+  "visible3DHistory": false,
+  "noUnrelatedRoomRelayout": true,
+  "exactToEnd2D": true,
+  "retainedSpan2D": true,
+  "realCanvas3DPick": true,
+  "doorFrom2D": true,
+  "windowFrom3D": true,
+  "wallDelete2DAnd3D": true,
+  "wallDeleteUndo": true,
+  "balconyDeleteUndoRedoImport": true,
+  "balcony3DReady": false,
+  "inactiveFloorReadOnly": true,
+  "narrowOpeningControls": true,
+  "textSafeEditing": true,
+  "errors": []
+}

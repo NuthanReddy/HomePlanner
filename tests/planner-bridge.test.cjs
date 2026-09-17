@@ -6,6 +6,8 @@ const copy=value=>JSON.parse(JSON.stringify(value));
 function fixture(){
   let live={controls:{bedCount:{value:'1'}},manualLayouts:[],context:null};
   const Model={
+    wallOpeningSpan:require('../planner-model.js').wallOpeningSpan,
+    retainedWallSpan:require('../planner-model.js').retainedWallSpan,
     createProject:()=>({schemaVersion:1,id:'project-one',revision:0,
       site:{latitude:17,longitude:78,timeZone:'Asia/Kolkata'},
       building:{wallHeightM:2.7,floorElevationM:0,roofThicknessM:.15},
@@ -38,6 +40,10 @@ function fixture(){
         plan:{placed:+live.controls.bedCount.value?[{id:'bed-1',rect}]:[]}};
     },
     edit(command){live.context.plan.placed[0].rect=copy(command.rect);},
+    deleteRoom(entity){
+      assert.equal(entity.sourceId,'bed-1');
+      live.controls.bedCount.value='0';live.context.plan.placed=[];
+    },
     setCeiling(){},restoreWall(){},resetLayout(){live.manualLayouts=[];},
     addWindow(){}
   };
@@ -65,6 +71,37 @@ test('room changes commit once and history restores exact geometry',()=>{
   assert.deepEqual(controller.getScene().rooms[0].rect,{x:1,y:1,w:3,h:4});
   controller.redo();
   assert.deepEqual(controller.getScene().rooms[0].rect,rect);
+});
+
+test('room deletion requires confirmation and is one reversible active-floor edit',()=>{
+  const {controller}=fixture();
+  controller.select({kind:'room',id:'floor-one:bed-1'});
+  const before=controller.exportProject();
+  assert.throws(()=>controller.execute({type:'delete-room',id:'floor-one:bed-1'}),/Confirm removal/);
+  assert.equal(controller.exportProject(),before);
+  assert.equal(controller.getSelection().id,'floor-one:bed-1');
+  assert.equal(controller.canUndo(),false);
+  controller.execute({type:'delete-room',id:'floor-one:bed-1',confirmRemoval:true});
+  assert.equal(controller.getScene().rooms.length,0);
+  assert.equal(controller.getProject().legacy.controls.bedCount.value,'0');
+  assert.equal(controller.getSelection(),null);
+  assert.equal(controller.getProject().revision,1);
+  controller.undo();
+  assert.equal(controller.getScene().rooms[0].id,'floor-one:bed-1');
+  assert.equal(controller.getProject().legacy.controls.bedCount.value,'1');
+  controller.redo();
+  assert.equal(controller.getScene().rooms.length,0);
+});
+
+test('deleting a room never deletes the corresponding room on another floor',()=>{
+  const {controller}=fixture();
+  controller.execute({type:'add-floor',copyFromId:'floor-one'});
+  const upper=controller.getProject().activeFloorId;
+  assert.throws(()=>controller.execute({type:'delete-room',id:'floor-one:bed-1',confirmRemoval:true}),/no longer on this floor/);
+  controller.execute({type:'delete-room',id:upper+':bed-1',confirmRemoval:true});
+  assert.equal(controller.getScene().rooms.length,0);
+  controller.execute({type:'select-floor',id:'floor-one'});
+  assert.equal(controller.getScene().rooms[0].id,'floor-one:bed-1');
 });
 
 test('invalid commands roll back document and adapter state',()=>{
@@ -141,6 +178,23 @@ test('cancelled legacy drag restores its starting layout without a history entry
   controller.endLegacyGesture(true);
   assert.deepEqual(controller.getScene().rooms[0].rect,{x:1,y:1,w:3,h:4});
   assert.equal(controller.canUndo(),false);
+});
+
+test('Undo cannot re-enter an in-progress command from a render notification',()=>{
+  const {controller,adapter}=fixture();
+  const first={x:2,y:2,w:3,h:4},second={x:3,y:3,w:3,h:4};
+  controller.execute({type:'update-room',id:'floor-one:bed-1',rect:first});
+  const render=adapter.render;
+  adapter.render=()=>{
+    assert.throws(()=>controller.undo(),/already in progress/);
+    render();
+  };
+  controller.execute({type:'update-room',id:'floor-one:bed-1',rect:second});
+  assert.deepEqual(controller.getScene().rooms[0].rect,second);
+  controller.undo();
+  assert.deepEqual(controller.getScene().rooms[0].rect,first);
+  controller.undo();
+  assert.deepEqual(controller.getScene().rooms[0].rect,{x:1,y:1,w:3,h:4});
 });
 
 test('floor remapping only changes scoped identifiers, not unrelated text',()=>{

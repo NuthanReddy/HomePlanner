@@ -72,7 +72,7 @@ function plainFiniteJSON(value) {
 }
 
 test('CommonJS and browser IIFE expose exactly the frozen numerical API including the sunlight study', () => {
-  const names = ['assemblyProperties', 'shadowAt', 'surfaceExposure', 'solveAirflow', 'simulateThermal', 'createSunlightStudy'];
+  const names = ['assemblyProperties', 'shadowAt', 'surfaceExposure', 'solveAirflow', 'simulateThermal', 'createSunlightStudy', 'createReceiverKernel'];
   assert.deepEqual(Object.keys(physics), names);
   assert.equal(Object.isFrozen(physics), true);
   const context = {};
@@ -84,6 +84,34 @@ test('CommonJS and browser IIFE expose exactly the frozen numerical API includin
   assert.equal(Object.isFrozen(study), true);
   study.addInterval(sunInterval());
   near(find(study.getResult(), 'f:roof').averageHours, 1);
+});
+
+test('arbitrary receiver kernel reuses wall reveals, explicit optics and ENU transform without an inferred roof', () => {
+  const source=scene({coordinateSpace:'site-local',plot:{x:0,y:0,w:20,h:20},headingDeg:37,
+    walls:[wall()],openings:[opening()]});
+  const original=clone(source),kernel=physics.createReceiverKernel([source],{windowTransmittance:.4});
+  assert.ok(Object.isFrozen(kernel));assert.ok(Object.isFrozen(kernel.metadata));
+  assert.deepEqual(source,original);
+  assert.deepEqual(kernel.metadata.omittedRoofFloorIds,['f']);
+  near(kernel.trace({x:10,y:10,z:1.5},zenith),1);
+  const a=37*Math.PI/180;
+  const towardFront={east:Math.sin(a)*Math.SQRT1_2,north:Math.cos(a)*Math.SQRT1_2,up:Math.SQRT1_2};
+  // The rising ray crosses strictly above the sill at both finite-thickness faces.
+  near(kernel.trace({x:10,y:9,z:.2},towardFront),.4);
+  source.roofThicknessM=.2;
+  near(physics.createReceiverKernel([source],{windowTransmittance:.4}).trace({x:10,y:10,z:1.5},zenith),0);
+  assert.throws(()=>kernel.trace({x:0,y:0,z:0},{east:1,north:1,up:1}),RangeError);
+  assert.throws(()=>physics.createReceiverKernel([source],{}),TypeError);
+});
+
+test('arbitrary receiver preflight bounds geometry tessellation, floor frame and physical ID ambiguity', () => {
+  const s=scene({coordinateSpace:'site-local',plot:{x:0,y:0,w:20,h:20},walls:[wall()]});
+  s.openings=Array.from({length:200},(_,i)=>opening({id:'opening-'+i}));
+  assert.throws(()=>physics.createReceiverKernel([s],{windowTransmittance:1}),/tessellation budget/);
+  s.openings=[];const other=clone(s);other.floorId='upper';other.headingDeg=20;
+  assert.throws(()=>physics.createReceiverKernel([s,other],{windowTransmittance:1}),/share/);
+  s.obstacles=[obstacle({id:'front'})];
+  assert.throws(()=>physics.createReceiverKernel([s],{windowTransmittance:1}),/unique/);
 });
 
 test('assembly uses d/k, explicit film resistances, and rho*c*d in SI units', () => {
@@ -1110,6 +1138,206 @@ test('pressure bracketing diagnoses floating-point stalling instead of inventing
   assert.ok(result.residualM3s > result.toleranceM3s);
   assert.match(result.warnings.join(' '), /Do not treat these flows as a balanced solution/);
   plainFiniteJSON(result);
+});
+
+test('Phase 8 exact browser two-zone manual dead-end input converges without changing its tolerance', () => {
+  const input = {
+    outsideId: '["outside"]',
+    densityKgM3: 1.2,
+    zones: [
+      { id: '["zone","room-2"]', volumeM3: 30 },
+      { id: '["zone","room-7"]', volumeM3: 30 }
+    ],
+    links: [
+      { id: '["link","opening-3"]', from: '["outside"]', to: '["zone","room-2"]', freeAreaM2: 0.5, cd: 0.6, pressurePa: 10 },
+      { id: '["link","opening-4"]', from: '["zone","room-2"]', to: '["outside"]', freeAreaM2: 0.5, cd: 0.6, pressurePa: 0 },
+      { id: '["link","manual-8"]', from: '["zone","room-2"]', to: '["zone","room-7"]', freeAreaM2: 0.5, cd: 0.6, pressurePa: 0 }
+    ]
+  };
+  const result = physics.solveAirflow(deepFreeze(input));
+  massBalance(input, result);
+  assert.equal(result.status, 'converged');
+  assert.equal(result.iterations, 1);
+  assert.equal(result.pressures['["zone","room-2"]'], 5);
+  assert.equal(result.pressures['["zone","room-7"]'], 5);
+  near(result.flows[0].m3s, Math.sqrt(0.75), 1e-15);
+  assert.equal(result.flows[0].m3s, result.flows[1].m3s);
+  assert.equal(result.flows[2].m3s, 0);
+  assert.equal(result.residualM3s, 0);
+  assert.equal(result.toleranceM3s, 1e-9 + 1e-10 * (0.6 * 0.5 * Math.sqrt(2 / 1.2) * Math.sqrt(10)));
+});
+
+test('equal-orifice core with deeper signed branches is independent of leaf ordering and link orientation', () => {
+  for (const sign of [1, -1]) {
+    for (const reverse of [false, true]) {
+      const input = series(12 * sign);
+      input.zones = ['tip', 'side', 'branch', 'room'].map(id => zone(id));
+      input.links.push(
+        airLink('tip', 'tip', 'branch', 4 * sign),
+        airLink('branch', 'room', 'branch', -2 * sign),
+        airLink('side', 'room', 'side', 3 * sign)
+      );
+      if (reverse) input.links = input.links.map(link => ({
+        ...link, from: link.to, to: link.from, pressurePa: -link.pressurePa
+      })).reverse();
+      const result = physics.solveAirflow(input);
+      massBalance(input, result);
+      assert.deepEqual(result.pressures, {
+        outside: 0, tip: 0, side: 9 * sign, branch: 4 * sign, room: 6 * sign
+      });
+      assert.equal(result.iterations, 1);
+      for (const flow of result.flows) {
+        if (['in', 'out'].includes(flow.id)) near(flow.m3s, (reverse ? -1 : 1) * sign * 0.3 * Math.sqrt(10), 1e-14);
+        else assert.equal(flow.m3s, 0);
+      }
+    }
+  }
+});
+
+test('outside-rooted forced tree back-substitutes every branch even with no active core edges', () => {
+  const input = {
+    zones: ['tip', 'left', 'right', 'hub'].map(id => zone(id)),
+    links: [
+      airLink('tip', 'right', 'tip', 5), airLink('left', 'left', 'hub', 3),
+      airLink('right', 'hub', 'right', -2), airLink('root', 'outside', 'hub', 4),
+      airLink('closed-cycle', 'tip', 'outside', 999, 0)
+    ]
+  };
+  const result = physics.solveAirflow(input);
+  massBalance(input, result);
+  assert.deepEqual(result.pressures, { outside: 0, tip: 7, left: 1, right: 2, hub: 4 });
+  assert.ok(result.flows.every(flow => flow.m3s === 0));
+  assert.equal(result.iterations, 1);
+  assert.deepEqual(result.references, [{ id: 'outside', pressurePa: 0, connectedToOutside: true }]);
+});
+
+test('tolerance uses original zero-pressure flows including the largest peeled-branch forcing', () => {
+  const input = series(10);
+  input.zones.push(zone('leaf'));
+  input.links.push(airLink('leaf', 'room', 'leaf', 1024));
+  const result = physics.solveAirflow(input);
+  massBalance(input, result);
+  assert.equal(result.pressures.leaf, 1029);
+  const initialFlowScale = 0.6 * 0.5 * Math.sqrt(2 / 1.2) * Math.sqrt(1024);
+  assert.equal(result.toleranceM3s, 1e-9 + 1e-10 * initialFlowScale);
+  assert.equal(result.flows[2].m3s, 0);
+});
+
+test('disconnected forced tree preserves its first-listed reference in the middle and isolated gauges', () => {
+  const input = {
+    zones: ['gauge', 'left', 'right', 'tip', 'sealed'].map(id => zone(id)),
+    links: [
+      airLink('left', 'left', 'gauge', -4),
+      airLink('right', 'gauge', 'right', -2),
+      airLink('tip', 'right', 'tip', -3),
+      airLink('closed-outside', 'tip', 'outside', 100, 0)
+    ]
+  };
+  const result = physics.solveAirflow(input);
+  massBalance(input, result);
+  assert.deepEqual(result.pressures, { outside: 0, gauge: 0, left: 4, right: -2, tip: -5, sealed: 0 });
+  assert.ok(result.flows.every(flow => flow.m3s === 0));
+  assert.deepEqual(result.references, [
+    { id: 'gauge', pressurePa: 0, connectedToOutside: false },
+    { id: 'sealed', pressurePa: 0, connectedToOutside: false }
+  ]);
+});
+
+test('disconnected forced cycle retains circulation with several peeled branches and an unchanged gauge', () => {
+  const input = {
+    zones: ['a', 'tip', 'b', 'left', 'c', 'right'].map(id => zone(id)),
+    links: [
+      airLink('ab', 'a', 'b', 2), airLink('bc', 'b', 'c', 2), airLink('ca', 'c', 'a', 2),
+      airLink('left', 'left', 'b', -4), airLink('tip', 'tip', 'left', 3),
+      airLink('right', 'c', 'right', -2)
+    ]
+  };
+  const result = physics.solveAirflow(input);
+  massBalance(input, result);
+  assert.deepEqual(result.pressures, { outside: 0, a: 0, tip: 1, b: 0, left: 4, c: 0, right: -2 });
+  result.flows.slice(0, 3).forEach(flow => near(flow.m3s, 0.3 * Math.sqrt(4 / 1.2)));
+  assert.ok(result.flows.slice(3).every(flow => flow.m3s === 0));
+  assert.deepEqual(result.references, [{ id: 'a', pressurePa: 0, connectedToOutside: false }]);
+});
+
+test('parallel internal links are distinct cycle edges, not a peelable single neighbour', () => {
+  const input = {
+    zones: ['a', 'b', 'leaf'].map(id => zone(id)),
+    links: [
+      airLink('forward', 'a', 'b', 12), airLink('return', 'b', 'a', 0),
+      airLink('leaf', 'b', 'leaf', -2)
+    ]
+  };
+  const result = physics.solveAirflow(input);
+  massBalance(input, result);
+  assert.deepEqual(result.pressures, { outside: 0, a: 0, b: 6, leaf: 4 });
+  result.flows.slice(0, 2).forEach(flow => near(flow.m3s, 0.3 * Math.sqrt(10)));
+  assert.equal(result.flows[2].m3s, 0);
+});
+
+test('peeled leaves preserve raw floating-point cancellation failures instead of snapping flows to zero', () => {
+  for (const reverse of [false, true]) {
+    const input = series(10);
+    input.zones.push(zone('leaf'));
+    input.links.push(reverse
+      ? airLink('leaf', 'leaf', 'room', -0.1)
+      : airLink('leaf', 'room', 'leaf', 0.1));
+    const result = physics.solveAirflow(input);
+    assert.equal(result.converged, false);
+    assert.equal(result.status, 'stalled');
+    assert.equal(result.pressures.room, 5);
+    assert.equal(result.pressures.leaf, 5.1);
+    const link = input.links[2];
+    const dp = result.pressures[link.from] - result.pressures[link.to] + link.pressurePa;
+    const flow = 0.6 * 0.5 * Math.sqrt(2 / 1.2) * Math.sign(dp) * Math.sqrt(Math.abs(dp));
+    assert.equal(result.flows[2].m3s, flow);
+    assert.ok(Math.abs(flow) > result.toleranceM3s);
+    assert.equal(result.residualM3s, Math.abs(flow));
+    assert.equal(Math.abs(result.zoneResidualsM3s.leaf), Math.abs(flow));
+    assert.match(result.warnings.join(' '), /Do not treat these flows as a balanced solution/);
+    plainFiniteJSON(result);
+  }
+});
+
+test('a dead-end does not hide the existing extreme-coefficient core failure', () => {
+  const input = series(1);
+  input.links[0].freeAreaM2 = 1e6;
+  input.links[1].freeAreaM2 = 0.01;
+  const core = physics.solveAirflow(input);
+  input.zones.push(zone('leaf'));
+  input.links.push(airLink('leaf', 'room', 'leaf', 0));
+  const result = physics.solveAirflow(input);
+  assert.equal(result.status, 'stalled');
+  assert.equal(result.converged, false);
+  assert.equal(result.pressures.room, core.pressures.room);
+  assert.equal(result.residualM3s, core.residualM3s);
+  assert.equal(result.toleranceM3s, core.toleranceM3s);
+  assert.equal(result.flows[2].m3s, 0);
+});
+
+test('closed-only graphs remain isolated and validate every link before numerical solving', () => {
+  const closed = {
+    zones: ['a', 'b'].map(id => zone(id)),
+    links: [airLink('closed', 'a', 'b', 10, 0)]
+  };
+  const result = physics.solveAirflow(closed);
+  massBalance(closed, result);
+  assert.equal(result.iterations, 0);
+  assert.deepEqual(result.pressures, { outside: 0, a: 0, b: 0 });
+  assert.equal(result.references.length, 2);
+  closed.links[0].cd = 0;
+  assert.throws(() => physics.solveAirflow(closed), /cd/);
+  const tree = {
+    zones: ['a', 'b'].map(id => zone(id)),
+    links: [
+      airLink('root', 'outside', 'a', 1e308),
+      airLink('overflow', 'a', 'b', 1e308),
+      airLink('invalid', 'b', 'outside', NaN, 0)
+    ]
+  };
+  assert.throws(() => physics.solveAirflow(tree), /links\[2\].pressurePa/);
+  const underflow = { zones: [zone()], links: [airLink('tiny', 'outside', 'room', 1, Number.MIN_VALUE, Number.MIN_VALUE)] };
+  assert.throws(() => physics.solveAirflow(underflow), /coefficient underflows/);
 });
 
 test('airflow rejects malformed links, NaNs, invalid coefficients and unsupported two-way/CFD requests', () => {

@@ -1,7 +1,7 @@
 # Telangana Prohibited Properties: API, UI and Downloader
 
 This feature lives in **HomePlanner**, including the original scraper and
-the complete exported lookup data. The **Prohibited Properties** tab uses
+the complete exported lookup data. **Site · Plot Planner > Prohibited Properties** uses
 Flask for live portal requests and local PDF processing. The other HomePlanner
 workspaces remain usable without this backend.
 
@@ -18,6 +18,9 @@ on that port first, or set `$env:HOMEPLANNER_PORT = "8001"` before starting.
 The server binds to loopback, not to the public network. Do not expose this
 unauthenticated local utility directly to the internet.
 
+Choose **Connect local lookup** to load the Flask location catalog. Opening this
+section or its legacy URL alone makes no request; connection failures stay here
+without blocking the plot calculator.
 Choose **District > Mandal > Village**, plus an SRO for Hyderabad divisions.
 Then choose Agriculture / Non-Agriculture and a category. **View properties**
 reads cached Markdown first. Missing reports are fetched by a background worker;

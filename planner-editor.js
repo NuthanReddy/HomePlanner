@@ -17,7 +17,7 @@
 
   const DIRECTIONS = { N: 0, E: 90, S: 180, W: 270 };
   const KIND_LABELS = {
-    room: 'Room', furniture: 'Furniture', door: 'Door', window: 'Window',
+    room: 'Room', balcony: 'Balcony', furniture: 'Furniture', door: 'Door', window: 'Window',
     wall: 'Wall', electrical: 'Electrical point'
   };
   const WALL_CAUTION = 'Conceptual plan edit only — never permission for safe demolition or construction. '
@@ -46,6 +46,7 @@
     if (!scene || !selection || typeof selection.id !== 'string') return null;
     let items;
     if (selection.kind === 'room') items = scene.rooms;
+    else if (selection.kind === 'balcony') items = scene.balconies;
     else if (selection.kind === 'furniture') items = scene.furniture;
     else if (selection.kind === 'wall') items = scene.walls;
     else if (selection.kind === 'electrical') items = scene.electrical;
@@ -99,6 +100,13 @@
     const dy = numberValue(wall.end.y, { label: 'Wall end Y' }) - numberValue(wall.start.y, { label: 'Wall start Y' });
     return numberValue(Math.hypot(dx, dy), { label: 'Wall length', positive: true });
   }
+  function retainedSpan(wall) {
+    const length = wallLength(wall);
+    const startM = numberValue(wall.retainedSpan?.startM ?? 0, { label: 'Retained wall start', min: 0 });
+    const endM = numberValue(wall.retainedSpan?.endM ?? length, { label: 'Retained wall end', positive: true, max: length });
+    if (startM >= endM) throw new Error('The retained wall end must follow its start.');
+    return { startM, endM };
+  }
 
   function openingCommand(kind, entity, field, value, wall) {
     if (!entity || typeof entity.id !== 'string' || !wall || entity.wallId !== wall.id) {
@@ -116,12 +124,12 @@
       command[field] = value;
     } else {
       const allowed = kind === 'window'
-        ? ['widthM', 'sillM', 'heightM', 'headM', 'openFraction'] : ['widthM', 'openFraction'];
+        ? ['offsetM', 'widthM', 'sillM', 'heightM', 'headM', 'openFraction'] : ['offsetM', 'widthM', 'heightM', 'openFraction'];
       if (!allowed.includes(field)) throw new Error('This opening dimension is read-only.');
       const parsed = numberValue(value, {
-        label: { widthM: 'Opening width', sillM: 'Sill height', heightM: 'Opening height',
+        label: { offsetM: 'Opening offset', widthM: 'Opening width', sillM: 'Sill height', heightM: 'Opening height',
           headM: 'Head height', openFraction: 'Open fraction' }[field],
-        min: field === 'sillM' || field === 'openFraction' ? 0 : undefined,
+        min: ['offsetM', 'sillM', 'openFraction'].includes(field) ? 0 : undefined,
         max: field === 'openFraction' ? 1 : undefined,
         positive: ['widthM', 'heightM', 'headM'].includes(field)
       });
@@ -129,16 +137,19 @@
         const sill = numberValue(entity.sillM, { label: 'Current sill height', min: 0 });
         command.heightM = numberValue(parsed - sill, { label: 'Head minus sill height', positive: true });
       } else command[field] = parsed;
-      if (field === 'widthM') {
-        const end = numberValue(entity.offsetM, { label: 'Opening offset', min: 0 }) + parsed;
-        if (end > wallLength(wall) + 1e-7) throw new Error('The opening would extend past its host wall.');
+      if (field === 'widthM' || field === 'offsetM') {
+        const span = retainedSpan(wall);
+        const offset = command.offsetM ?? numberValue(entity.offsetM, { label: 'Opening offset', min: 0 });
+        const width = command.widthM ?? numberValue(entity.widthM, { label: 'Opening width', positive: true });
+        if (offset < span.startM || offset + width > span.endM + 1e-7)
+          throw new Error('The opening would extend past its retained host wall.');
       }
-      if (kind === 'window' && ['sillM', 'heightM', 'headM'].includes(field)) {
+      if (['sillM', 'heightM', 'headM'].includes(field)) {
         const sill = command.sillM === undefined ? numberValue(entity.sillM, { label: 'Sill height', min: 0 }) : command.sillM;
         const height = command.heightM === undefined
           ? numberValue(entity.heightM, { label: 'Opening height', positive: true }) : command.heightM;
         if (sill + height > numberValue(wall.heightM, { label: 'Wall height', positive: true }) + 1e-7) {
-          throw new Error('The window head would extend above its host wall.');
+          throw new Error('The opening head would extend above its host wall.');
         }
       }
     }
@@ -152,15 +163,54 @@
     if (!['unknown', 'non-structural'].includes(wall.structuralRole)) {
       throw new Error('This wall has a protected or unclassified role; conceptual opening is unavailable.');
     }
-    const length = wallLength(wall);
+    const span = retainedSpan(wall);
     if (!options || typeof options.full !== 'boolean') throw new Error('Choose a full-span or partial-span connection.');
+    if (options.toEnd !== undefined && typeof options.toEnd !== 'boolean') throw new Error('Choose a valid to-wall-end mode.');
+    if (options.full && options.toEnd) throw new Error('Choose full span or to wall end, not both.');
     const command = { type: 'open-wall', id: wall.id, full: options.full, confirmConceptual: true };
     if (!options.full) {
-      command.offsetM = numberValue(options.offsetM, { label: 'Opening offset', min: 0 });
-      command.widthM = numberValue(options.widthM, { label: 'Opening width', positive: true });
-      if (command.offsetM + command.widthM > length + 1e-7) {
+      command.offsetM = numberValue(options.offsetM, { label: 'Opening offset', min: span.startM });
+      const width = options.toEnd ? span.endM - command.offsetM
+        : numberValue(options.widthM, { label: 'Opening width', positive: true });
+      if (width <= 1e-7 || command.offsetM + width > span.endM + 1e-7) {
         throw new Error('The partial connection must fit within the wall span.');
       }
+      if (options.toEnd) command.toEnd = true;
+      else command.widthM = width;
+    }
+    return command;
+  }
+  function wallTrimCommand(wall, start, end) {
+    wallOpeningCommand(wall, { full: true });
+    const length = wallLength(wall);
+    const startM = numberValue(start, { label: 'Retained wall start', min: 0, max: length });
+    const endM = end === null ? null : numberValue(end, { label: 'Retained wall end', positive: true, max: length });
+    if (startM >= (endM ?? length)) throw new Error('The retained wall end must follow its start.');
+    return { type: 'trim-wall', id: wall.id, startM, endM, confirmConceptual: true };
+  }
+  function addOpeningCommand(wall, kind, values) {
+    if (!['door', 'window'].includes(kind) || !wall || typeof wall.id !== 'string')
+      throw new Error('Choose a door or window and a current host wall.');
+    if (wall.removed || typeof wall.exterior !== 'boolean' || !['unknown', 'non-structural'].includes(wall.structuralRole))
+      throw new Error('Choose a surviving, unprotected host wall.');
+    const span = retainedSpan(wall);
+    const offsetM = numberValue(values.offsetM, { label: 'Opening offset', min: span.startM });
+    const widthM = numberValue(values.widthM, { label: 'Opening width', positive: true, min: kind === 'door' ? .68 : .3 });
+    const sillM = kind === 'window' ? numberValue(values.sillM, { label: 'Window sill', min: 0 }) : 0;
+    const heightM = kind === 'window' && values.headM !== undefined
+      ? numberValue(numberValue(values.headM, { label: 'Window head', positive: true }) - sillM, { label: 'Head minus sill', positive: true })
+      : numberValue(values.heightM, { label: 'Opening height', positive: true });
+    if (offsetM + widthM > span.endM + 1e-7) throw new Error('The opening must fit within the retained host wall span.');
+    if (sillM + heightM > numberValue(wall.heightM, { label: 'Wall height', positive: true }) + 1e-7)
+      throw new Error('The opening head would extend above its host wall.');
+    const command = { type: `add-${kind}`, wallId: wall.id, offsetM, widthM, heightM,
+      openFraction: numberValue(values.openFraction, { label: 'Open fraction', min: 0, max: 1 }) };
+    if (kind === 'window') command.sillM = sillM;
+    else {
+      if (!['start', 'end'].includes(values.hinge) || !['left', 'right'].includes(values.swing))
+        throw new Error('Choose the door hinge endpoint and swing side.');
+      command.hinge = values.hinge;
+      command.swing = values.swing;
     }
     return command;
   }
@@ -634,17 +684,16 @@
     function openingFields(parent, kind, key, fields, firstContext) {
       const opening = group(parent, kind === 'window' ? 'Window aperture' : 'Door aperture');
       const host = readout(opening, 'Host wall ID');
-      const offset = readout(opening, 'Offset from wall start');
-      const height = kind === 'door' ? readout(opening, 'Height · read-only (m)') : null;
       const head = kind === 'door' ? readout(opening, 'Head above floor') : null;
       const requestedWidth = kind === 'door' ? readout(opening, 'Requested clear width · unverified') : null;
       const nominalLeaf = kind === 'door' ? readout(opening, 'Nominal leaf width · schematic') : null;
       const wallDirection = readout(opening, 'Wall start → end');
       const inputs = [];
       const grid = element('div', 'hp-editor-grid', undefined, opening);
-      const specs = [['widthM', 'Opening width (m)', 0]];
+      const specs = [['offsetM', 'Offset from original wall start (m)', 0], ['widthM', 'Opening width (m)', 0]];
       if (kind === 'window') specs.push(['sillM', 'Sill above floor (m)', 0], ['headM', 'Head above floor (m)', 0],
         ['heightM', 'Window height (m)', 0]);
+      else specs.push(['heightM', 'Door opening height (m)', 0]);
       specs.push(['openFraction', 'Operating open fraction', 0, 1]);
       for (const [name, label, min, max] of specs) {
         const control = field(inspector, grid, {
@@ -757,19 +806,101 @@
         ? 'Head = sill + height. Changing the sill retains height; editing the head changes height. '
           + 'Heights are above this floor. Glazing is not automatically an open airflow aperture.'
         : 'Width is the schematic model opening width, not a certified clear passage. '
-          + 'Door height and wall offset are read-only in this editor. The swing diagram is not its operating state.', opening);
+          + 'Offset is measured from the original host wall start; wall ends and collisions are checked before each edit. '
+          + 'The swing diagram is not its operating state.', opening);
       fields.push(ctx => {
         text(host, ctx.entity.wallId || 'Unresolved attachment');
-        text(offset, metreText(ctx.entity.offsetM));
         text(wallDirection, ctx.wall
           ? `(${metreText(ctx.wall.start.x)}, ${metreText(ctx.wall.start.y)}) → (${metreText(ctx.wall.end.x)}, ${metreText(ctx.wall.end.y)})`
           : 'Missing host — review attachment');
-        if (height) text(height, metreText(ctx.entity.heightM));
         if (head) text(head, Number.isFinite(ctx.entity.sillM) && Number.isFinite(ctx.entity.heightM)
           ? metreText(ctx.entity.sillM + ctx.entity.heightM) : 'Not available');
         if (requestedWidth) text(requestedWidth, metreText(ctx.entity.requestedClearWidthM));
         if (nominalLeaf) text(nominalLeaf, metreText(ctx.entity.nominalLeafWidthM));
         for (const control of inputs) control.input.disabled = !ctx.wall;
+      });
+    }
+
+    function stagedNumber(parent, key, label, value, changed) {
+      const wrapper = element('div', 'hp-editor-field', undefined, parent);
+      const labelNode = element('label', 'hp-editor-label', label, wrapper);
+      const input = element('input', 'hp-editor-input', undefined, wrapper);
+      input.id = `hp-editor-${key}`;
+      input.dataset.hpEditorField = key;
+      input.type = 'number';
+      input.step = 'any';
+      input.min = '0';
+      input.inputMode = 'decimal';
+      input.value = value === undefined || value === null ? '' : String(value);
+      labelNode.htmlFor = input.id;
+      input.addEventListener('input', changed);
+      return input;
+    }
+
+    function addOpeningFields(parent, key, fields) {
+      const section = group(parent, 'Doors & windows on this wall');
+      const actions = element('div', 'hp-editor-actions', undefined, section);
+      const form = element('div', 'hp-editor-wall-draft', undefined, section);
+      form.hidden = true;
+      let kind = null;
+      const title = element('h3', 'hp-editor-subheading', '', form);
+      const grid = element('div', 'hp-editor-grid', undefined, form);
+      const inputs = {};
+      const changed = () => cancelConfirmation(inspector, false);
+      for (const [name, label] of [
+        ['offsetM', 'Offset from original wall start (m)'], ['widthM', 'Opening width (m)'],
+        ['heightM', 'Door opening height (m)'], ['sillM', 'Window sill above floor (m)'],
+        ['headM', 'Window head above floor (m)'], ['openFraction', 'Operating open fraction · 0–1']
+      ]) inputs[name] = stagedNumber(grid, `new-opening-${name}`, label, name === 'openFraction' ? 0 : '', changed);
+      const handing = element('div', 'hp-editor-grid', undefined, form);
+      for (const [name, label, choices] of [
+        ['hinge', 'Door hinge endpoint', [['start', 'Opening start'], ['end', 'Opening end']]],
+        ['swing', 'Door swing side · wall start → end', [['left', 'Left side'], ['right', 'Right side']]]
+      ]) {
+        const labelNode = element('label', 'hp-editor-label', label, handing);
+        const select = element('select', 'hp-editor-input', undefined, handing);
+        select.id = `hp-editor-new-opening-${name}`;
+        select.dataset.hpEditorField = `new-opening-${name}`;
+        labelNode.htmlFor = select.id;
+        for (const [value, label] of [['', 'Choose…'], ...choices]) {
+          const option = element('option', '', label, select);
+          option.value = value;
+          if (!value) option.disabled = true;
+        }
+        select.value = '';
+        inputs[name] = select;
+      }
+      element('p', 'hp-editor-help', 'All dimensions are metres. An actual wall aperture is created in both views; '
+        + 'it cannot cross a wall end, another opening or a removed span. Heights are above this floor. '
+        + 'Open fraction starts at 0 (closed); it is not a swing angle or certified clear passage.', form);
+      const place = button(form, 'Add opening', 'add-wall-opening', () => run(inspector, () => {
+        const ctx = selectedContext(key);
+        const values = Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, input.value]));
+        if (kind === 'door') delete values.headM;
+        planner.execute(addOpeningCommand(ctx.entity, kind, values));
+      }, 'Opening added to the selected wall. Its real aperture and selection are shared by 2D and 3D.'));
+      function show(next) {
+        kind = next;
+        form.hidden = false;
+        text(title, next === 'door' ? 'New door aperture' : 'New window aperture');
+        for (const name of ['sillM', 'headM']) inputs[name].parentElement.hidden = next !== 'window';
+        inputs.heightM.parentElement.hidden = next !== 'door';
+        handing.hidden = next !== 'door';
+        text(place, next === 'door' ? 'Add door' : 'Add window');
+        place.dataset.hpEditorAction = `add-${next}`;
+        focus(inputs.offsetM);
+      }
+      const door = button(actions, 'Add door…', 'configure-door', () => show('door'));
+      const windowButton = button(actions, 'Add window…', 'configure-window', () => show('window'));
+      button(form, 'Cancel placement', 'cancel-wall-opening', () => {
+        form.hidden = true;
+        focus(kind === 'door' ? door : windowButton);
+      });
+      fields.push(ctx => {
+        const unavailable = ctx.entity.removed || typeof ctx.entity.exterior !== 'boolean'
+          || !['unknown', 'non-structural'].includes(ctx.entity.structuralRole);
+        for (const control of [door, windowButton, place, ...Object.values(inputs)]) control.disabled = unavailable;
+        section.title = unavailable ? 'Restore the wall or choose a surviving, unprotected wall before adding an opening.' : '';
       });
     }
 
@@ -781,43 +912,73 @@
         values[name] = readout(wallGroup, label);
       }
       element('p', 'hp-editor-warning', WALL_CAUTION, wallGroup);
+      const directActions = element('div', 'hp-editor-actions', undefined, wallGroup);
+      const remove = button(directActions, 'Delete internal wall…', 'delete-wall', () => run(inspector, () => {
+        const ctx = selectedContext(key), span = retainedSpan(ctx.entity);
+        wallOpeningCommand(ctx.entity, { full: true });
+        confirmAction(inspector, remove, {
+          title: 'Delete this internal partition?', label: 'Confirm conceptual wall deletion',
+          description: `Open the full retained ${metreText(span.endM - span.startM)} span, through the full wall height. `
+            + `Wall ID: ${ctx.entity.id}. Room boundaries are not moved. Related openings and independent references are retained for review.`,
+          caution: WALL_CAUTION, success: 'Internal partition opened in both views. Use Undo or Restore wall to reverse it.',
+          execute: () => planner.execute(wallOpeningCommand(selectedContext(key).entity, { full: true }))
+        });
+      }));
+      remove.classList.add('hp-editor-caution-button');
       const draft = element('div', 'hp-editor-wall-draft', undefined, wallGroup);
-      const modeLabel = element('label', 'hp-editor-label', 'Conceptual connection span', draft);
+      const modeLabel = element('label', 'hp-editor-label', 'Full-height opening', draft);
       const mode = element('select', 'hp-editor-input', undefined, draft);
       mode.id = 'hp-editor-wall-span';
       mode.dataset.hpEditorField = 'wallSpan';
       modeLabel.htmlFor = mode.id;
-      for (const [value, label] of [['full', 'Full wall span · full height'], ['partial', 'Partial wall span · full height']]) {
+      for (const [value, label] of [['full', 'Full retained span'], ['partial', 'Partial · enter width'], ['to-end', 'To wall end · exact remaining span']]) {
         const option = element('option', '', label, mode);
         option.value = value;
       }
       const existing = firstContext.project.wallEdits && firstContext.project.wallEdits[firstContext.entity.id];
-      mode.value = existing && existing.full === false ? 'partial' : 'full';
+      const modeFor = edit => edit?.toEnd ? 'to-end' : edit?.full === false ? 'partial' : 'full';
+      mode.value = modeFor(existing);
       let draftDirty = false;
+      let latestWall = firstContext.entity;
       const partial = element('div', 'hp-editor-grid', undefined, draft);
       const staged = {};
-      for (const [name, label] of [['offsetM', 'Offset from wall start (m)'], ['widthM', 'Open span width (m)']]) {
-        const wrapper = element('div', 'hp-editor-field', undefined, partial);
-        const labelNode = element('label', 'hp-editor-label', label, wrapper);
-        const input = element('input', 'hp-editor-input', undefined, wrapper);
-        input.id = `hp-editor-wall-${name}`;
-        input.dataset.hpEditorField = name;
-        input.type = 'number';
-        input.step = 'any';
-        input.min = '0';
-        input.inputMode = 'decimal';
-        input.placeholder = 'Required for partial span';
-        input.value = existing && existing.full === false && Number.isFinite(existing[name]) ? String(existing[name]) : '';
-        labelNode.htmlFor = input.id;
-        staged[name] = input;
-        input.addEventListener('input', () => {
+      for (const [name, label] of [['offsetM', 'Offset from original wall start (m)'], ['widthM', 'Open span width (m)']]) {
+        const input = stagedNumber(partial, `wall-${name}`, label, existing?.full === false ? existing[name] : '', () => {
           draftDirty = true;
           cancelConfirmation(inspector, false);
+          updateRemaining();
         });
+        input.dataset.hpEditorField = name;
+        input.placeholder = 'Required for partial span';
+        staged[name] = input;
+      }
+      const remaining = element('p', 'hp-editor-help', '', draft);
+      remaining.dataset.hpEditorReadout = 'remaining-wall-span';
+      function updateRemaining() {
+        try {
+          const span = retainedSpan(latestWall);
+          if (mode.value === 'full') {
+            text(remaining, `Full retained span: ${metreText(span.endM - span.startM)}. No partial-width entry needed.`);
+            return;
+          }
+          const offset = numberValue(staged.offsetM.value, { label: 'Opening offset', min: span.startM, max: span.endM });
+          const width = span.endM - offset;
+          let note = `Exact remaining span to wall end: ${metreText(width)}. `;
+          if (mode.value === 'to-end') note += 'The end follows the effective host span after later edits.';
+          else if (staged.widthM.value !== '') {
+            const entered = numberValue(staged.widthM.value, { label: 'Opening width', positive: true });
+            note += entered <= width ? `${metreText(width - entered)} deliberately remains at this end. Choose “To wall end” to remove it exactly.`
+              : 'The entered width exceeds the available span; it will be rejected.';
+          } else note += 'Enter a deliberate width, or choose “To wall end”.';
+          text(remaining, note);
+        } catch (error) { text(remaining, error.message); }
       }
       function updateMode() {
-        partial.hidden = mode.value !== 'partial';
-        for (const input of Object.values(staged)) input.disabled = mode.disabled || mode.value !== 'partial';
+        partial.hidden = mode.value === 'full';
+        staged.widthM.parentElement.hidden = mode.value === 'to-end';
+        staged.offsetM.disabled = mode.disabled || mode.value === 'full';
+        staged.widthM.disabled = mode.disabled || mode.value !== 'partial';
+        updateRemaining();
       }
       mode.addEventListener('change', () => {
         draftDirty = true;
@@ -828,11 +989,13 @@
       const review = button(actions, 'Review conceptual opening…', 'review-open-wall', () => run(inspector, () => {
         const ctx = selectedContext(key);
         const command = wallOpeningCommand(ctx.entity, {
-          full: mode.value === 'full', offsetM: staged.offsetM.value, widthM: staged.widthM.value
+          full: mode.value === 'full', toEnd: mode.value === 'to-end', offsetM: staged.offsetM.value, widthM: staged.widthM.value
         });
+        const span = retainedSpan(ctx.entity);
         const description = command.full
-          ? `Open the full ${metreText(wallLength(ctx.entity))} span and full wall height.`
-          : `Open ${metreText(command.widthM)} starting ${metreText(command.offsetM)} from the wall start, through the full wall height.`;
+          ? `Open the full ${metreText(span.endM - span.startM)} retained span and full wall height.`
+          : `Open ${metreText(command.toEnd ? span.endM - command.offsetM : command.widthM)} starting ${metreText(command.offsetM)} `
+            + `from the original wall start, through the full wall height${command.toEnd ? ', exactly to the wall end (persistent intent)' : ''}.`;
         confirmAction(inspector, review, {
           title: 'Review internal connection', label: 'Confirm conceptual opening',
           description: `${description} Wall ID: ${ctx.entity.id}. Named rooms remain. `
@@ -845,7 +1008,7 @@
           }
         });
       }));
-      const restore = button(actions, 'Review wall restoration…', 'review-restore-wall', () => run(inspector, () => {
+      const restore = button(directActions, 'Restore wall…', 'review-restore-wall', () => run(inspector, () => {
         const ctx = selectedContext(key);
         confirmAction(inspector, restore, {
           title: 'Review conceptual wall restoration', label: 'Confirm wall restoration',
@@ -853,13 +1016,36 @@
             + 'Review its doors, windows and electrical attachments after restoration.',
           caution: WALL_CAUTION, success: 'Wall restored in the conceptual plan.',
           execute: () => {
-            planner.execute({ type: 'restore-wall', id: selectedContext(key).entity.id });
+            planner.execute({ type: 'restore-wall', id: selectedContext(key).entity.id, confirmConceptual: true });
             draftDirty = false;
           }
         });
       }));
+      const trim = element('details', 'hp-editor-wall-draft', undefined, wallGroup);
+      element('summary', 'hp-editor-label', 'Adjust retained wall ends within the original span', trim);
+      element('p', 'hp-editor-help', 'Trim only: no moving or extending walls, and no reshaping adjoining rooms. '
+        + 'Offsets use the original wall start. An end equal to the original wall end continues to follow that end. '
+        + 'Openings or attachments in cut-away material stay retained but unresolved for review.', trim);
+      const trimGrid = element('div', 'hp-editor-grid', undefined, trim);
+      const initialSpan = retainedSpan(firstContext.entity);
+      let trimDirty = false;
+      const trimChanged = () => { trimDirty = true; cancelConfirmation(inspector, false); };
+      const trimStart = stagedNumber(trimGrid, 'retainedStartM', 'Retained start (m)', initialSpan.startM, trimChanged);
+      const trimEnd = stagedNumber(trimGrid, 'retainedEndM', 'Retained end (m)', initialSpan.endM, trimChanged);
+      const trimReview = button(trim, 'Review retained ends…', 'review-trim-wall', () => run(inspector, () => {
+        const ctx = selectedContext(key), command = wallTrimCommand(ctx.entity, trimStart.value, trimEnd.value);
+        confirmAction(inspector, trimReview, {
+          title: 'Review internal wall trim', label: 'Confirm retained wall ends',
+          description: `Retain only ${metreText(command.startM)} to ${metreText(command.endM)} within the original `
+            + `${metreText(wallLength(ctx.entity))} wall span. Existing full-height openings within that interval remain. `
+            + 'Door/window and independent attachment records are not deleted or silently moved.',
+          caution: WALL_CAUTION, success: 'Retained wall ends applied. Review attachments in removed material.',
+          execute: () => { planner.execute(command); trimDirty = false; }
+        });
+      }));
       fields.push(ctx => {
         const wall = ctx.entity;
+        latestWall = wall;
         let length;
         try { length = wallLength(wall); } catch (_) { length = null; }
         text(values.length, metreText(length));
@@ -867,23 +1053,33 @@
         text(values.classification, `${wall.exterior === true ? 'Exterior' : wall.exterior === false ? 'Internal' : 'Unclassified'} · structural role: ${wall.structuralRole || 'unknown'}`);
         const edit = ctx.project.wallEdits && ctx.project.wallEdits[wall.id];
         const passages = (ctx.scene.openings || []).filter(item => item.wallId === wall.id && item.kind === 'passage');
-        text(values.state, wall.removed || (edit && edit.full) ? 'Full-span opening'
-          : edit || passages.length ? 'Partial-span opening' : 'No open-connection override');
+        text(values.state, wall.removed ? 'Full-height partition removed'
+          : edit?.retainedSpan ? `Retained interval ${metreText(wall.retainedSpan?.startM)} → ${metreText(wall.retainedSpan?.endM)}`
+            : passages.length ? 'Partial-span opening' : 'No open-connection override');
         text(values.rooms, (wall.roomIds || []).map(id => (ctx.scene.rooms || []).find(room => room.id === id)?.label || id).join(' ↔ ') || 'Not recorded');
         const protectedWall = wall.exterior !== false || !['unknown', 'non-structural'].includes(wall.structuralRole) || !length;
         mode.disabled = protectedWall;
         review.disabled = protectedWall;
+        remove.disabled = protectedWall || wall.removed;
+        trimReview.disabled = protectedWall;
+        trimStart.disabled = trimEnd.disabled = protectedWall;
         review.title = protectedWall ? 'Exterior, protected or unclassified walls cannot be opened here.' : '';
-        restore.disabled = !edit && !wall.removed && !passages.length;
+        restore.disabled = protectedWall || (!edit && !wall.removed && !passages.length);
         if (!draftDirty && document.activeElement !== mode && !Object.values(staged).includes(document.activeElement)) {
-          mode.value = edit && edit.full === false ? 'partial' : 'full';
+          mode.value = modeFor(edit);
           for (const [name, input] of Object.entries(staged)) {
             input.value = edit && edit.full === false && Number.isFinite(edit[name]) ? String(edit[name]) : '';
           }
         }
+        if (!trimDirty && ![trimStart, trimEnd].includes(document.activeElement)) {
+          const span = retainedSpan(wall);
+          trimStart.value = String(span.startM);
+          trimEnd.value = String(span.endM);
+        }
         updateMode();
       });
       updateMode();
+      addOpeningFields(parent, key, fields);
     }
 
     function buildSelection(ctx, key) {
@@ -895,6 +1091,51 @@
       if (kind === 'room') {
         const roomType = readout(selectionFields, 'Room type');
         updates.push(state => text(roomType, state.entity.type || 'Not recorded'));
+        const usableArea=readout(selectionFields,'Usable floor area');
+        const reservedArea=readout(selectionFields,'Reserved by lift / staircase');
+        const serviceFootprint=readout(selectionFields,'Service footprint including walls');
+        updates.push(state=>{
+          const room=state.entity;
+          const area=room.usableAreaM2===undefined?room.rect.w*room.rect.h:room.usableAreaM2;
+          text(usableArea,Number.isFinite(area)?`${area.toFixed(2)} m²`:'Not available');
+          text(reservedArea,room.reservedAreaM2===undefined?'0.00 m²':
+            Number.isFinite(room.reservedAreaM2)?`${room.reservedAreaM2.toFixed(2)} m²`:'Not available');
+          serviceFootprint.parentElement.hidden=!room.reservesSpace;
+          const footprint=room.reservationFootprint;
+          text(serviceFootprint,footprint&&Number.isFinite(footprint.w*footprint.h)?
+            `${(footprint.w*footprint.h).toFixed(2)} m²`:'Not available');
+        });
+        const actions=element('div','hp-editor-actions',undefined,selectionFields);
+        const remove=button(actions,'Delete room…','delete-room',()=>run(inspector,()=>{
+          const current=selectedContext(key);
+          confirmAction(inspector,remove,{
+            title:'Delete this room?',label:'Confirm room deletion',
+            description:`Remove “${current.entity.label || current.entity.id}” from this floor's programme, along with its furniture and room-owned openings. Other rooms and floors keep their identities and positions. Independent electrical, structural and annotation records remain for host review; an adjoining bathroom is not automatically deleted or reassigned.`,
+            success:'Room deleted. Use Undo to restore it and its room-owned components.',
+            execute:()=>planner.execute({type:'delete-room',id:selectedContext(key).entity.id,confirmRemoval:true})
+          });
+        }));
+        remove.classList.add('hp-editor-caution-button');
+      } else if (kind === 'balcony') {
+        const position = readout(selectionFields, 'Balcony footprint');
+        const host = readout(selectionFields, 'Attached room');
+        updates.push(state => {
+          const rect = state.entity.rect;
+          text(position, `X ${metreText(rect.x)}, Y ${metreText(rect.y)} · ${metreText(rect.w)} × ${metreText(rect.h)}`);
+          text(host, (state.scene.rooms || []).find(room => room.id === state.entity.roomId)?.label || 'Unresolved / not recorded');
+        });
+        const actions = element('div', 'hp-editor-actions', undefined, selectionFields);
+        const remove = button(actions, 'Delete balcony…', 'delete-balcony', () => run(inspector, () => {
+          const current = selectedContext(key);
+          confirmAction(inspector, remove, {
+            title: 'Delete this balcony?', label: 'Confirm balcony deletion',
+            description: `Remove “${current.entity.label || current.entity.id}” and its balcony-owned access openings from this floor's programme. `
+              + 'Other balconies keep their identities and positions. Independent electrical, structural and annotation records remain for host review.',
+            success: 'Balcony deleted. Its quantity is updated; use Undo to restore it.',
+            execute: () => planner.execute({ type: 'delete-balcony', id: selectedContext(key).entity.id, confirmRemoval: true })
+          });
+        }));
+        remove.classList.add('hp-editor-caution-button');
       } else if (kind === 'furniture') {
         const host = readout(selectionFields, 'Room');
         updates.push(state => text(host, (state.scene.rooms || []).find(room => room.id === state.entity.roomId)?.label
@@ -1002,8 +1243,8 @@
     function renderInspector(state) {
       if (!inspector) return;
       const options = [{ value: '', label: 'Click a room, component or wall — or choose here' }];
-      for (const kind of ['room', 'furniture', 'door', 'window', 'wall', 'electrical']) {
-        const items = kind === 'room' ? state.scene?.rooms : kind === 'furniture' ? state.scene?.furniture
+      for (const kind of ['room', 'balcony', 'furniture', 'door', 'window', 'wall', 'electrical']) {
+        const items = kind === 'room' ? state.scene?.rooms : kind === 'balcony' ? state.scene?.balconies : kind === 'furniture' ? state.scene?.furniture
           : kind === 'wall' ? state.scene?.walls : kind === 'electrical' ? state.scene?.electrical
             : (state.scene?.openings || []).filter(item => kind === 'window' ? item.kind === 'window' : ['hinged', 'sliding'].includes(item.kind));
         for (const item of items || []) {
@@ -1027,9 +1268,9 @@
         text(identityId, `ID: ${entity.id}`);
         text(selectionNote, state.selection.kind === 'door' || state.selection.kind === 'window'
           ? (state.scene.walls || []).some(wall => wall.id === entity.wallId)
-            ? 'Selection is shared with the plan. Focusing a field does not select or move an object.'
+            ? 'Selection is shared by the 2D plan and 3D model. Focusing a field does not select or move an object.'
             : 'Unresolved host wall: the attachment is retained for review. Opening edits are disabled.'
-          : 'Selection is shared with the plan. Focusing a field does not select or move an object.');
+          : 'Selection is shared by the 2D plan and 3D model. Focusing a field does not select or move an object.');
         selectionFields.hidden = false;
         selectionRefresh({ ...state, entity, wall: (state.scene.walls || []).find(wall => wall.id === entity.wallId) });
       } else {
@@ -1124,7 +1365,7 @@
 
   return {
     init, numberValue, selectionEntity, selectionFloor, rectCommand, headBearing, bedHeadCommand, openingCommand,
-    wallLength, wallOpeningCommand, floorElevation, floorPatchCommand, deleteFloorCommand,
+    wallLength, retainedSpan, wallOpeningCommand, wallTrimCommand, addOpeningCommand, floorElevation, floorPatchCommand, deleteFloorCommand,
     floorAllowanceNotice, isTextEntry, historyShortcut
   };
 });

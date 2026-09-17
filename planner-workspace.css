@@ -1,0 +1,463 @@
+/* Loaded after the incumbent module styles; project visibility remains owned by navigation. */
+.hp-workspace {
+  --hp-workspace-gap: 1rem;
+  --hp-workspace-inset: 1.5rem;
+  min-width: 0;
+}
+
+.hp-workspace [hidden] {
+  display: none !important;
+}
+
+.hp-workspace .hp-project-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem 1.5rem;
+  padding: .75rem var(--hp-workspace-inset);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--txt);
+}
+
+.hp-workspace .hp-project-bar > *,
+.hp-workspace .hp-workspace-tools > *,
+.hp-workspace .hp-workspace-panel,
+.hp-workspace .hp-design-layout > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hp-workspace .hp-project-bar h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.35;
+}
+
+.hp-workspace .hp-project-bar .header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .5rem 1rem;
+  width: 100%;
+}
+
+.hp-workspace #workspaceProjectIdentity {
+  flex: 1 1 10rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.hp-workspace .hp-project-bar label {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.hp-workspace #workspaceSaveStatus {
+  flex-basis: 100%;
+}
+
+.hp-workspace #workspaceSaveStatus p {
+  margin: 0;
+}
+
+.hp-workspace #workspaceHeading {
+  margin: .75rem var(--hp-workspace-inset) 0;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.hp-workspace .hp-project-bar p {
+  margin: .25rem 0 0;
+  color: var(--dim);
+  font-size: .875rem;
+}
+
+.hp-workspace .hp-project-bar :is(h1, p),
+.hp-workspace .hp-workspace-status,
+.hp-workspace .hp-workspace-panel > :is(h2, h3, p) {
+  overflow-wrap: anywhere;
+}
+
+.hp-workspace .hp-project-nav {
+  display: flex;
+  position: static;
+  align-items: stretch;
+  gap: .25rem;
+  max-width: 100%;
+  padding: .25rem var(--hp-workspace-inset);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  scrollbar-width: thin;
+  scroll-padding-inline: var(--hp-workspace-inset);
+}
+
+.hp-workspace .hp-project-nav > :is(button, a) {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: 0;
+  padding: .625rem .875rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.hp-workspace .hp-project-nav > :is(button, a):hover {
+  background: var(--panel2);
+  color: var(--txt);
+}
+
+.hp-workspace .hp-project-nav > :is(.on, [aria-current="page"], [aria-selected="true"]) {
+  border-bottom-color: var(--acc);
+  color: var(--txt);
+  background: var(--panel2);
+}
+
+.hp-workspace .hp-workspace-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+  padding: .625rem var(--hp-workspace-inset);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.hp-workspace :is(.hp-project-bar, .hp-workspace-tools) :is(button, select),
+.hp-workspace .hp-project-menu > summary {
+  min-height: 2.75rem;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .5rem .75rem;
+  background: var(--panel2);
+  color: var(--txt);
+  font-family: inherit;
+  font-size: .875rem;
+  line-height: 1.4;
+}
+
+.hp-workspace :is(.hp-project-bar, .hp-workspace-tools) button {
+  min-width: 2.75rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.hp-workspace .hp-workspace-tools select {
+  width: auto;
+}
+
+.hp-workspace #plannerProjectTools {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.hp-workspace .hp-workspace-tool-row,
+.hp-workspace .hp-workspace-tool-row .hp-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin: 0;
+}
+
+.hp-workspace .hp-workspace-tool-row > .hp-editor-input {
+  flex: 0 1 18rem;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.hp-workspace #plannerProjectTools .hp-editor-body > details {
+  margin-top: .5rem;
+}
+
+.hp-workspace #plannerProjectTools .hp-editor-body > details > summary {
+  min-height: 2rem;
+  align-content: center;
+  cursor: pointer;
+}
+
+.hp-workspace .hp-workspace-single-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.hp-workspace :is(.hp-project-bar, .hp-workspace-tools) label {
+  margin: 0;
+  color: var(--txt);
+  font-size: .875rem;
+}
+
+.hp-workspace :is(.hp-project-bar, .hp-workspace-tools) button:hover:not(:disabled) {
+  border-color: var(--acc);
+}
+
+.hp-workspace :is(.hp-project-bar, .hp-workspace-tools, .hp-project-nav) button:disabled {
+  color: var(--dim);
+  cursor: not-allowed;
+}
+
+.hp-workspace :is(.hp-project-bar, .hp-project-nav, .hp-workspace-tools, .hp-workspace-panel, .hp-design-layout)
+  :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.hp-workspace .hp-project-nav > :is(button, a):focus-visible {
+  outline-offset: -3px;
+}
+
+/* Keep project management in document flow instead of a viewport-covering overlay. */
+.hp-workspace .hp-project-menu {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.hp-workspace .hp-project-menu[open] {
+  flex-basis: 100%;
+}
+
+.hp-workspace .hp-project-menu > summary {
+  width: fit-content;
+}
+
+.hp-workspace .hp-project-menu > :not(summary) {
+  margin-top: .75rem;
+}
+
+.hp-workspace .hp-workspace-panel {
+  padding: var(--hp-workspace-gap) var(--hp-workspace-inset);
+}
+
+.hp-workspace .hp-workspace-panel > :is(h2, h3) {
+  margin: 0 0 .75rem;
+  color: var(--txt);
+  line-height: 1.4;
+}
+
+.hp-workspace .hp-workspace-status {
+  min-width: 0;
+  margin: 0;
+  padding: .625rem var(--hp-workspace-inset);
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: .875rem;
+  line-height: 1.5;
+}
+
+.hp-workspace .hp-workspace-status:empty {
+  display: none;
+}
+
+/* No height, clipping or transform here: the plan can still own fullscreen. */
+.hp-workspace .hp-design-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: none;
+  align-items: start;
+  gap: var(--hp-workspace-gap);
+  padding: var(--hp-workspace-gap) var(--hp-workspace-inset);
+}
+
+.hp-workspace .hp-design-layout > :is(.hp-design-palette, .hp-design-canvas, .hp-design-inspector) {
+  grid-area: auto;
+}
+
+.hp-workspace :is(.hp-design-palette, .hp-design-inspector) {
+  min-width: 0;
+  position: static;
+  max-height: none;
+  margin: 0;
+  overflow: visible;
+}
+
+.hp-workspace .hp-design-canvas {
+  min-width: 0;
+}
+
+.hp-workspace :is(details.hp-design-palette, details.hp-design-inspector) {
+  padding: .75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.hp-workspace :is(.hp-project-menu, details.hp-design-palette, details.hp-design-inspector) > summary {
+  min-height: 2.75rem;
+  align-content: center;
+  color: var(--txt);
+  font-size: .875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.hp-workspace :is(.hp-project-menu, details.hp-design-palette, details.hp-design-inspector) > summary::before {
+  content: "+ ";
+}
+
+.hp-workspace :is(.hp-project-menu, details.hp-design-palette, details.hp-design-inspector)[open] > summary::before {
+  content: "− ";
+}
+
+.hp-workspace :is(.hp-design-palette, .hp-design-inspector) .card {
+  margin-bottom: .75rem;
+}
+
+.hp-workspace :is(.hp-design-palette, .hp-design-inspector) .card:last-child {
+  margin-bottom: 0;
+}
+
+.hp-workspace :is(.hp-design-palette, .hp-design-inspector)
+  :is(.hp-editor-label, .hp-editor-help, .hp-editor-button, .component-size-fields label, .library-note, .library-dim) {
+  font-size: .8125rem;
+}
+
+.hp-workspace :is(.hp-design-palette, .hp-design-inspector)
+  :is(.hp-editor-input, .component-size-fields input, .range-values input) {
+  min-height: 2.5rem;
+  font-size: .875rem;
+}
+
+/* Reserve side tracks only for expanded panes. Closed summaries remain reachable below the drawing. */
+@media (min-width: 80rem) {
+  .hp-workspace .hp-design-layout {
+    --hp-palette-track: 0px;
+    --hp-inspector-track: 0px;
+    grid-template-columns: var(--hp-palette-track) minmax(0, 1fr) var(--hp-inspector-track);
+    column-gap: 0;
+  }
+
+  .hp-workspace .hp-design-layout:has(> .hp-design-palette:not([hidden]):is(:not(details), [open])) {
+    --hp-palette-track: 17rem;
+  }
+
+  .hp-workspace .hp-design-layout:has(> .hp-design-inspector:not([hidden]):is(:not(details), [open])) {
+    --hp-inspector-track: 19rem;
+  }
+
+  .hp-workspace .hp-design-layout > .hp-design-canvas {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .hp-workspace .hp-design-layout > .hp-design-palette:is(:not(details), [open]) {
+    grid-column: 1;
+    grid-row: 1;
+    margin-right: var(--hp-workspace-gap);
+  }
+
+  .hp-workspace .hp-design-layout > .hp-design-inspector:is(:not(details), [open]) {
+    grid-column: 3;
+    grid-row: 1;
+    margin-left: var(--hp-workspace-gap);
+  }
+
+  .hp-workspace .hp-design-layout > :is(details.hp-design-palette, details.hp-design-inspector):not([open]) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 79.999rem) {
+  /* Native details are in-flow drawers; navigation decides which one is open. */
+  .hp-workspace .hp-design-layout > :is(.hp-design-palette, .hp-design-canvas, .hp-design-inspector) {
+    width: 100%;
+  }
+}
+
+@media (max-width: 40rem) {
+  .hp-workspace {
+    --hp-workspace-gap: .75rem;
+    --hp-workspace-inset: .75rem;
+  }
+
+  .hp-workspace .hp-project-bar {
+    align-items: flex-start;
+    gap: .5rem;
+  }
+
+  .hp-workspace #workspaceProjectIdentity {
+    flex-basis: calc(100% - 9rem);
+  }
+
+  .hp-workspace .hp-workspace-tool-row > label {
+    flex-basis: 100%;
+  }
+
+  .hp-workspace .hp-workspace-tool-row > .hp-editor-input {
+    flex: 1 1 10rem;
+  }
+
+  .hp-workspace .hp-workspace-drawer-controls {
+    flex-basis: 100%;
+  }
+
+  .hp-workspace .hp-workspace-drawer-controls > button {
+    flex: 1;
+  }
+
+  .hp-workspace .hp-project-bar .theme-toggle-label {
+    display: inline;
+  }
+
+  .hp-workspace .hp-workspace-tools > * {
+    flex-wrap: wrap;
+  }
+
+  .hp-workspace :is(.hp-design-palette, .hp-design-inspector) .hp-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hp-workspace :is(.hp-design-palette, .hp-design-inspector) :is(input, select, textarea) {
+    font-size: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-workspace .theme-toggle-track::after,
+  .hp-workspace .component-pane details > summary::before,
+  .hp-workspace .room-furniture-group :is(.room-delete, .room-rotate) {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .hp-workspace .hp-project-nav > :is(.on, [aria-current="page"], [aria-selected="true"]) {
+    border-bottom-color: Highlight;
+    color: Highlight;
+  }
+
+  .hp-workspace :is(.hp-project-bar, .hp-workspace-tools, .hp-project-nav) button:disabled {
+    color: GrayText;
+    opacity: 1;
+  }
+}

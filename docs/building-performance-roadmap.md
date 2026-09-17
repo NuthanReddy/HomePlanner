@@ -2,6 +2,17 @@
 
 **Status:** proposed architecture, not implemented functionality.
 
+**Scoped delivery amendment:** the local workbench now includes conceptual
+architectural/structural sheets, elevations/sections, plumbing/drainage drawings,
+native reduced-model airflow and light studies, and coordinated document packages.
+See [coordinated packages](coordinated-package.md),
+[airflow meanings](airflow-visualizer.md) and [light meanings](light-visualizer.md).
+These reuse the existing project and explicit physical inputs; they do not
+implement the AI candidate pipeline, map-provider integration, CFD, validated
+lux/daylight-factor analysis, structural engineering or hydraulic design proposed
+below. The dated baseline observations and wider roadmap remain historical/planned,
+not a claim of shipped simulation-engine parity.
+
 **Website organization:** [the two-mode website organization plan](website-organization-plan.md)
 defines Homeowner and Expert journeys, navigation, existing-feature destinations,
 shared project state, responsive behavior and incremental UX delivery.

@@ -323,6 +323,13 @@ test('pressure scene templates preserve real operating areas and leave density/C
   assert.ok(template.links.every(l=>l.cd===null&&l.pressurePa===null));
   assert.throws(()=>ui.validatePressureInput(template,windScene({outletOpen:0})),/density/);
 });
+test('pressure templates exclude reserved service footprints from host room volume',()=>{
+  const scene=windScene({outletOpen:0});
+  scene.rooms[0].usableAreaM2=10;
+  assert.equal(ui.buildAirflowTemplate(scene).zones[0].volumeM3,10*scene.wallHeightM);
+  scene.rooms[0].usableAreaM2=0;
+  assert.throws(()=>ui.buildAirflowTemplate(scene),/usable floor area.*greater than zero/);
+});
 test('pressure inputs cannot turn fixed glazing into a flow aperture or attach arbitrary links',()=>{
   const scene=windScene({outletOpen:0}),template=ui.buildAirflowTemplate(scene);
   template.densityKgM3=1.2;template.links.forEach(l=>{l.cd=.6;l.pressurePa=0;});

@@ -220,14 +220,15 @@
     return result;
   }
 
-  function sceneGeometry(scene, options) {
+  function sceneGeometry(scene, options, receiversOnly) {
     object(scene, 'scene');
     finite(scene.headingDeg, 'scene.headingDeg');
     const floor = rectangle(scene.floor, 'scene.floor');
     const building = rectangle(scene.building, 'scene.building');
     const floorElevation = finite(scene.floorElevationM, 'scene.floorElevationM');
-    const height = positive(scene.wallHeightM, 'scene.wallHeightM');
-    const roofThickness = scene.roofThicknessM === undefined ? 0 : nonnegative(scene.roofThicknessM, 'scene.roofThicknessM');
+    const height = receiversOnly && scene.wallHeightM == null ? null : positive(scene.wallHeightM, 'scene.wallHeightM');
+    const roofThickness = receiversOnly && scene.roofThicknessM == null ? null :
+      scene.roofThicknessM === undefined ? 0 : nonnegative(scene.roofThicknessM, 'scene.roofThicknessM');
     if (floorElevation < options.groundElevationM) throw new RangeError('Below-ground floors/terrain are not supported by this above-ground shadow model.');
     if (scene.building.roofType !== undefined && scene.building.roofType !== 'flat') throw new RangeError('Only a flat rectangular building roof is supported.');
     array(scene.walls, 'scene.walls');
@@ -319,6 +320,7 @@
           }
         }
       }
+      if (receiversOnly) continue;
       let sides;
       if (wall.source.exterior) {
         let interiorPoint = { x: building.x + building.w / 2, y: building.y + building.h / 2, z: 0 };
@@ -355,6 +357,7 @@
     }
 
     const prefix = scene.floorId === undefined ? '' : identifier(scene.floorId, 'scene.floorId') + ':';
+    if (!receiversOnly || (height !== null && roofThickness !== null)) {
     const roofUnderside = extentEnd(floorElevation, height, 'Roof underside elevation');
     const roofTop = roofThickness > 0 ? extentEnd(roofUnderside, roofThickness, 'Roof top elevation') : roofUnderside;
     const roofPanel = panel({ x: building.x, y: building.y, z: roofTop },
@@ -370,6 +373,8 @@
       casters.push({ kind: 'panel', id: prefix + 'roof', panel: roofPanel, transmittance: 0 });
       warnings.push((scene.roofThicknessM === undefined ? 'Roof thickness unavailable: ASSUMED ' : 'Explicit roofThicknessM = 0: ') +
         'opaque zero-thickness plane at floorElevationM + wallHeightM. No roof slope/thickness/thermal properties are inferred.');
+    }
+
     }
 
     const exclusions = [building];
@@ -388,6 +393,7 @@
       const transmittance = fraction(obstacle.transmittance, 'obstacle.transmittance');
       casters.push(box(obstacle.id, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, z: base + obstacleHeight / 2 },
         [xVector, yVector, upVector], [rect.w / 2, rect.h / 2, obstacleHeight / 2], transmittance));
+      if (receiversOnly) continue;
       if (obstacle.type === 'building' && base === options.groundElevationM) exclusions.push(rect);
       const faces = [
         { name: 'roof', normal: upVector, patch: panel({ x: rect.x, y: rect.y, z: top }, xVector, yVector, rect.w, rect.h) },
@@ -403,7 +409,7 @@
       }
     }
     if (scene.obstacles.some(obstacle => obstacle.type === 'tree')) warnings.push('Trees are rectangular canopy envelopes with supplied, angle-independent beam transmittance, applied once per intersected object. No foliage, evapotranspiration or cooling prediction.');
-    const groundPatches = rectangularRemainder(floor, exclusions, options.groundElevationM);
+    const groundPatches = receiversOnly ? [] : rectangularRemainder(floor, exclusions, options.groundElevationM);
     if (groundPatches.length) surfaces.push(receiver(prefix + 'ground', 'ground', upVector, groundPatches, floor.w, floor.h));
     warnings.push('Ground receiver is the plot rectangle minus the building footprint and ground-touching building obstacles, on the declared flat ground plane.');
     const receiverIds = new Set();
@@ -467,6 +473,83 @@
       }
     }
     return transmission;
+  }
+
+  // Arbitrary receivers share the existing optical primitives, without the legacy
+  // outdoor study's implicit roof plane or generated exterior/ground receivers.
+  function createReceiverKernel(scenes, inputOptions) {
+    array(scenes, 'scenes', true);
+    keys(inputOptions, ['windowTransmittance'], 'receiver options');
+    const windowTransmittance = fraction(inputOptions.windowTransmittance, 'windowTransmittance');
+    if (scenes.length > 64) throw new RangeError('Receiver kernel floor budget exceeded.');
+    let pieces = 0, preparationComparisons = 0, entityCount = 0;
+    const floorIds = new Set(), shared = new Map();
+    const first = scenes[0], heading = finite(first.headingDeg, 'headingDeg');
+    const plot = rectangle(first.plot, 'plot');
+    const casters = [], omittedRoofFloorIds = [];
+    for (const scene of scenes) {
+      identifier(scene.floorId, 'floorId');
+      if (floorIds.has(scene.floorId)) throw new RangeError('Duplicate receiver floor ID.');
+      floorIds.add(scene.floorId);
+      if (scene.coordinateSpace !== 'site-local' || scene.headingDeg !== heading ||
+          !scene.plot || !['x', 'y', 'w', 'h'].every(k => scene.plot[k] === plot[k])) {
+        throw new RangeError('Receiver scenes must share the projected site-local plot and heading.');
+      }
+      array(scene.walls, 'walls'); array(scene.openings, 'openings'); array(scene.obstacles, 'obstacles');
+      entityCount += scene.walls.length + scene.openings.length + scene.obstacles.length;
+      if (entityCount > 32768) throw new RangeError('Receiver physical entity budget exceeded.');
+      const names = new Set(), counts = new Map();
+      for (const item of [...scene.walls, ...scene.openings, ...scene.obstacles]) {
+        identifier(item.id, 'geometry.id');
+        if (names.has(item.id)) throw new RangeError('Receiver geometry IDs must be unique within each floor.');
+        names.add(item.id);
+      }
+      for (const opening of scene.openings) counts.set(opening.wallId, (counts.get(opening.wallId) || 0) + 1);
+      for (const wall of scene.walls) {
+        const count = counts.get(wall.id) || 0, cells = (2 * count + 1) ** 2;
+        pieces += cells;
+        preparationComparisons += cells * Math.max(1, count);
+      }
+      pieces += scene.obstacles.length + 1;
+      if (pieces > 100000 || preparationComparisons > 8000000) throw new RangeError('Receiver geometry tessellation budget exceeded; no truncation.');
+    }
+    const groundElevationM = Math.min(...scenes.map(scene => finite(scene.floorElevationM, 'floorElevationM')),
+      ...scenes.flatMap(scene => [...scene.walls, ...scene.obstacles].map(item => finite(item.baseM, 'baseM'))));
+    for (const scene of scenes) {
+      const repeated = new Set();
+      for (const obstacle of scene.obstacles) {
+        if (obstacle.sourceId === undefined) continue;
+        identifier(obstacle.sourceId, 'obstacle.sourceId');
+        const signature = JSON.stringify(['type','x','y','w','h','baseM','heightM','transmittance'].map(k => obstacle[k]));
+        const previous = shared.get(obstacle.sourceId);
+        if (previous) {
+          if (previous.signature !== signature || previous.floorId === scene.floorId) throw new RangeError('Ambiguous shared obstacle sourceId.');
+          repeated.add(obstacle.id);
+        } else shared.set(obstacle.sourceId, { signature, floorId: scene.floorId });
+      }
+      if (scene.wallHeightM == null || scene.roofThicknessM == null) omittedRoofFloorIds.push(scene.floorId);
+      const geometry = sceneGeometry(scene, { windowTransmittance, groundElevationM }, true);
+      for (const caster of geometry.casters) {
+        if (repeated.has(caster.id)) continue;
+        // Generated roofs cannot alias a user geometry ID.
+        const isRoof = scene.wallHeightM != null && scene.roofThicknessM != null && caster.id === scene.floorId + ':roof';
+        if (isRoof && [...scene.walls, ...scene.openings, ...scene.obstacles].some(item => item.id === caster.id)) {
+          throw new RangeError('Receiver roof ID collides with physical geometry.');
+        }
+        casters.push({ ...caster, id: JSON.stringify([scene.floorId, caster.id]) });
+      }
+    }
+    const metadata = Object.freeze({
+      casterCount: casters.length, preparationPieceUpperBound: pieces, preparationComparisons,
+      rayEpsilonM: rayEpsilon, receiverBiasM: 0,
+      omittedRoofFloorIds: Object.freeze(omittedRoofFloorIds), headingDeg: heading
+    });
+    function trace(point, directionENU) {
+      keys(point, ['x', 'y', 'z'], 'receiver');
+      for (const axis of ['x', 'y', 'z']) finite(point[axis], 'receiver.' + axis);
+      return beamTransmission(point, localSunVector(directionENU, heading), casters);
+    }
+    return Object.freeze({ trace, metadata });
   }
 
   function sampledFraction(surface, direction, casters, samplesPerAxis) {
@@ -983,6 +1066,26 @@
       warnings.push('A single-link/dead-end zone has zero steady net exchange; turbulence-driven single-sided ventilation is outside this model.');
     }
 
+    // A non-reference leaf must carry zero steady flow. Eliminate its branch
+    // rather than balancing its neighbour against a lagging leaf pressure.
+    // Degrees count links, not neighbours: parallel paths can circulate.
+    const degrees = adjacency.map(edges => edges.length);
+    const referenceNodes = new Set([0, ...references.map(reference => indexes.get(reference.id))]);
+    const peeled = new Set();
+    const leaves = unknowns.filter(node => degrees[node] === 1);
+    const branches = [];
+    for (let cursor = 0; cursor < leaves.length; cursor++) {
+      const node = leaves[cursor];
+      const edge = adjacency[node].find(edge => !peeled.has(edge.other));
+      branches.push({ node, ...edge });
+      peeled.add(node);
+      degrees[node] = 0;
+      degrees[edge.other]--;
+      if (degrees[edge.other] === 1 && !referenceNodes.has(edge.other)) leaves.push(edge.other);
+    }
+    const activeUnknowns = unknowns.filter(node => !peeled.has(node));
+    const activeAdjacency = adjacency.map(edges => edges.filter(edge => !peeled.has(edge.other)));
+
     const pressures = ids.map(() => 0);
     const signedRoot = value => Math.sign(value) * Math.sqrt(Math.abs(value));
     function evaluate() {
@@ -1002,7 +1105,7 @@
     }
 
     function balanceNode(node) {
-      const edges = adjacency[node].map(edge => ({
+      const edges = activeAdjacency[node].map(edge => ({
         target: computed(pressures[edge.other] - edge.forcing, 'Nodal bracket pressure'),
         coefficient: edge.coefficient
       }));
@@ -1043,10 +1146,16 @@
     while (evaluated.maximum > tolerance && iterations < maximumIterations) {
       iterations++;
       let changed = false;
-      for (const node of unknowns) {
+      for (const node of activeUnknowns) {
         const next = balanceNode(node);
         changed = changed || next !== pressures[node];
         pressures[node] = next;
+      }
+      for (let i = branches.length - 1; i >= 0; i--) {
+        const branch = branches[i];
+        const next = computed(pressures[branch.other] - branch.forcing, 'Leaf pressure');
+        changed = changed || next !== pressures[branch.node];
+        pressures[branch.node] = next;
       }
       evaluated = evaluate();
       if (evaluated.maximum < bestResidual * (1 - 1e-12)) {
@@ -1255,5 +1364,5 @@
     };
   }
 
-  return Object.freeze({ assemblyProperties, shadowAt, surfaceExposure, solveAirflow, simulateThermal, createSunlightStudy });
+  return Object.freeze({ assemblyProperties, shadowAt, surfaceExposure, solveAirflow, simulateThermal, createSunlightStudy, createReceiverKernel });
 }));

@@ -57,6 +57,7 @@ const shellArea = 9 * 7 - 8.6 * 6.6;
 
 test('browser IIFE exports the same pure public API without a DOM', () => {
   const sandbox = { Intl };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'planner-features.js'), 'utf8'), sandbox);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'planner-model.js'), 'utf8'), sandbox);
   assert.deepEqual(Object.keys(sandbox.HomePlannerModel).sort(), Object.keys(Model).sort());
   const serialized = vm.runInNewContext('JSON.stringify(HomePlannerModel.createProject())', sandbox);

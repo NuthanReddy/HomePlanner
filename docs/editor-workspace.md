@@ -32,6 +32,13 @@ The inspector includes its own compact Undo/Redo buttons so those actions remain
 available when only the component pane is moved into fullscreen. The module does
 not move or clone that pane.
 
+The 2D canvas toolbar's `#roomUndo` / `#roomRedo` use the same
+`HomePlanner.undo/redo/canUndo/canRedo` contract. The 3D toolbar must expose
+equivalent visible shared-history controls; it must not introduce a private
+3D history or require opening the property inspector just to reverse a move.
+Standalone inspector controls remain the fallback, while the consolidated
+workspace may hide duplicate inspector buttons outside fullscreen.
+
 Useful integration/test selectors:
 
 - `#hp-editor-selected-kind`, `#hp-editor-selected-id`
@@ -43,6 +50,16 @@ Useful integration/test selectors:
   `"openFraction"` within the corresponding inspector
 - `[data-hp-editor-action="undo"]` / `"redo"` in either mount
 - `[data-hp-editor-action="add-floor"]`, `"duplicate-floor"`, `"delete-floor"`
+- `[data-hp-editor-action="delete-room"]` in the selected-room inspector
+- `[data-hp-editor-action="delete-balcony"]` in the selected-balcony inspector
+- `[data-hp-editor-action="delete-wall"]`, `"review-trim-wall"` for internal partitions
+- `[data-hp-editor-action="configure-door"]` / `"configure-window"`, then
+  `"add-door"` / `"add-window"` for wall-hosted apertures
+- `#hp-editor-wall-span`: `full`, `partial`, `to-end`;
+  `#hp-editor-retainedStartM`, `#hp-editor-retainedEndM`
+- `[data-hp-editor-readout="remaining-wall-span"]`
+- `#hp-editor-new-opening-offsetM`, `-widthM`, `-heightM`, `-sillM`,
+  `-headM`, `-openFraction`, `-hinge`, `-swing` for staged placement
 - `[data-hp-editor-action="review-open-wall"]`, `"review-restore-wall"`,
   `"confirm"`, `"cancel-confirmation"`
 
@@ -51,7 +68,7 @@ application's existing theme variables and system-font stack.
 
 ## Selection, numeric edits and focus
 
-Room, furniture, door, window and wall selections use the bridge's stable
+Room, balcony, furniture, door, window and wall selections use the bridge's stable
 `{kind, id}` reference. The object chooser is a click/keyboard alternative for
 small or overlapping plan elements. Electrical selections are identified but
 direct users to the separate Electrical workspace.
@@ -91,6 +108,42 @@ pending action. No document-wide arrow/Delete or SVG pointer handlers are added.
 
 ## Components and physical partitions
 
+### Rooms
+
+**Delete room** opens a confirmation naming the selected room. Confirmation
+issues one `delete-room` command with `confirmRemoval: true`; it decrements that
+room type's quantity, removes its room-owned furniture/openings, and clears the
+selection. Surviving room identities and saved positions remain unchanged.
+Undo/Redo restores the complete edit, and other floors are unaffected.
+
+Source IDs are not reused after a deletion. The optional per-floor
+`legacy.roomIdentities` record retains active IDs and the next suffix so deleting
+Bedroom 2 does not relabel Bedroom 3 or attach old records to a new bedroom.
+Independent electrical, authored structure and annotation references remain
+repairable, not automatically deleted/rehosted. An adjoining bathroom is not
+silently deleted or reassigned; lost access remains an explicit layout issue.
+Project JSON and local saves retain the same identity state.
+
+Direct room/component/wall/opening commands verify that all unrelated room
+IDs, clear rectangles and wall-centreline modules remain unchanged after the
+adapter renders. A room move may change only its selected room footprint;
+deleting a room may remove only that room. Unexpected regeneration/repacking
+is rejected and the transaction rolls back rather than accepting a new layout.
+Reserved staircase/lift moves may legitimately update host `usableRegions`,
+net areas and physical wall cutouts without moving the host's editable
+rectangle; those derived changes are not mistaken for a room re-layout.
+
+Undo/Redo verifies the recorded room, balcony, furniture and aperture geometry
+after restoration. A renderer that substitutes a newly packed suggestion
+cannot silently replace the saved history snapshot; the current project,
+selection and history entry remain available after a failed restore.
+Re-entrant Undo/Redo from a command's render notification is rejected.
+
+Room-sector preferences are suggestion-only: kitchen SE, bedrooms NE/NW and
+bathrooms South/West do not add hard snapping or travel-path checks to manual
+moves. Room position preferences are separate from a bed's actual head
+polarity, which still supports all four stored directions.
+
 ### Beds
 
 The inspector displays the actual `headLocal` value and geographic bearing
@@ -102,6 +155,23 @@ Selecting N/E/S/W submits `update-furniture` with the explicit `headLocal` and
 “Reorient head +90°” delegates to `rotate-furniture`; the bridge/model own
 collision checks, packing and preservation of all four polarities.
 
+### Balconies
+
+The object chooser and the legacy plan's `selectSource('balcony', sourceId)`
+resolve the same floor-namespaced `scene.balconies` entity as a 3D
+`select({kind:'balcony',id})` pick. **Delete balcony** names the selected
+balcony in an in-app confirmation, then executes
+`{type:'delete-balcony',id,confirmRemoval:true}`. The bridge updates its
+programme quantity and saved layout, preserving the surviving identities and
+positions. Undo/Redo, JSON import and floor duplication retain the same IDs.
+New empty floors have no balcony identities or balconies.
+
+Index adapter integration uses `roomStableIds('balcony', count)` during
+`deriveRoomGeometry`, including stable labels from the ID suffix. Replacing
+an array element's pixels or regenerating `balcony-${index+1}` after deletion
+does not satisfy this contract. The transaction rolls back if surviving
+balconies cannot retain their IDs and rectangles.
+
 ### Doors and windows
 
 Hinged-door controls use canonical opening start/end hinge endpoints and left/
@@ -111,13 +181,12 @@ Swing options identify the adjoining room when the shared model's open leaf
 unambiguously lies inside that room. Otherwise canonical side labels remain.
 Sliding doors retain their own semantics and never receive hinge controls.
 
-Door width and operating open fraction are editable. The frozen `update-door`
-command does **not** accept height or offset: those values are explicitly
-read-only, rather than sending unsupported changes. When supplied by the model,
+Door width, wall offset, opening height and operating open fraction are editable
+through `update-door`. When supplied by the model,
 requested clear width and nominal leaf width appear as separate unverified/
 schematic readouts. Schematic opening width is not certified clear passage.
 
-Window width, sill, head, height and open fraction are editable. Head height is
+Window offset, width, sill, head, height and open fraction are editable. Head height is
 above this floor and translates into `heightM = headM - current sillM`; no
 undocumented `headM` command is sent. Changing the sill preserves opening height.
 Head/height edits must fit the actual host wall.
@@ -126,13 +195,51 @@ Open fraction ranges from 0 (closed) to 1 (fully open). It is not the drawing
 angle; a quarter-circle preview does not declare a door operationally open.
 Glazing is not automatically an open airflow aperture.
 
+Selecting a wall in **either 2D or 3D** exposes **Add door…** and **Add
+window…**. Those buttons reveal a staged metre-based form, not a pixels-only
+placement mode. Dimensions are required; a door requires explicit hinge/swing
+choices. Window head minus sill becomes the actual aperture height. Add is one
+canonical command/Undo entry, and selects the new opening after verifying its
+physical host interval. End, height and collision failures retain the draft
+and the existing project; the command does not clear generated windows or
+unrelated custom openings/furniture.
+
+`roomApplySavedOpenings` must keep wall-hosted saved records outside its
+legacy fraction/clamping and generated-window replacement branches, retain
+them in `plan.customOpenings`, and call
+`HomePlanner.prepareHostedOpenings(g,plan,cfg)` before `preparePartitions`
+and `applyOpeningEdits`. That bridge helper projects only valid apertures
+into the existing legacy door/window lists for downstream consumers; missing
+hosts stay saved and diagnosed. The shared scene remains authoritative for
+material and visual cutouts.
+
 ### Internal walls
 
-Full- and partial-span connections are explicitly **full-height** schematic
-edits. Partial spans require deliberate offset and width values; blank fields
-do not acquire generated defaults. Review shows the exact span and selected
-wall ID before executing `open-wall` with `confirmConceptual: true`.
-Restoration also requires in-app review before `restore-wall`.
+**Delete internal wall…** is a direct selected-wall action, available from both
+view selections. It reviews and submits the existing full-height `open-wall`
+semantics; it is not structural demolition or arbitrary topology authoring.
+
+The compact connection control offers **Full retained span**, **Partial ·
+enter width**, and **To wall end · exact remaining span**. Partial spans
+require deliberate offset/width values; blank fields do not acquire generated
+defaults. To-end requires only offset and stores `toEnd:true`, recomputing the
+remaining width when the effective host changes. The remaining-span readout
+shows both available width and an intentionally retained fragment. A 3.7255 m
+wall with 1 m offset therefore offers an exact 2.7255 m to-end opening; typing
+2.7 m deliberately keeps 25.5 mm.
+
+**Adjust retained wall ends within the original span** provides numeric
+start/end trim controls in an optional disclosure. Offsets stay relative to
+the original wall start; neither the wall origin nor adjoining rooms move.
+Out-of-original-span and reversed ends are rejected. End cuts are physical
+full-height passages, so they cannot leave a 2D/3D ghost pier. Openings and
+independent attachments in removed material stay saved/unresolved for review,
+not silently moved or deleted.
+
+Review shows the exact span and selected wall ID before executing
+`open-wall` or `trim-wall` with `confirmConceptual:true`. Restoration also
+requires review and `confirmConceptual:true`; it removes the complete wall
+override, including trims, restoring valid original opening sources.
 
 Exterior, protected and unclassified walls cannot be opened here. Unknown
 structural status is prominently unverified, **never evidence of safe
@@ -208,6 +315,52 @@ The helper tests cover strict number parsing, immutable rect updates, exact
 selection identities, all bed polarities across cardinal headings, door/slider
 commands, window head translation, wall protection and span validation, ordered
 floor elevations, last-floor protection and text-safe keyboard shortcuts.
+
+The direct-action slice adds:
+
+```powershell
+node --test tests\planner-direct-actions.test.cjs tests\planner-editor.test.cjs tests\planner-bridge.test.cjs tests\planner-model.test.cjs
+```
+
+`tests\planner-direct-actions-browser.cjs` runs a local fixture server and a
+fresh browser context, never the user's shared page/storage. It exercises
+real staircase pointer dragging with a non-mutating preview, one completed
+gesture, visible canvas Undo/Redo and unchanged sibling room footprints;
+real SVG wall selection, exact-to-end material, retained ends, door creation,
+production 3D canvas raycast selection followed by window creation, physical
+wall deletion, balcony Undo/Redo/import and inactive-floor read-only UI. Supply
+the existing isolated Playwright installation via
+`HOMEPLANNER_PLAYWRIGHT_MODULE`. The optional
+`HOMEPLANNER_TEST_INDEX_INTEGRATION=1` stages missing parent-owned index hunks
+**only in the served test response** and explicitly reports
+`stagedIndexIntegration:true`; such a run does not prove those hunks are
+installed in the working `index.html`.
+`indexStaging` lists each staged integration, including an optional missing
+`planner-drafts.js` load before persistence/workbench consumers. That
+cross-page dependency must be installed by its owner before an unstaged
+application run can pass.
+
+### Rotation adapter integration
+
+`rotate-furniture` remains the single bridge command for both views and one
+Undo entry. The legacy rotation helper should test the pivot-centred rotated
+candidate first, then seek the nearest valid destination in the same room
+when blocked. Build candidate X/Y coordinates from the room bounds, the
+clamped pivot position, and the edges of other furniture plus
+`roomFurnitureClearances` (including full service reservations and door
+sweeps). For each blocker, the useful contact coordinates are its near edge
+minus the rotated size and its far edge. Combine and deduplicate in-bounds
+coordinates, order by squared distance to the pivot candidate with stable
+X/Y tie-breakers, and validate through `roomEditableError` (or
+`roomFurnitureCandidateValid` against a plan excluding only the rotating
+item). Include current placement/wall candidates as appropriate for the
+existing door-sector screening. Never validate the travel path.
+
+Do not mutate or commit while searching. Commit the first accepted
+destination once, retaining source ID, room, pin state and actual bed
+head progression. If the bounded search finds no valid destination, report
+that limitation and retain the entire old layout; do not promise an
+exhaustive packing/accessibility solver or silently move other furniture.
 
 `tests\planner-editor.test.cjs` also exports the optional self-contained
 `browserSmoke(page, repositoryDirectory)` runner for the existing Playwright

@@ -7,6 +7,27 @@ layouts in the GHMC/HMDA context.
 
 ## Document map
 
+- [Workspace navigation](workspace-navigation.md): six task destinations,
+  grouped Sun Path/property tools, shared project controls and deep-link contracts.
+- [Drawing foundation](drawing-foundation.md): authored records, coordinate frames
+  and immutable drawing projections.
+- [Report drawings](drawing-report.md): architectural/structural previews and
+  PDF/SVG/PNG controls; [export formats](drawing-export-formats.md) covers physical
+  scale, local PDF loading and font limits.
+- [Architectural sheets](architectural-drawings.md): plan geometry, technical
+  symbols, annotation placement and layer behavior.
+- [Structure workbench](structure-workbench.md): editing structural intent,
+  [coordination semantics](conceptual-structure.md),
+  [structural sheets](structural-sheets.md) and [3D layer](structural-3d.md).
+- [Saved view workbench](view-workbench.md): geographic elevation and finite
+  section authoring, [physical renderer](elevations-sections.md) and
+  [facade projections](facade-projections.md) shared by drawing/3D/shadow paths.
+- [Plumbing workbench](plumbing-workbench.md): fixture/port/route authoring,
+  [network semantics](plumbing-networks.md), [plans and risers](plumbing-sheets.md)
+  and the independent [3D plumbing layer](plumbing-3d.md).
+- [Drainage workbench](drainage-workbench.md): sanitary/storm intent and explicit
+  levels/discharge, [geometric coordination](drainage-coordination.md),
+  [plan/profile sheets](drainage-sheets.md) and [3D inspection](drainage-3d.md).
 - [Regulatory basis](regulatory-basis.md): rules, road-width effects, TDR,
   compounding, balconies, and permission routes.
 - [Plot geometry](plot-geometry.md): footprint equations, percentage loss,
@@ -40,8 +61,18 @@ layouts in the GHMC/HMDA context.
   sun/ventilation/lighting coverage, and moisture/mold limitations.
 - [Environment workspace](environment-analysis.md): weather, shadows, materials,
   wind proposals, explicit numerical experiments and expert exports.
+- [Airflow workbench](airflow-workbench.md): explicit room/opening scenarios,
+  [numerical meanings](airflow-visualizer.md), [cancellable local workers](airflow-worker.md)
+  and [opening-linked arrows with table alternatives](airflow-display.md).
 - [Building physics](building-physics.md): supported equations, units, assumptions
   and numerical limits.
+- [Room light workbench](light-workbench.md): explicit sunlight and sky-access
+  scenarios, [numerical meanings](light-visualizer.md),
+  [worker execution](light-worker.md), [plan evidence](light-display.md) and
+  [optional 3D inspection](light-3d.md). Not lux or lighting adequacy.
+- [Coordinated document package](coordinated-package.md) and
+  [package workbench](package-workbench.md): ordered sheets, unavailable sections,
+  current analysis evidence, saved intentions and revision manifests.
 - [Electrical planning](electrical-planning.md): physical point anchors,
   nullable measurements and ergonomic review.
 - [Validation and limitations](validation-and-limitations.md): tested behavior,

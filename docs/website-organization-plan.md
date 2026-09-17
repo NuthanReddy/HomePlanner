@@ -1,11 +1,23 @@
 # HomePlanner website organization plan
 
-**Status:** navigation and shared-project mode structure approved; detailed UX
-remains planned. No application changes.
+**Status:** navigation and shared-project mode structure approved. Phase 2 now
+implements an incremental shell for current tools; see
+[workspace navigation](workspace-navigation.md) for actual routes, adapters and
+limitations. The later scoped drawing delivery adds conceptual architecture,
+structure, elevations/sections, plumbing/drainage, airflow/light workbenches and
+Report document packages. See [coordinated packages](coordinated-package.md).
+Future AI generation, maps and engineering simulation below remain planned;
+references below to missing drawing exports describe the historical baseline.
 **Date:** 10 September 2026.
 **Confirmed:** two modes, one for Homeowners and one for Experts. The user approved
 one shared project with Overview, Site, Design, Analyze, Compare and Report
 destinations, guided homeowner entry and direct expert controls.
+
+**Phase 2 amendment:** the user-facing Analyze destination is named
+**Environment**; Sun Path is a section within it, never a separate top tab.
+**Prohibited Properties belongs inside Plot Planner (Site)**, preserving the
+`?workspace=prohibited` entry. HomePlanner is already the product identity; the
+older source-line observations below are historical, not the current baseline.
 
 This plan complements [the building-performance roadmap](building-performance-roadmap.md).
 It organizes that roadmap around user tasks rather than simulation libraries.

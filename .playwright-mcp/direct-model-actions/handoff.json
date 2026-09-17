@@ -1,0 +1,124 @@
+{
+  "status": "Core commands, model and inspector implemented; parent-owned integration is not yet installed.",
+  "staircaseHistoryFollowUp": {
+    "implemented": "Direct commands reject unexpected changes to unrelated room IDs, clear rectangles or wall-centreline modules. Undo/Redo validates recorded room, balcony, furniture and aperture geometry after restore, keeps the existing selection/history entry on failure, and rejects re-entrant history operations.",
+    "verified": "Actual reserved staircase pointer drag has a non-mutating preview and one completed Undo entry. Parent's visible #roomUndo/#roomRedo restore the entire old/new room layout exactly; other room footprints, balconies and furniture remain unchanged.",
+    "visualizationCoordination": "Agent 5cc96eaf-409b-47e5-981b-2cd1b3ccb759 was asked to provide visible [data-hp3d=undo]/redo controls using shared undo/redo/canUndo/canRedo. Current real-browser readiness is visible3DHistory:false.",
+    "crossPageDependency": "The current persistence module requires HomePlannerDrafts but index does not load planner-drafts.js. This leaves a throwing partially initialized persistence subscriber and blocks normal project events. Agent 05733b75-e696-4392-9834-ee1f009671a5 was notified. The successful browser test stages the missing script dependency only in its isolated response.",
+    "compass": "No manual snapping added. Parent-owned suggestion preferences: kitchen SE; bedrooms NE/NW, not SW; bathrooms South/West. Bed head polarity remains independent."
+  },
+  "skillsLoadedDirectly": [
+    ".github\\skills\\homeplanner-project-integrity\\SKILL.md and references",
+    ".github\\skills\\homeplanner-architecture\\SKILL.md and references",
+    ".github\\skills\\homeplanner-ergonomics\\SKILL.md and references",
+    "AGENTS.md, .github\\copilot-instructions.md and relevant existing model/editor/persistence/drawing docs"
+  ],
+  "skillRegistration": "The integrity skill tool reported not registered; repository skill files were present and read directly.",
+  "changedSourceFiles": [
+    "planner-model.js",
+    "planner-bridge.js",
+    "planner-editor.js",
+    "tests\\planner-bridge.test.cjs",
+    "tests\\planner-editor.test.cjs",
+    "tests\\planner-direct-actions.test.cjs",
+    "tests\\planner-direct-actions-browser.cjs",
+    "docs\\project-model.md",
+    "docs\\editor-workspace.md"
+  ],
+  "notEdited": [
+    "index.html",
+    "planner-projection.js",
+    "planner-3d.js",
+    "planner-3d.css",
+    "study kernels",
+    "skill packages"
+  ],
+  "rootCauses": {
+    "balcony": "Legacy g.balconies were omitted from the shared scene and selectSource lookup; index-derived balcony-${index+1} identities would rename survivors after deletion.",
+    "wallDeletion": "The only existing inspector route was conceptual opening review; direct selected-wall deletion and retained-end trim were absent. Exterior/role guards differed between layers.",
+    "openings": "There was no add-door command/adapter. The old add-window adapter used room-edge fractions and legacy end margins; saved manual windows could replace a room's generated windows.",
+    "partialSpan": "Persisted edits stored a fixed numeric width only. Entering 2.7 m on a 3.7255 m host with 1 m offset correctly left 25.5 mm, but there was no explicit exact-to-end intent.",
+    "rotation": "The legacy helper tried only the centre-pivot rotated rectangle, clamped to its room; it did not search another valid same-room destination."
+  },
+  "commands": {
+    "delete-balcony": {
+      "required": ["id", "confirmRemoval:true"],
+      "effect": "Decrement balconyCount, remove only selected saved balcony and balcony-owned custom openings, preserve surviving identities/rectangles, retain independent records, clear selection, one Undo entry."
+    },
+    "open-wall": {
+      "required": ["id", "full:boolean", "confirmConceptual:true"],
+      "partial": ["offsetM", "widthM"],
+      "toEnd": ["full:false", "offsetM", "toEnd:true"],
+      "note": "To-end commands omit widthM. It is recomputed exactly from the current retained end."
+    },
+    "trim-wall": {
+      "required": ["id", "startM", "endM:number|null", "confirmConceptual:true"],
+      "effect": "Retain an interval inside the original wall span, without changing wall origins, room geometry or reference offsets. Full-height end passages remove real material."
+    },
+    "restore-wall": {
+      "required": ["id", "confirmConceptual:true"],
+      "effect": "Remove wall opening/trim override and matching legacy passage; retain and re-resolve original attachment records."
+    },
+    "add-door": {
+      "required": ["wallId", "offsetM", "widthM", "heightM", "openFraction", "hinge:start|end", "swing:left|right"],
+      "note": "Hinged schematic aperture; door sill is zero."
+    },
+    "add-window": {
+      "required": ["wallId", "offsetM", "widthM", "sillM", "heightM", "openFraction"],
+      "note": "Window UI headM is translated into heightM=headM-sillM."
+    },
+    "update-door": {
+      "supported": ["id", "offsetM", "widthM", "heightM", "hinge", "swing", "openFraction"]
+    },
+    "update-window": {
+      "supported": ["id", "offsetM", "widthM", "sillM", "heightM", "openFraction"]
+    },
+    "rotate-furniture": {
+      "required": ["id"],
+      "note": "Existing shared bridge command remains the one-entry Undo boundary; parent owns the same-room relocation search."
+    }
+  },
+  "unitsAndGuards": "All dimensions are metres. Commands resolve current active-floor IDs only; inactive 3D selections are read-only. Door/window minimum spans remain schematic editor limits 0.68/0.30 m, not certified clear widths. Bounds, height, typed inputs, aperture collisions and exact post-render geometry are checked. Additions roll back if another aperture or furniture is displaced.",
+  "persistedContracts": {
+    "legacy.roomIdentities.balcony": "{next:positiveSafeInteger,ids:['balcony-N',...]} uses existing monotonic identity mechanism; strict IDs, empty-floor clearing and floor duplication covered.",
+    "wallEdits[id].toEnd": "Optional true, only with full:false and offsetM; separate widthM is rejected as ambiguous.",
+    "wallEdits[id].retainedSpan": "{startM:number,endM:number|null}; may exist without full, or coexist with an opening. Null follows original host end.",
+    "customOpenings": "Existing legacy saved.openings / plan.customOpenings stores explicit wallId, offsetM, widthM, sillM, heightM, kind, operating state and source ID. No second editable geometry store.",
+    "scene.balconies": "[{id,sourceId,type:'balcony',label,rect,roomId:null|string}]",
+    "scene.walls": "start/end remain original reference endpoints; retainedSpan contains effective numeric offsets. solidSegments and solidSections include exact physical trims and apertures."
+  },
+  "validation": {
+    "nodeTests": {"tests":266,"pass":266,"fail":0,"log":".playwright-mcp\\direct-model-actions\\node-test-results.log"},
+    "existingInspectorBrowserSmoke": "43 checks passed in a fresh context.",
+    "realApplicationBrowser": ".playwright-mcp\\direct-model-actions\\browser-result.json",
+    "realApplicationBrowserScope": "Actual reserved staircase drag, non-mutating preview and one Undo entry; visible 2D canvas Undo/Redo; unchanged siblings/balconies/furniture; SVG wall/balcony selection; internal deletion from SVG and production 3D canvas raycast; exact to-end/trim; door from 2D; window from 3D; preserved apertures/furniture; balcony Undo/Redo/import; inactive-floor read-only; narrow opening controls and text-safe keys.",
+    "stagingDisclosure": "The browser server patched missing stable balcony IDs, hosted-opening integration and planner-drafts script ordering in the test response only. stagedIndexIntegration:true with exact indexStaging entries. The projection hunk was separately verified in memory, with immutable source and exact site translation.",
+    "unverified": "Production 3D balcony mesh/pick is absent (balcony3DReady:false); visible 3D Undo/Redo toolbar is not yet present (visible3DHistory:false). No user browser page, project or storage was loaded, reloaded, reset or modified."
+  },
+  "requiredParentIntegration": [
+    {
+      "patch": ".playwright-mcp\\direct-model-actions\\index.integration.patch",
+      "details": "Use stable balcony IDs/labels in deriveRoomGeometry. Split explicit wallId saved opening records out of legacy fraction/clamp/window-replacement logic. Retain them and call HomePlanner.prepareHostedOpenings before preparePartitions/applyOpeningEdits."
+    },
+    {
+      "patch": ".playwright-mcp\\direct-model-actions\\projection.integration.patch",
+      "details": "Translate scene.balconies[].rect exactly once into site coordinates for projected 3D modes. This one-line hunk is verified in memory but not installed."
+    },
+    {
+      "patch": ".playwright-mcp\\direct-model-actions\\drafts-script.integration.patch",
+      "ownerAgent": "05733b75-e696-4392-9834-ee1f009671a5",
+      "details": "Load the existing dependency-free planner-drafts.js before model/feature consumers and persistence. This script-order hunk is exercised by the isolated browser test; the dependency owner must also avoid leaving a throwing subscriber after failed initialization."
+    },
+    {
+      "ownerAgent": "5cc96eaf-409b-47e5-981b-2cd1b3ccb759",
+      "details": "Create balcony render/pick meshes from scene.balconies[].rect at that scene's floor elevation. Set mesh.userData.entityRef={kind:'balcony',id:balcony.id}. Add visible 3D Undo/Redo buttons backed by shared history, preferably data-hp3d=undo/redo for the browser readiness test. Walls already use shared selection and were physically clicked; no additional wall-action hook is needed."
+    },
+    {
+      "owner": "Parent, index roomRotateFurniture",
+      "status": "Parent implementation is now present: roomRotateFurniture calls roomFindFurniturePosition. Parent retains its validation ownership.",
+      "details": "Try centre pivot first; then deterministic nearest same-room candidates from room bounds, pivot, and furniture/clearance near edges minus rotated size and far edges, optionally existing wall candidates. Exclude only the rotating item during checks. Use roomEditableError/roomFurnitureCandidateValid, including full service footprints and door sweeps. Never validate the travel path or mutate during search; commit one accepted candidate once. See docs/editor-workspace.md Rotation adapter integration."
+    }
+  ],
+  "browserRerun": "$env:HOMEPLANNER_PLAYWRIGHT_MODULE=(Resolve-Path .\\.playwright-mcp\\direct-model-actions\\node_modules\\playwright).Path; Remove-Item Env:\\HOMEPLANNER_TEST_INDEX_INTEGRATION -ErrorAction SilentlyContinue; node tests\\planner-direct-actions-browser.cjs",
+  "git": "Dirty checkout preserved. No commits, pushes, branch changes, resets or nested agents."
+}

@@ -10,6 +10,8 @@
   const DIRECTIONS = { N: 0, E: 90, S: 180, W: 270 };
   const FORBIDDEN = new Set(['__proto__', 'constructor', 'prototype']);
   const MAX_JSON_LENGTH = 32 * 1024 * 1024;
+  const Features = typeof module === 'object' && module.exports ? require('./planner-features.js') : root.HomePlannerFeatures;
+  const Regions = typeof module === 'object' && module.exports ? require('./planner-regions.js') : null;
   const FLOOR_FIELDS = ['wallEdits', 'doorEdits', 'windowEdits', 'furnitureEdits', 'obstacles', 'electrical'];
   let sequence = 0;
 
@@ -90,20 +92,36 @@
       object(edit, `${path}.${id}`);
       const here = `${path}.${id}`;
       if (kind === 'wall') {
-        bool(edit.full, `${here}.full`);
-        if (!edit.full || own(edit, 'offsetM')) number(edit.offsetM, `${here}.offsetM`, 0);
-        if (!edit.full || own(edit, 'widthM')) number(edit.widthM, `${here}.widthM`, 0, Infinity, true);
+        if (!own(edit, 'full') && !own(edit, 'retainedSpan')) fail(`${here} needs an opening or retained span.`);
+        if (own(edit, 'full')) bool(edit.full, `${here}.full`);
+        if (own(edit, 'toEnd')) {
+          bool(edit.toEnd, `${here}.toEnd`);
+          if (edit.toEnd && edit.full !== false) fail(`${here}.toEnd requires a partial opening.`);
+          if (edit.toEnd && own(edit, 'widthM')) fail(`${here}.toEnd computes its width; a separate widthM is ambiguous.`);
+        }
+        if (edit.full === false || own(edit, 'offsetM')) number(edit.offsetM, `${here}.offsetM`, 0);
+        if ((edit.full === false && !edit.toEnd) || own(edit, 'widthM'))
+          number(edit.widthM, `${here}.widthM`, 0, Infinity, true);
+        if (own(edit, 'retainedSpan')) {
+          const span = object(edit.retainedSpan, `${here}.retainedSpan`);
+          number(span.startM, `${here}.retainedSpan.startM`, 0);
+          if (span.endM !== null) {
+            number(span.endM, `${here}.retainedSpan.endM`, 0, Infinity, true);
+            if (span.endM <= span.startM) fail(`${here}.retainedSpan.endM must follow its start.`);
+          }
+        }
       } else if (kind === 'furniture') {
         if (own(edit, 'headLocal')) enumValue(edit.headLocal, Object.keys(DIRECTIONS), `${here}.headLocal`);
         if (own(edit, 'pinned')) bool(edit.pinned, `${here}.pinned`);
       } else {
+        if (own(edit, 'offsetM')) number(edit.offsetM, `${here}.offsetM`, 0);
         if (own(edit, 'widthM')) number(edit.widthM, `${here}.widthM`, 0, Infinity, true);
+        if (own(edit, 'heightM')) number(edit.heightM, `${here}.heightM`, 0, Infinity, true);
         if (own(edit, 'openFraction')) number(edit.openFraction, `${here}.openFraction`, 0, 1);
         if (kind === 'door') {
           if (own(edit, 'hinge')) enumValue(edit.hinge, ['start', 'end'], `${here}.hinge`);
           if (own(edit, 'swing')) enumValue(edit.swing, ['left', 'right'], `${here}.swing`);
         } else {
-          if (own(edit, 'heightM')) number(edit.heightM, `${here}.heightM`, 0, Infinity, true);
           if (own(edit, 'sillM')) number(edit.sillM, `${here}.sillM`, 0);
         }
       }
@@ -113,6 +131,23 @@
   function validateLegacy(legacy, path) {
     object(legacy, path);
     object(legacy.controls, `${path}.controls`);
+    if(own(legacy,'roomIdentities')){
+      object(legacy.roomIdentities,`${path}.roomIdentities`);
+      for(const [prefix,entry] of Object.entries(legacy.roomIdentities)){
+        enumValue(prefix,['living','bed','kitchen','bath','pooja','lift','stair','balcony'],`${path}.roomIdentities prefix`);
+        object(entry,`${path}.roomIdentities.${prefix}`);
+        if(!Number.isSafeInteger(entry.next)||entry.next<1||!Array.isArray(entry.ids))
+          fail(`${path}.roomIdentities.${prefix} needs a positive next number and ID list.`);
+        const ids=new Set();
+        for(const value of entry.ids){
+          const suffix=typeof value==='string'&&value.startsWith(prefix+'-')?value.slice(prefix.length+1):'';
+          const n=Number(suffix);
+          if(!/^[1-9]\d*$/.test(suffix)||!Number.isSafeInteger(n)||n>=entry.next||ids.has(value))
+            fail(`${path}.roomIdentities.${prefix} has an invalid or duplicate room ID.`);
+          ids.add(value);
+        }
+      }
+    }
     if (!Array.isArray(legacy.manualLayouts)) fail(`${path}.manualLayouts must be an array.`);
     for (const entry of legacy.manualLayouts) {
       if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string')
@@ -138,6 +173,16 @@
       for (const key of ['w', 'h', 'heightM']) number(item[key], `${path}.${item.id}.${key}`, 0, Infinity, true);
       number(item.transmittance, `${path}.${item.id}.transmittance`, 0, 1);
       if (own(item, 'label')) text(item.label, `${path}.${item.id}.label`);
+      if (own(item, 'facade')) {
+        const here = `${path}.${item.id}.facade`;
+        if (item.type !== 'building') fail(`${here} is only supported on building obstacles.`);
+        object(item.facade, here);
+        if (Object.keys(item.facade).some(key => !['version', 'finish'].includes(key)))
+          fail(`${here} contains an unknown field.`);
+        if (item.facade.version !== 1) fail(`${here}.version must be 1.`);
+        if (!own(item.facade, 'finish')) fail(`${here}.finish is required (text or null).`);
+        if (item.facade.finish !== null) text(item.facade.finish, `${here}.finish`);
+      }
     }
   }
 
@@ -197,6 +242,8 @@
       validateFloorFields(floor, `Floor ${floor.id}`, false);
     }
     if (!ids.has(project.activeFloorId)) fail('activeFloorId must identify an existing floor.');
+    if (!Features) fail('The versioned feature model could not load.');
+    Features.validate(project);
     return project;
   }
 
@@ -253,6 +300,27 @@
     number(wall.start.x, 'Wall start x'); number(wall.start.y, 'Wall start y');
     number(wall.end.x, 'Wall end x'); number(wall.end.y, 'Wall end y');
     return number(Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y), 'Wall length', 0, Infinity, true);
+  }
+  function retainedWallSpan(wall, retained = wall.retainedSpan) {
+    const length = wallLength(wall);
+    const startM = retained ? number(retained.startM, 'Retained wall start', 0) : 0;
+    const endM = retained && retained.endM !== null ? number(retained.endM, 'Retained wall end', 0, Infinity, true) : length;
+    if (startM >= endM || endM > length + EPS)
+      fail('Retained wall ends must stay within the original wall span, with the end after the start.');
+    return { startM, endM };
+  }
+  function wallOpeningSpan(wall, options) {
+    const span = retainedWallSpan(wall);
+    bool(options.full, 'Full wall opening');
+    if (own(options, 'toEnd')) bool(options.toEnd, 'To wall end');
+    if (options.full && options.toEnd) fail('Choose full span or to wall end, not both.');
+    if (options.toEnd && own(options, 'widthM')) fail('To wall end computes its width; omit the separate widthM.');
+    const offsetM = options.full ? span.startM : number(options.offsetM, 'Opening offset', 0);
+    const widthM = options.full ? span.endM - span.startM
+      : options.toEnd ? span.endM - offsetM : number(options.widthM, 'Opening width', 0, Infinity, true);
+    if (widthM <= EPS || offsetM < span.startM - EPS || offsetM + widthM > span.endM + EPS)
+      fail('The open connection must remain within the retained wall span.');
+    return { offsetM, widthM };
   }
   function wallPoint(wall, offsetM) {
     const length = wallLength(wall);
@@ -399,6 +467,153 @@
     return result;
   }
 
+  function reservedWalls(segments, reservations, rooms, regions, diagnostic) {
+    const roomById = new Map(rooms.map(room => [room.id, room]));
+    const transpose = r => ({ x: r.y, y: r.x, w: r.h, h: r.w });
+    const boundaryTokens = (at, axis, candidates = reservations) => candidates.flatMap(room =>
+      (axis === 'x' ? ['W', 'E'] : ['N', 'S'])
+        .filter(edge => near(edgeData(room.reservationFootprint, edge).fixed, at))
+        .map(edge => `reserve:${encoded(room.sourceId)}:${edge}`));
+    const ordinary = normalizeOpposingWalls(segments.filter(segment =>
+      !roomById.get(segment.roomEdge?.roomId)?.reservesSpace), diagnostic);
+    const clipped = ordinary.flatMap(segment => {
+      if (segment.exterior || roomById.get(segment.roomEdge?.roomId)?.service) return [segment];
+      const horizontal = segment.axis === 'x', crossAxis = horizontal ? 'y' : 'x';
+      const strip = horizontal
+        ? { x: segment.lo, y: segment.fixed - segment.thicknessM / 2, w: segment.hi - segment.lo, h: segment.thicknessM }
+        : { x: segment.fixed - segment.thicknessM / 2, y: segment.lo, w: segment.thicknessM, h: segment.hi - segment.lo };
+      const cutters = reservations.filter(room => regions.intersection(strip, room.reservationFootprint));
+      if (!cutters.length) return [segment];
+      const footprints = cutters.map(room => room.reservationFootprint);
+      // Clip along the wall first so untouched spans keep their full original thickness.
+      const pieces = horizontal
+        ? regions.subtractRectangle(transpose(strip), footprints.map(transpose)).map(transpose)
+        : regions.subtractRectangle(strip, footprints);
+      const endpoint = (at, oldAt, tokens, end) => unique([
+        ...(near(at, oldAt) ? tokens || [`${segment.token}:${end}`] : []), ...boundaryTokens(at, segment.axis, cutters)
+      ]);
+      return pieces.map(piece => {
+        const lo = horizontal ? piece.x : piece.y, hi = lo + (horizontal ? piece.w : piece.h);
+        const lowFace = horizontal ? piece.y : piece.x, thicknessM = horizontal ? piece.h : piece.w;
+        if (hi - lo <= EPS || thicknessM <= EPS)
+          fail(`Reservation leaves a wall remainder below the topology numerical resolution (${segment.token}); revise that junction.`);
+        const originalSpan = horizontal ? { ...strip, x: lo, w: hi - lo } : { ...strip, y: lo, h: hi - lo };
+        const changedBand = regions.subtractRectangle(originalSpan, [piece]).length > 0;
+        const fixed = changedBand ? lowFace + thicknessM / 2 : segment.fixed;
+        if (changedBand && fixed !== segment.fixed && near(fixed, segment.fixed))
+          fail(`Reservation shifts a wall centreline below the topology numerical resolution (${segment.token}); revise that junction.`);
+        const band = unique([...boundaryTokens(lowFace, crossAxis, cutters), ...boundaryTokens(lowFace + thicknessM, crossAxis, cutters)]);
+        const loTokens = endpoint(lo, segment.lo, segment.loTokens, 'start');
+        const hiTokens = endpoint(hi, segment.hi, segment.hiTokens, 'end');
+        if (!loTokens.length || !hiTokens.length || (changedBand && !band.length))
+          fail(`Reservation wall remainder has no stable boundary lineage (${segment.token}).`);
+        return { ...segment, lo, hi, loTokens, hiTokens,
+          fixed,
+          thicknessM: changedBand ? thicknessM : segment.thicknessM,
+          token: changedBand ? `${segment.token}:band:${band.join('~')}` : segment.token,
+          reservationTrimmedCrossSection: changedBand };
+      });
+    });
+    const result = clipped.flatMap(segment => {
+      const room = roomById.get(segment.roomEdge?.roomId);
+      if (!room || room.service) return [segment];
+      const clear = edgeData(room.rect, segment.edge);
+      const positiveSide = segment.edge === 'N' || segment.edge === 'W';
+      const face = segment.fixed + (positiveSide ? 1 : -1) * segment.thicknessM / 2;
+      const withoutRoom = value => ({ ...value, roomIds: value.roomIds.filter(id => id !== room.id), roomEdge: null });
+      if (segment.reservationTrimmedCrossSection && !near(face, clear.fixed)) return [withoutRoom(segment)];
+      if (room.usableRegions === undefined) return [segment];
+      const available = rangeUnion(room.usableRegions.flatMap(region => {
+        const edge = edgeData(region, segment.edge);
+        if (!near(edge.fixed, clear.fixed)) return [];
+        // Preserve unchanged legacy corner allowances, but not adjacency across a reservation.
+        let lo = Math.max(segment.lo, near(edge.lo, clear.lo) ? Math.min(edge.lo, segment.lo) : edge.lo);
+        let hi = Math.min(segment.hi, near(edge.hi, clear.hi) ? Math.max(edge.hi, segment.hi) : edge.hi);
+        if (near(lo, segment.lo)) lo = segment.lo;
+        if (near(hi, segment.hi)) hi = segment.hi;
+        return hi - lo > EPS ? [[lo, hi]] : [];
+      }));
+      if (!available.length) return [withoutRoom(segment)];
+      if (available.length === 1 && near(available[0][0], segment.lo) && near(available[0][1], segment.hi)) return [segment];
+      const bordering = reservations.filter(reservation => {
+        if (!room.reservationRoomIds.includes(reservation.id)) return false;
+        const r = reservation.reservationFootprint, low = segment.axis === 'x' ? r.y : r.x;
+        const high = low + (segment.axis === 'x' ? r.h : r.w);
+        return clear.fixed >= low - EPS && clear.fixed <= high + EPS;
+      });
+      const tokens = at => {
+        const values = unique([
+          ...(near(at, segment.lo) ? segment.loTokens || [`${segment.token}:start`] : []),
+          ...(near(at, segment.hi) ? segment.hiTokens || [`${segment.token}:end`] : []),
+          ...boundaryTokens(at, segment.axis, bordering)
+        ]);
+        if (!values.length) fail(`Reserved wall adjacency has no stable boundary lineage (${segment.token}).`);
+        return values;
+      };
+      const cuts = unique([segment.lo, segment.hi, ...available.flat()]).sort((a, b) => a - b);
+      const spans = [];
+      for (let i = 1; i < cuts.length; i++) {
+        const lo = cuts[i - 1], hi = cuts[i], midpoint = (lo + hi) / 2;
+        if (hi - lo <= EPS)
+          fail(`Reservation leaves a wall-adjacency interval below the topology numerical resolution (${segment.token}); revise that junction.`);
+        const span = { ...segment, lo, hi, loTokens: tokens(lo), hiTokens: tokens(hi) };
+        spans.push(available.some(([start, end]) => midpoint > start && midpoint < end) ? span : withoutRoom(span));
+      }
+      return spans;
+    });
+    for (const segment of segments.filter(item => roomById.get(item.roomEdge?.roomId)?.reservesSpace)) {
+      const service = roomById.get(segment.roomEdge.roomId);
+      const outside = edgeData(service.reservationFootprint, segment.edge).fixed;
+      const horizontal = segment.axis === 'x', negative = segment.edge === 'N' || segment.edge === 'W';
+      const bordering = reservations.filter(room => {
+        const r = room.reservationFootprint, low = horizontal ? r.y : r.x, high = low + (horizontal ? r.h : r.w);
+        return outside >= low - EPS && outside <= high + EPS;
+      });
+      const adjacent = [];
+      for (const room of rooms.filter(item => !item.service)) {
+        const ranges = (room.usableRegions || [room.rect]).flatMap(region => {
+          const low = horizontal ? region.y : region.x, high = low + (horizontal ? region.h : region.w);
+          const touches = negative ? low < outside - EPS && high >= outside - EPS
+            : low <= outside + EPS && high > outside + EPS;
+          const lo = Math.max(segment.lo, horizontal ? region.x : region.y);
+          const hi = Math.min(segment.hi, horizontal ? region.x + region.w : region.y + region.h);
+          return touches && hi - lo > EPS ? [[lo, hi]] : [];
+        });
+        for (const [lo, hi] of rangeUnion(ranges)) adjacent.push({ room, lo, hi });
+      }
+      const events = [{ at: segment.lo, token: `${segment.token}:start` }, { at: segment.hi, token: `${segment.token}:end` }];
+      for (const entry of adjacent) for (const [at, end] of [[entry.lo, 'start'], [entry.hi, 'end']]) {
+        const edges = horizontal ? ['W', 'E'] : ['N', 'S'];
+        const tokens = [...edges.filter(edge => near(edgeData(entry.room.rect, edge).fixed, at))
+          .map(edge => `host:${encoded(entry.room.sourceId)}:clear:${edge}`), ...boundaryTokens(at, segment.axis, bordering)];
+        if (near(at, segment.lo)) tokens.push(`${segment.token}:start`);
+        if (near(at, segment.hi)) tokens.push(`${segment.token}:end`);
+        if (!tokens.length) fail(`Reservation adjacency has no stable ${end} boundary (${segment.token}).`);
+        events.push(...tokens.map(token => ({ at, token })));
+      }
+      const cuts = [];
+      for (const event of events.sort((a, b) => a.at - b.at || a.token.localeCompare(b.token))) {
+        const last = cuts[cuts.length - 1];
+        if (last && near(last.at, event.at)) last.tokens.push(event.token);
+        else cuts.push({ at: event.at, tokens: [event.token] });
+      }
+      for (let i = 1; i < cuts.length; i++) {
+        const start = cuts[i - 1], end = cuts[i], midpoint = (start.at + end.at) / 2;
+        if (end.at - start.at <= EPS) continue;
+        const hosts = adjacent.filter(entry => midpoint > entry.lo && midpoint < entry.hi).map(entry => entry.room.id);
+        result.push({ ...segment, lo: start.at, hi: end.at, loTokens: unique(start.tokens), hiTokens: unique(end.tokens),
+          roomIds: unique([service.id, ...hosts]) });
+      }
+    }
+    return result;
+  }
+
+  function regionUnionArea(rectangles, regions) {
+    const union = [];
+    for (const rectangle of rectangles) union.push(...regions.subtractRectangle(rectangle, union));
+    return regions.area(union);
+  }
+
   function buildScene(context, project) {
     validateProject(project);
     object(context, 'Legacy context');
@@ -433,7 +648,7 @@
     const scene = {
       revision: project.revision, floorId, headingDeg: DIRECTIONS[front], floorElevationM, wallHeightM,
       roofThicknessM: project.building.roofThicknessM,
-      floor, plot, building, rooms: [], walls: [], openings: [], furniture: [],
+      floor, plot, building, rooms: [], balconies: [], walls: [], openings: [], furniture: [],
       regulatory: {
         allowedFloors: Number.isSafeInteger(allowance) && allowance >= 0 ? allowance : null,
         plannedFloors: Number.isSafeInteger(plate.floors) && plate.floors >= 0 ? plate.floors : null,
@@ -472,6 +687,7 @@
       h: Number.isFinite(g.coreD) ? g.coreD : building.h - 2 * external
     }, 'Room core');
     const roomBySource = new Map();
+    const regions = Regions || root.HomePlannerRegions;
     const placed = plan.placed || [];
     if (!Array.isArray(placed)) fail('Placed rooms must be an array.');
     for (const placedRoom of placed) {
@@ -483,6 +699,11 @@
       }
       identity(sourceId, 'Room source id');
       if (roomBySource.has(sourceId)) fail(`Duplicate room source id ${sourceId}.`);
+      const reservesSpace = req.reserveFootprint === true && ['lift', 'staircase'].includes(req.type);
+      if (reservesSpace && (!regions || typeof regions.reservationBounds !== 'function'))
+        fail('HomePlannerRegions must be loaded before compiling reserved service footprints.');
+      if (reservesSpace && !placedRoom.module)
+        fail(`Room ${sourceId} reservation requires its supplied wall-centreline module; no wall allowance is invented.`);
       const carpet = rect(placedRoom.carpet || placedRoom.rect, `Room ${sourceId} carpet`);
       const module = placedRoom.module
         ? rect(placedRoom.module, `Room ${sourceId} module`)
@@ -492,11 +713,62 @@
         id: entityId(floorId, sourceId), sourceId, label: String(req.label || sourceId), type: String(req.type || 'room'),
         rect: carpet, module, service: !!(placedRoom.corridorService || placedRoom.anchorZone === 'service' || ['lift', 'staircase'].includes(req.type))
       };
+      if (reservesSpace) {
+        const reservationFootprint = regions.reservationBounds(carpet, module);
+        if (regions.subtractRectangle(reservationFootprint, [building]).length)
+          fail(`Room ${sourceId} reserved footprint extends outside the building.`);
+        const shellInterior = { x: building.x + external, y: building.y + external,
+          w: building.w - 2 * external, h: building.h - 2 * external };
+        if (regions.subtractRectangle(reservationFootprint, [shellInterior]).length)
+          diagnostic('error', 'A reserved service footprint intersects the exterior building wall; keep its full allowance inside the building walls.', [room.id]);
+        Object.assign(room, { reservesSpace: true, reservationFootprint,
+          usableRegions: regions.subtractRectangle(carpet, []),
+          grossAreaM2: regions.area([carpet]), usableAreaM2: regions.area([carpet]), reservedAreaM2: 0, hostRoomIds: [] });
+      }
       scene.rooms.push(room); roomBySource.set(sourceId, room);
     }
     scene.rooms.sort((a, b) => a.id.localeCompare(b.id));
+    const balconyIds = new Set();
+    if (g.balconies !== undefined && !Array.isArray(g.balconies)) fail('Balconies must be an array.');
+    for (const source of g.balconies || []) {
+      const sourceId = source.id;
+      if (!sourceId) {
+        diagnostic('error', 'A balcony has no stable source ID; assign its identity before editing it.');
+        continue;
+      }
+      identity(sourceId, 'Balcony source id');
+      if (balconyIds.has(sourceId) || roomBySource.has(sourceId)) fail(`Duplicate balcony source id ${sourceId}.`);
+      balconyIds.add(sourceId);
+      const room = roomBySource.get(source.attachedRoomId);
+      const balcony = {
+        id: entityId(floorId, sourceId), sourceId, type: 'balcony', label: String(source.label || sourceId),
+        rect: rect(source.rect || source, `Balcony ${sourceId}`), roomId: room ? room.id : null
+      };
+      scene.balconies.push(balcony);
+      if (source.attachedRoomId && !room)
+        diagnostic('warning', 'The balcony room attachment is unresolved; its position and source are retained.', [balcony.id]);
+    }
+    scene.balconies.sort((a, b) => a.id.localeCompare(b.id));
+    const reservations = scene.rooms.filter(room => room.reservesSpace);
+    for (const host of scene.rooms.filter(room => !room.service)) {
+      const cutters = reservations.filter(room => regions.intersection(host.rect, room.reservationFootprint));
+      if (!cutters.length) continue;
+      const usableRegions = regions.subtractRectangle(host.rect, cutters.map(room => room.reservationFootprint));
+      Object.assign(host, { usableRegions, grossAreaM2: regions.area([host.rect]), usableAreaM2: regions.area(usableRegions),
+        reservedAreaM2: regions.area(regions.subtractRectangle(host.rect, usableRegions)),
+        reservationRoomIds: cutters.map(room => room.id) });
+      for (const service of cutters) service.hostRoomIds.push(host.id);
+      diagnostic('info', 'Service footprints are reserved and deducted from this room: usableRegions, not its editable bounding rectangle, define the remaining floor.',
+        [host.id, ...host.reservationRoomIds]);
+    }
     for (let i = 0; i < scene.rooms.length; i++) for (let j = i + 1; j < scene.rooms.length; j++) {
       const a = scene.rooms[i], b = scene.rooms[j];
+      if ((a.reservesSpace && !b.service) || (b.reservesSpace && !a.service)) continue;
+      if (a.service && b.service && (a.reservesSpace || b.reservesSpace) &&
+          regions.intersection(a.reservationFootprint || a.rect, b.reservationFootprint || b.rect)) {
+        diagnostic('error', 'Service reservation footprints overlap; two services cannot reserve the same physical space.', [a.id, b.id]);
+        continue;
+      }
       if (Math.min(a.rect.x + a.rect.w, b.rect.x + b.rect.w) - Math.max(a.rect.x, b.rect.x) > EPS &&
           Math.min(a.rect.y + a.rect.h, b.rect.y + b.rect.h) - Math.max(a.rect.y, b.rect.y) > EPS)
         diagnostic('error', 'Clear room carpets overlap; this floor is not a valid physical enclosure.', [a.id, b.id]);
@@ -547,7 +819,7 @@
       diagnostic('info', 'Room clear-carpet rectangles are preserved. Legacy half-internal-wall perimeter allowances are not a second external wall or added carpet.');
 
     // Coordinate comparisons are used only to find topology, never as persistent identity.
-    raw = normalizeOpposingWalls(raw, diagnostic);
+    raw = reservations.length ? reservedWalls(raw, reservations, scene.rooms, regions, diagnostic) : normalizeOpposingWalls(raw, diagnostic);
     raw.sort((a, b) => a.axis.localeCompare(b.axis) || a.fixed - b.fixed || a.token.localeCompare(b.token));
     const groups = [];
     for (const segment of raw) {
@@ -596,7 +868,8 @@
           diagnostic('warning', 'Different legacy wall allowances meet at this interface; the wider schematic allowance is used.', [wall.id]);
         scene.walls.push(wall);
         wallData.set(id, { axis: group.axis, fixed: group.fixed, lo: start.at, hi: end.at,
-          edges: members.filter(item => item.roomEdge).map(item => item.roomEdge) });
+          edges: members.filter(item => item.roomEdge).map(item => item.roomEdge),
+          reservationTrimmedCrossSection: members.some(item => item.reservationTrimmedCrossSection) });
       }
     }
     scene.walls.sort((a, b) => a.id.localeCompare(b.id));
@@ -670,13 +943,19 @@
       const originalWidth = source.widthM ?? segmentWidth ?? source.width;
       const width = edit.widthM ?? originalWidth;
       const basis = { id, sourceId, kind, wallId: source.wallId || null };
+      if ((reservations.length || source.wallId) && ((source.roomId && !room) || (source.targetRoomId && !target))) {
+        unresolved(basis, 'The opening references a missing source or target room. Its original attachment is retained, not rebound to a service wall.');
+        continue;
+      }
       if (!positive(width) || (!axis && !source.wallId)) {
         unresolved(basis, 'Opening geometry is missing, non-orthogonal or nonpositive.', 'error');
         continue;
       }
       let candidates = scene.walls.filter(wall => {
         const data = wallData.get(wall.id);
+        if (reservations.length && room && !wall.roomIds.includes(room.id)) return false;
         if (source.wallId) return wall.id === source.wallId || wall.id === entityId(floorId, source.wallId);
+        if (data.reservationTrimmedCrossSection) return false;
         if (axis !== data.axis) return false;
         if (room) return data.edges.some(item => item.roomId === room.id && (!own(DIRECTIONS, edge) || item.edge === edge));
         return sourceSegment && near(data.fixed, axis === 'x' ? sourceSegment.y1 : sourceSegment.x1);
@@ -694,7 +973,8 @@
       for (const wall of candidates) {
         const data = wallData.get(wall.id), length = data.hi - data.lo;
         let lo;
-        if (source.wallId && Number.isFinite(source.offsetM)) lo = data.lo + source.offsetM;
+        if (Number.isFinite(edit.offsetM)) lo = data.lo + edit.offsetM;
+        else if (source.wallId && Number.isFinite(source.offsetM)) lo = data.lo + source.offsetM;
         else if (sourceSegment) lo = Math.min(sourceSegment[data.axis === 'x' ? 'x1' : 'y1'], sourceSegment[data.axis === 'x' ? 'x2' : 'y2']);
         else if (room && own(DIRECTIONS, edge) && Number.isFinite(source.fraction) && source.fraction >= 0 && source.fraction <= 1) {
           const span = edgeData(room.module, edge);
@@ -741,6 +1021,8 @@
           hinge, swing, openFraction, exterior: wall.exterior,
           segment: { x1: start.x, y1: start.y, x2: finish.x, y2: finish.y }
         };
+        if (source.wallId) opening.hosted = true;
+        if (source.balconyId) opening.balconyId = entityId(floorId, source.balconyId);
         if (inferredTarget) opening.targetRoomId = inferredTarget;
         if (source.label) opening.label = String(source.label);
         if (kind === 'hinged' || kind === 'sliding') {
@@ -750,7 +1032,8 @@
           opening.clearWidthVerified = false;
           opening.leafWidthAssumed = source.nominalLeafWidthM === undefined;
           // Reprojected legacy glyph fields are not evidence of confirmed handing.
-          opening.handingAssumed = !own(edit, 'hinge') || !own(edit, 'swing');
+          opening.handingAssumed = (!own(edit, 'hinge') && !(source.wallId && own(source, 'hinge')))
+            || (!own(edit, 'swing') && !(source.wallId && own(source, 'swing')));
           if (!positive(opening.requestedClearWidthM) || !positive(opening.nominalLeafWidthM)) continue;
           if (kind === 'hinged' && opening.nominalLeafWidthM > opening.widthM + EPS)
             diagnostic('warning', 'The supplied nominal hinged leaf exceeds the schematic aperture span; frame/leaf fit is unresolved.', [id]);
@@ -781,22 +1064,34 @@
     for (const [id, edit] of Object.entries(project.wallEdits)) {
       const wall = wallsById.get(id);
       if (!wall) { diagnostic('warning', 'A saved wall edit has no current host; it is retained for review.', [id]); continue; }
-      if (wall.exterior || wall.structuralRole !== 'unknown') {
+      if (wall.exterior !== false || !['unknown', 'non-structural'].includes(wall.structuralRole)) {
         diagnostic('error', 'Exterior or structurally protected walls cannot be removed.', [id]); continue;
       }
-      const length = wallLength(wall), offsetM = edit.full ? 0 : edit.offsetM, widthM = edit.full ? length : edit.widthM;
-      if (offsetM + widthM > length + EPS) {
-        diagnostic('warning', 'A saved partition opening exceeds its current wall span; the edit is retained without cutting the wall.', [id]); continue;
+      const length = wallLength(wall), ranges = [];
+      let retained;
+      try {
+        retained = retainedWallSpan(wall, edit.retainedSpan);
+        if (own(edit, 'full')) ranges.push({ ...wallOpeningSpan({ ...wall, retainedSpan: retained }, edit), suffix: 'passage' });
+      } catch (_) {
+        diagnostic('warning', 'A saved partition opening or retained span exceeds its current wall span; the edit is retained without cutting the wall.', [id]);
+        continue;
       }
-      const start = wallPoint(wall, offsetM), end = wallPoint(wall, offsetM + widthM);
-      const opening = {
-        id: `${id}:passage`, sourceId: `${id.slice(floorId.length + 1)}:passage`, wallId: id, roomId: wall.roomIds[0] || null,
-        kind: 'passage', offsetM, widthM, sillM: 0, heightM: wall.heightM,
-        hinge: 'start', swing: 'left', openFraction: 1, exterior: false,
-        segment: { x1: start.x, y1: start.y, x2: end.x, y2: end.y }
-      };
-      if (wall.roomIds[1]) opening.targetRoomId = wall.roomIds[1];
-      passageCandidates.push(opening);
+      if (edit.retainedSpan) {
+        wall.retainedSpan = retained;
+        if (retained.startM > EPS) ranges.push({ offsetM: 0, widthM: retained.startM, suffix: 'trim-start' });
+        if (retained.endM < length - EPS) ranges.push({ offsetM: retained.endM, widthM: length - retained.endM, suffix: 'trim-end' });
+      }
+      for (const { offsetM, widthM, suffix } of ranges) {
+        const start = wallPoint(wall, offsetM), end = wallPoint(wall, offsetM + widthM);
+        const opening = {
+          id: `${id}:${suffix}`, sourceId: `${id.slice(floorId.length + 1)}:${suffix}`, wallId: id, roomId: wall.roomIds[0] || null,
+          kind: 'passage', offsetM, widthM, sillM: 0, heightM: wall.heightM,
+          hinge: 'start', swing: 'left', openFraction: 1, exterior: false,
+          segment: { x1: start.x, y1: start.y, x2: end.x, y2: end.y }
+        };
+        if (wall.roomIds[1]) opening.targetRoomId = wall.roomIds[1];
+        passageCandidates.push(opening);
+      }
       diagnostic('warning', 'Internal wall opening is conceptual only. Unknown structural role is not permission to demolish.', [id]);
     }
     const overlaps = (a, b) => a.wallId === b.wallId &&
@@ -809,7 +1104,7 @@
     const mergedPassages = [];
     for (const opening of passageCandidates.sort((a, b) => a.wallId.localeCompare(b.wallId) || a.offsetM - b.offsetM || a.id.localeCompare(b.id))) {
       const wall = wallsById.get(opening.wallId);
-      if (wall.exterior || wall.structuralRole !== 'unknown') {
+      if (wall.exterior !== false || !['unknown', 'non-structural'].includes(wall.structuralRole)) {
         unresolved(opening, 'An open passage cannot remove an exterior or structurally protected wall.', 'error'); continue;
       }
       const prior = mergedPassages[mergedPassages.length - 1];
@@ -867,7 +1162,19 @@
       scene.metrics.solidWallFaceAreaM2 += Math.max(0, length * wall.heightM - apertureArea);
     }
     scene.metrics.wallFootprintM2 = rectangleUnionArea(footprint);
-    scene.metrics.roomCarpetM2 = rectangleUnionArea(scene.rooms.map(room => room.rect));
+    if (reservations.length) {
+      const habitable = scene.rooms.filter(room => !room.service);
+      const service = scene.rooms.filter(room => room.service);
+      scene.metrics.roomCarpetM2 = regionUnionArea(scene.rooms.flatMap(room => room.usableRegions || [room.rect]), regions);
+      scene.metrics.grossHabitableCarpetM2 = regionUnionArea(habitable.map(room => room.rect), regions);
+      scene.metrics.habitableCarpetM2 = regionUnionArea(habitable.flatMap(room => room.usableRegions || [room.rect]), regions);
+      scene.metrics.serviceCarpetM2 = regionUnionArea(service.map(room => room.rect), regions);
+      scene.metrics.reservedHostAreaM2 = regionUnionArea(habitable.flatMap(room =>
+        reservations.map(reservation => regions.intersection(room.rect, reservation.reservationFootprint)).filter(Boolean)), regions);
+      scene.metrics.reservedFootprintM2 = regionUnionArea(reservations.map(room => room.reservationFootprint), regions);
+      if (Object.values(scene.metrics).some(value => !Number.isFinite(value) || value < 0))
+        fail('Reserved floor quantities exceed the supported finite numerical range.');
+    } else scene.metrics.roomCarpetM2 = rectangleUnionArea(scene.rooms.map(room => room.rect));
 
     const furnitureIds = new Set();
     for (const source of plan.furniture || []) {
@@ -893,6 +1200,12 @@
         headDirectionAssumed: edit.headLocal === undefined && source.headLocal === undefined
       };
       if (!inside(bounds, room.rect)) diagnostic('warning', 'Furniture extends outside its clear room carpet.', [id, room.id]);
+      const blockedBy = reservations.filter(reservation => regions.intersection(bounds, reservation.reservationFootprint));
+      if (blockedBy.length) {
+        furniture.reservationRoomIds = blockedBy.map(reservation => reservation.id);
+        diagnostic('error', 'Furniture overlaps a reserved service footprint; move it before using this layout. Its source and edits are retained.',
+          [id, room.id, ...furniture.reservationRoomIds]);
+      }
       if (furniture.type === 'bed' && furniture.headDirectionAssumed)
         diagnostic('warning', 'Legacy bed polarity was not recorded; N/W follows the old drawing convention only. Confirm the actual head end.', [id]);
       scene.furniture.push(furniture);
@@ -905,10 +1218,53 @@
       const wallId = item.wallId || item.anchor && item.anchor.wallId || item.mount && item.mount.wallId;
       if (wallId && (!wallsById.has(wallId) || wallsById.get(wallId).removed))
         diagnostic('warning', 'An electrical attachment has no surviving wall host; retain and review the point before installation.', [item.id, wallId].filter(Boolean));
+      else if (wallId && wallsById.get(wallId).retainedSpan)
+        diagnostic('warning', 'This electrical wall host has trimmed ends. The independent point is retained; review its mounting interval against the remaining material.', [item.id, wallId].filter(Boolean));
     }
     scene.openings.sort((a, b) => a.id.localeCompare(b.id));
     return scene;
   }
 
-  return Object.freeze({ createProject, validateProject, parseProject, buildScene, localToWorld, worldVectorToLocal, wallPoint, doorGeometry });
+  // Active-floor aliases are compatibility views, not independent authored inputs.
+  function canonicalDocument(project) {
+    validateProject(project);
+    const doc = copy(project), active = doc.floors.find(floor => floor.id === doc.activeFloorId);
+    active.legacy = copy(doc.legacy);
+    active.wallHeightM = doc.building.wallHeightM;
+    FLOOR_FIELDS.forEach(key => { active[key] = copy(doc[key]); });
+    for (const floor of doc.floors) {
+      floor.wallHeightM = floor.wallHeightM || floor.legacy?.context?.cfg?.ceilingHeight || 2.7432;
+      FLOOR_FIELDS.forEach(key => {
+        if (!own(floor, key)) floor[key] = ['obstacles', 'electrical'].includes(key) ? [] : {};
+      });
+      delete floor.legacy.controls.roomZoom;
+    }
+    delete doc.activeFloorId; delete doc.legacy; delete doc.building.wallHeightM;
+    FLOOR_FIELDS.forEach(key => { delete doc[key]; });
+    return doc;
+  }
+  function stableStringify(value) {
+    assertJSON(value);
+    function stringify(item) {
+      if (item === null || typeof item !== 'object') return JSON.stringify(item);
+      if (Array.isArray(item)) return `[${item.map(stringify).join(',')}]`;
+      return `{${Object.keys(item).sort().map(key => `${JSON.stringify(key)}:${stringify(item[key])}`).join(',')}}`;
+    }
+    return stringify(value);
+  }
+  function inputFingerprint(project, inputs = {}) {
+    const doc = canonicalDocument(project);
+    delete doc.id; delete doc.revision; delete doc.updatedAt;
+    delete doc.environment.results;
+    if (doc.environment.sunlight && typeof doc.environment.sunlight === 'object') {
+      delete doc.environment.sunlight.result;
+      if (!Array.isArray(doc.environment.sunlight) && !Object.keys(doc.environment.sunlight).length)
+        delete doc.environment.sunlight;
+    }
+    return stableStringify({contractVersion: 1, document: doc, inputs});
+  }
+
+  return Object.freeze({ createProject, validateProject, parseProject, buildScene, localToWorld, worldVectorToLocal,
+    wallPoint, retainedWallSpan, wallOpeningSpan, doorGeometry, canonicalDocument, stableStringify, inputFingerprint, assertJSON,
+    emptyAuthored: Features && Features.emptyAuthored });
 });

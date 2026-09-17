@@ -16,6 +16,7 @@
   const AUTOSAVE_SETTING = 'autosave-enabled';
   const LAST_PROJECT_SETTING = 'last-project-id';
   const unsafeKeys = new Set(['__proto__', 'prototype', 'constructor']);
+  const sharedModel = typeof module === 'object' && module.exports ? require('./planner-model.js') : root.HomePlannerModel;
   const has = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 
   class StorageError extends Error {
@@ -152,7 +153,7 @@
       throw fail('ProjectValidationError', 'The shared model rejected this project. The current project was not changed.');
   }
 
-  function validateProject(project, model = root.HomePlannerModel) {
+  function validateProject(project, model = root.HomePlannerModel || sharedModel) {
     const copy = cloneJSON(project);
     validateBase(copy);
     if (model && typeof model.validateProject === 'function') {
@@ -167,7 +168,7 @@
     return copy;
   }
 
-  function parseProject(text, model = root.HomePlannerModel) {
+  function parseProject(text, model = root.HomePlannerModel || sharedModel) {
     if (typeof text !== 'string') throw fail('InvalidJSONError', 'Import requires JSON text.');
     if (text.length > MAX_JSON_BYTES) throw fail('JSONLimitError', 'JSON imports are limited to 32 MiB.');
     let parsed;
@@ -194,7 +195,11 @@
       if (Array.isArray(item)) return `[${item.map(stringify).join(',')}]`;
       return `{${Object.keys(item).sort().map(key => `${JSON.stringify(key)}:${stringify(item[key])}`).join(',')}}`;
     }
-    return stringify(cloneJSON(value));
+    const copy = cloneJSON(value);
+    // Floor navigation changes schema-1 compatibility aliases, not the saved inputs.
+    return stringify(copy && copy.schemaVersion === 1 && Array.isArray(copy.floors) &&
+      typeof copy.activeFloorId === 'string' && sharedModel?.canonicalDocument
+      ? sharedModel.canonicalDocument(copy) : copy);
   }
 
   function projectName(project) {
@@ -206,7 +211,7 @@
     return new Date(value).toISOString() === value;
   }
 
-  function readRecord(value, model = root.HomePlannerModel, expectedId) {
+  function readRecord(value, model = root.HomePlannerModel || sharedModel, expectedId) {
     const record = cloneJSON(value);
     if (!object(record)) throw fail('CorruptRecordError', 'The local project record is not an object. It was left untouched.');
     if (record.recordVersion !== RECORD_VERSION)
@@ -220,7 +225,7 @@
       createdAt: record.createdAt, updatedAt: record.updatedAt, document };
   }
 
-  function createRecord(project, previous, now = new Date().toISOString(), model = root.HomePlannerModel) {
+  function createRecord(project, previous, now = new Date().toISOString(), model = root.HomePlannerModel || sharedModel) {
     const document = validateProject(project, model);
     if (!isTimestamp(now)) throw fail('InvalidTimestampError', 'A save requires a valid UTC timestamp.');
     const old = previous === undefined ? null : readRecord(previous, model, document.id);

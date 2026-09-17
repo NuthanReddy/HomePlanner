@@ -148,6 +148,10 @@ test('door controls submit exact canonical hinge, swing, width and operating sta
     { type: 'update-door', id: door.id, widthM: 1.05 });
   assert.deepEqual(editor.openingCommand('door', door, 'openFraction', '0', wall),
     { type: 'update-door', id: door.id, openFraction: 0 });
+  assert.deepEqual(editor.openingCommand('door', door, 'heightM', '2.2', wall),
+    { type: 'update-door', id: door.id, heightM: 2.2 });
+  assert.deepEqual(editor.openingCommand('door', door, 'offsetM', '1.2', wall),
+    { type: 'update-door', id: door.id, offsetM: 1.2 });
   assert.equal(door.widthM, .9);
   assert.equal(door.openFraction, .25);
 });
@@ -178,7 +182,8 @@ test('opening validation rejects unsafe dimensions, missing hosts and unsupporte
     ['door', door, 'widthM', '4.6', wall],
     ['door', door, 'openFraction', '-.1', wall],
     ['door', door, 'openFraction', '1.01', wall],
-    ['door', door, 'heightM', '2.2', wall],
+    ['door', door, 'heightM', '2.9', wall],
+    ['door', door, 'offsetM', '4.5', wall],
     ['door', door, 'hinge', 'north', wall],
     ['door', door, 'swing', 'in', wall],
     ['window', windowOpening, 'sillM', '-1', wall],
@@ -219,6 +224,52 @@ test('partial wall opening requires explicit valid offset and width, never gener
   ]) assert.throws(() => editor.wallOpeningCommand(wall, options));
   assert.equal(editor.wallOpeningCommand(wall, { full: false, offsetM: '4', widthM: '1' }).widthM, 1);
   assert.throws(() => editor.wallOpeningCommand({ ...wall, end: wall.start }, { full: true }), /greater than zero/);
+});
+
+test('to-wall-end has explicit persisted intent rather than a rounded width, and respects retained ends', () => {
+  const precise = { ...wall, end: { x: 0, y: 3.7255 } };
+  assert.deepEqual(editor.wallOpeningCommand(precise, { full: false, toEnd: true, offsetM: '1' }),
+    { type: 'open-wall', id: wall.id, full: false, toEnd: true, offsetM: 1, confirmConceptual: true });
+  const trimmed = { ...precise, retainedSpan: { startM: .5, endM: 3 } };
+  assert.throws(() => editor.wallOpeningCommand(trimmed, { full: false, toEnd: true, offsetM: '.4' }));
+  assert.throws(() => editor.wallOpeningCommand(trimmed, { full: false, toEnd: true, offsetM: '3' }));
+  assert.throws(() => editor.wallOpeningCommand(precise, { full: false, toEnd: 'yes', offsetM: '1' }));
+  assert.throws(() => editor.wallOpeningCommand(precise, { full: true, toEnd: true }));
+});
+
+test('retained span controls are trim-only and do not offer arbitrary wall topology', () => {
+  assert.deepEqual(editor.wallTrimCommand(wall, '.25', '4.75'),
+    { type: 'trim-wall', id: wall.id, startM: .25, endM: 4.75, confirmConceptual: true });
+  assert.deepEqual(editor.wallTrimCommand(wall, '.25', null),
+    { type: 'trim-wall', id: wall.id, startM: .25, endM: null, confirmConceptual: true });
+  for (const [start, end] of [['', '3'], ['0', ''], ['-1', '3'], ['0', '5.1'], ['3', '2']])
+    assert.throws(() => editor.wallTrimCommand(wall, start, end));
+  assert.throws(() => editor.wallTrimCommand({ ...wall, exterior: true }, 0, 4), /Exterior/);
+});
+
+test('wall-context opening fields create canonical metre commands and translate window head into height', () => {
+  assert.deepEqual(editor.addOpeningCommand(wall, 'door', { offsetM: '.2', widthM: '.9', heightM: '2.1',
+    openFraction: '0', hinge: 'end', swing: 'right' }),
+  { type: 'add-door', wallId: wall.id, offsetM: .2, widthM: .9, heightM: 2.1, openFraction: 0, hinge: 'end', swing: 'right' });
+  const result = editor.addOpeningCommand(wall, 'window', { offsetM: '1.2', widthM: '1',
+    sillM: '.9', headM: '2.1', openFraction: '.5' });
+  assert.ok(Math.abs(result.heightM - 1.2) < 1e-9);
+  assert.equal(result.sillM, .9);
+  assert.equal(Object.hasOwn(result, 'headM'), false);
+  assert.equal(Object.hasOwn(result, 'hinge'), false);
+  for (const patch of [{ widthM: '' }, { widthM: '4' }, { sillM: '-1' }, { headM: '.8' }, { headM: '3' }, { openFraction: 'true' }])
+    assert.throws(() => editor.addOpeningCommand(wall, 'window', { offsetM: '2', widthM: '1', sillM: '.9', headM: '2.1',
+      openFraction: '0', ...patch }));
+  assert.throws(() => editor.addOpeningCommand({ ...wall, removed: true }, 'door', {}), /surviving/);
+});
+
+test('balconies have their own selection kind and preserve cross-floor read-only identity', () => {
+  const balcony = { id: 'floor-two:balcony-3', sourceId: 'balcony-3', rect: { x: 1, y: 0, w: 2, h: 1 } };
+  const scene = { floorId: 'floor-two', balconies: [balcony] };
+  const selection = { kind: 'balcony', id: balcony.id };
+  assert.equal(editor.selectionEntity(scene, selection), balcony);
+  assert.equal(editor.selectionEntity(scene, { kind: 'room', id: balcony.id }), null);
+  assert.equal(editor.selectionFloor([scene], selection, 'floor-one'), 'floor-two');
 });
 
 test('ordered independent floors derive elevation from base and preceding storey heights', () => {

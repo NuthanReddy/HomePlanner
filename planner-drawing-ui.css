@@ -1,0 +1,78 @@
+.hp-drawings {
+  color: var(--txt);
+  min-width: 0;
+}
+.hp-drawing-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: .75rem 1rem;
+}
+.hp-drawing-controls label {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: .35rem;
+  font-size: .875rem;
+}
+.hp-drawings :is(input, select, button) {
+  font: inherit;
+  color: var(--txt);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: .35rem;
+  padding: .5rem .65rem;
+  min-width: 0;
+}
+.hp-drawings :is(button, select, input[type="checkbox"]) { cursor: pointer; }
+.hp-drawings :is(input, select, button, a, summary):focus-visible {
+  outline: 2px solid var(--accent, #7dd3fc);
+  outline-offset: 3px;
+}
+.hp-drawings :disabled { opacity: .55; cursor: not-allowed; }
+.hp-drawing-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem 1rem; }
+.hp-drawing-toolbar label { display: grid; gap: .35rem; min-width: 0; flex: 1 1 15rem; }
+.hp-drawing-toolbar select { width: 100%; }
+.hp-drawings > h2 { font-size: 1.125rem; line-height: 1.4; margin-block: .5rem; }
+.hp-drawing-toolbar button, .hp-drawing-print-settings > summary { min-height: 44px; }
+.hp-drawing-print-settings { margin-top: .75rem; }
+.hp-drawing-print-settings > summary { cursor: pointer; padding: .5rem 0; box-sizing: border-box; overflow-wrap: anywhere; font-size: .875rem; line-height: 1.4; }
+.hp-drawing-print-settings[open] > summary { margin-bottom: .5rem; }
+.hp-drawing-layers, .hp-drawing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem 1rem;
+  margin: 1rem 0;
+}
+.hp-drawing-layers {
+  border: 1px solid var(--line);
+  border-radius: .35rem;
+}
+.hp-drawing-layers label { display: inline-flex; align-items: center; gap: .4rem; }
+.hp-drawing-help, .hp-drawing-assumptions { color: var(--dim); font-size: .875rem; }
+.hp-drawing-error { border: 1px solid var(--warn, #f4b860); padding: .75rem; overflow-wrap: anywhere; }
+.hp-drawing-preview {
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1rem;
+  margin-block: 1rem;
+}
+.hp-drawing-preview img {
+  display: block;
+  background: white;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+}
+.hp-drawing-preview[data-zoom="full"] img { width: auto; }
+.hp-drawings [hidden] { display: none !important; }
+.hp-drawing-preview p { color: var(--dim); }
+.hp-drawing-outputs li { margin-block: .5rem; }
+.hp-drawing-outputs a { color: var(--accent, #7dd3fc); overflow-wrap: anywhere; }
+@media (max-width: 40rem) {
+  .hp-drawing-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .hp-drawing-toolbar button { max-width: 8rem; }
+  .hp-drawing-preview { padding: .35rem; }
+  .hp-drawing-actions button { flex: 1 1 10rem; }
+}

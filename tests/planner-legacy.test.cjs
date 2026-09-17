@@ -20,7 +20,7 @@ function load(){
     $:()=>({innerHTML:''})
   });
   for(const name of ['roomRectInside','roomIntersects','roomLocalEdgeGlobal','roomFurnitureWallCandidates',
-    'roomFurnitureDefaults','roomRotateFurniture','roomRotateFromPlan','roomEscapeMarkup']){
+    'roomFurnitureDefaults','roomFurnitureCandidateValid','roomFindFurniturePosition','roomRotateFurniture','roomRotateFromPlan','roomEscapeMarkup']){
     const match=html.match(new RegExp(`function ${name}\\([^]*?\\n\\}`));
     assert.ok(match,`${name} must remain available`);
     vm.runInContext(match[0],context);
@@ -46,10 +46,11 @@ test('bed auto-placement falls back to west when the south-facing footprint cann
 });
 
 test('four rotations retain all bed head polarities, including a 180 degree turn',()=>{
-  const api=load(),furniture={x:4,y:4,w:2,h:3,type:'bed',label:'Bed',headLocal:'N'};
-  const item={kind:'furniture',furniture,parent:{carpet:{x:0,y:0,w:12,h:12}}};
+  const api=load(),furniture={id:'bed',roomId:'bedroom',x:4,y:4,w:2,h:3,type:'bed',label:'Bed',headLocal:'N'};
+  const item={kind:'furniture',furniture,parent:{req:{id:'bedroom',label:'Bedroom'},carpet:{x:0,y:0,w:12,h:12}}};
+  const ctx={plan:{furniture:[furniture]}};
   for(const head of ['E','S','W','N']){
-    assert.equal(api.roomRotateFurniture({},item),true);
+    assert.equal(api.roomRotateFurniture(ctx,item),true);
     assert.equal(furniture.headLocal,head);
   }
   assert.equal(furniture.w,2);assert.equal(furniture.h,3);

@@ -1,0 +1,84 @@
+.hp-airflow {
+  --airflow-ink: var(--txt, #1f2328);
+  --airflow-line: var(--line, #d0d7de);
+  --airflow-accent: var(--acc, #0969da);
+  color: var(--airflow-ink);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: clamp(12px, 2vw, 24px);
+}
+.hp-airflow *, .hp-airflow *::before, .hp-airflow *::after { box-sizing: border-box; }
+.hp-airflow h2 { margin: 0; font-size: clamp(1.2rem, 2vw, 1.6rem); }
+.hp-airflow h3 { margin: 20px 0 8px; font-size: 1.1rem; }
+.hp-airflow p { margin: 6px 0; overflow-wrap: anywhere; }
+.hp-airflow-warning { color: var(--warn, #9a6700); font-size: .85rem; }
+.hp-airflow-toolbar, .hp-airflow-top-fields, .hp-airflow-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin: 8px 0;
+}
+.hp-airflow button, .hp-airflow input, .hp-airflow select, .hp-airflow textarea {
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--airflow-line);
+  border-radius: 7px;
+  padding: 9px 11px;
+  font: inherit;
+  color: inherit;
+  background: var(--panel, #fff);
+}
+.hp-airflow button { cursor: pointer; margin: 3px 4px 3px 0; white-space: normal; }
+.hp-airflow-toolbar button { margin: 0; }
+#hp-airflow-run { background: #0969da; color: #fff; border-color: #0969da; }
+.hp-airflow button:disabled { opacity: .55; cursor: not-allowed; }
+.hp-airflow :focus-visible { outline: 3px solid #3675b4; outline-offset: 3px; }
+.hp-airflow label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: .85rem; overflow-wrap: anywhere; }
+.hp-airflow-top-fields label { flex: 1 1 130px; }
+.hp-airflow-top-fields select { width: 100%; }
+.hp-airflow input[type="checkbox"] { align-self: start; width: 44px; margin: 0; accent-color: var(--airflow-accent); }
+.hp-airflow-status { font-size: .85rem; line-height: 1.35; }
+.hp-airflow-view-status { padding: 10px 12px; border: 1px solid var(--airflow-line); background: var(--panel2, #f6f8fa); font-size: .9rem; line-height: 1.45; }
+.hp-airflow-view-status[data-state="blocked"], .hp-airflow-view-status[data-state="unavailable"], .hp-airflow-view-status[data-state="empty"] { font-weight: 600; }
+.hp-airflow-error { background: var(--panel, #fff); color: var(--bad, #cf222e); border: 1px solid var(--bad, #cf222e); border-radius: 7px; padding: 10px; }
+.hp-airflow-preview {
+  min-height: 280px;
+  height: clamp(280px, 49vh, 610px);
+  border: 1px solid var(--airflow-line);
+  border-radius: 10px;
+  background: var(--panel2, #f6f8fa);
+  display: grid;
+  place-items: center;
+  margin-top: 12px;
+  padding: 12px;
+  overflow: auto;
+  text-align: center;
+  font-size: .95rem;
+}
+.hp-airflow-preview img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.hp-airflow-legend { color: var(--dim, #59636e); font-size: .8rem; }
+.hp-airflow details { margin: 10px 0; border-top: 1px solid var(--airflow-line); min-width: 0; }
+.hp-airflow summary { cursor: pointer; padding: 13px 3px; min-height: 44px; font-weight: 600; overflow-wrap: anywhere; color: var(--airflow-ink); }
+.hp-airflow-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.hp-airflow fieldset { min-width: 0; margin: 14px 0; padding: 14px; border: 1px solid var(--airflow-line); border-radius: 8px; }
+.hp-airflow fieldset legend { font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
+.hp-airflow fieldset > p, .hp-airflow fieldset > details { grid-column: 1 / -1; }
+.hp-airflow-table-region { overflow-x: auto; max-width: 100%; margin: 12px 0; border: 1px solid var(--airflow-line); border-radius: 7px; }
+.hp-airflow table { border-collapse: collapse; min-width: 650px; width: 100%; font-size: .85rem; }
+.hp-airflow caption { text-align: left; padding: 12px; font-weight: 600; }
+.hp-airflow th, .hp-airflow td { padding: 10px; text-align: left; border-top: 1px solid var(--airflow-line); vertical-align: top; }
+.hp-airflow th { background: var(--panel2, #f6f8fa); }
+.hp-airflow pre { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; }
+.hp-airflow textarea { width: 100%; resize: vertical; }
+.hp-airflow li { margin: 8px 0; overflow-wrap: anywhere; }
+.hp-airflow a { display: inline-flex; align-items: center; min-height: 44px; color: var(--airflow-accent); overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .hp-airflow { padding: 12px; }
+  .hp-airflow-header p { font-size: .78rem; }
+  .hp-airflow-toolbar { gap: 6px; }
+  .hp-airflow-toolbar button { padding: 8px; font-size: .85rem; }
+  .hp-airflow-fields { grid-template-columns: minmax(0, 1fr); }
+  .hp-airflow-preview { height: 340px; margin-top: 8px; }
+}

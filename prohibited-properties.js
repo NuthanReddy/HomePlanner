@@ -41,8 +41,7 @@
   function mount(){
     const document=root.document;
     const host=document.getElementById('prohibitedWorkspace');
-    const tab=document.querySelector('[data-page="prohibited"]');
-    if(!host||!tab||host.dataset.mounted)return;
+    if(!host||host.dataset.mounted)return;
     host.dataset.mounted='true';
     host.innerHTML=`
       <!--
@@ -62,7 +61,7 @@
           <form id="propForm" class="prop-controls">
             <fieldset><legend>Location</legend>
               <label for="propDistrict">District</label>
-              <select id="propDistrict" name="dist_code" required disabled><option value="">Loading districts...</option></select>
+              <select id="propDistrict" name="dist_code" required disabled><option value="">Connect local lookup first</option></select>
               <label for="propMandal">Mandal</label>
               <select id="propMandal" name="mand_code" required disabled><option value="">Choose a district first</option></select>
               <label for="propVillage" id="propVillageLabel">Village / town</label>
@@ -86,9 +85,9 @@
             </div>
           </form>
           <div class="prop-output" id="propOutput">
-            <p id="propStatus" class="prop-status" role="status" aria-live="polite">Loading the local location catalog.</p>
+            <p id="propStatus" class="prop-status" role="status" aria-live="polite">Requires the local Flask server. Connect to load its location catalog; opening this section makes no request. Results do not certify title or property status.</p>
             <div id="propFeedback" class="prop-notice" role="alert" hidden></div>
-            <button id="propRetrySetup" class="prop-text-button" type="button" hidden>Retry connection</button>
+            <button id="propRetrySetup" class="prop-text-button" type="button">Connect local lookup</button>
             <div id="propProgress" class="prop-progress" hidden>
               <label for="propProgressBar" id="propProgressLabel">Preparing reports</label>
               <progress id="propProgressBar" max="1" value="0"></progress>
@@ -280,7 +279,6 @@
     $('propType').addEventListener('change',invalidateResults);
     $('propCategory').addEventListener('change',invalidateResults);
     $('propRetrySetup').addEventListener('click',boot);
-    tab.addEventListener('click',boot);
     $('propCheckEngine').addEventListener('click',async()=>{
       $('propCheckEngine').disabled=true;text('propEngineStatus','Checking Tesseract and its languages...');
       try{
@@ -441,8 +439,6 @@
     $('propNext').addEventListener('click',()=>{state.page++;renderTable();});
     $('propShowTable').addEventListener('click',()=>setMode('table'));
     $('propShowDocument').addEventListener('click',()=>setMode('document'));
-    if(new URLSearchParams(root.location.search).get('workspace')==='prohibited')tab.click();
-    else if(tab.classList.contains('on'))boot();
   }
   return {mount,selectionQuery,filterRows,pageRows,cacheLabel};
 });

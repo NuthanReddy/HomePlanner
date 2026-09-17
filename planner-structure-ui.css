@@ -1,0 +1,18 @@
+.hp-structure { min-width: 0; max-width: 100%; padding: 1rem; overflow-wrap: anywhere; }
+.hp-structure .hp-structure-warning { border: 2px solid #975b13; background: #fff5de; color: #493010; padding: 1rem; font-weight: 700; }
+.hp-structure .hp-structure-error { color: #98252d; border-left: 4px solid currentColor; padding: .75rem; }
+.hp-structure .hp-structure-form, .hp-structure .hp-structure-preview-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .75rem; margin-block: 1rem; }
+.hp-structure label { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.hp-structure input, .hp-structure select, .hp-structure button { font: inherit; min-height: 2.75rem; max-width: 100%; box-sizing: border-box; }
+.hp-structure input[type="checkbox"] { align-self: flex-start; width: 1.5rem; }
+.hp-structure :focus-visible { outline: 3px solid #2467bc; outline-offset: 3px; }
+.hp-structure .hp-structure-anchor-summary { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; }
+.hp-structure .hp-structure-schedule, .hp-structure .hp-structure-preview { max-width: 100%; overflow: auto; margin-block: 1rem; }
+.hp-structure table { border-collapse: collapse; min-width: 75rem; font-size: .9rem; }
+.hp-structure th, .hp-structure td { text-align: left; vertical-align: top; padding: .5rem; border: 1px solid #aeb8c0; max-width: 24rem; }
+.hp-structure caption { text-align: left; padding-block: .5rem; }
+.hp-structure .hp-structure-preview img { display: block; width: 100%; min-width: 40rem; height: auto; }
+@media (max-width: 40rem) {
+  .hp-structure { padding: .5rem; }
+  .hp-structure .hp-structure-form, .hp-structure .hp-structure-preview-controls { grid-template-columns: 1fr; }
+}

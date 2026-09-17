@@ -6,6 +6,13 @@ scene and the separately implemented `BuildingPhysics` numerical APIs. Missing
 weather and physical inputs remain missing; no compass score becomes degrees
 Celsius, ACH or occupant airspeed.
 
+In the Phase 2 shell, foundational location/surroundings/weather controls are
+visible only under **Site > Location, surroundings & weather**. Environment
+retains analysis; envelope comparisons belong to Compare and analytical exports
+to Report. The original module root and delegated event handlers remain mounted
+once while its sections change visibility. See
+[workspace navigation](workspace-navigation.md) for routes and lifecycle details.
+
 ## Integration
 
 Mount `#environmentWorkspace` in the Environment app page. Load
@@ -16,7 +23,7 @@ Mount `#environmentWorkspace` in the Environment app page. Load
    (`HomePlanner`).
 3. `planner-location.js` (`HomePlannerLocation.detect`).
 4. `building-physics.js` and `environment-data.js`.
-5. `environment-ui.js`.
+5. `planner-drafts.js`, then `environment-ui.js`.
 
 The coordinator owns actual HTML/script placement. No package manager, build
 system, runtime CDN, account or backend is needed.
@@ -33,6 +40,25 @@ Geometry edits use **only** coordinator commands: `update-site`,
 Scenario/weather persistence uses `set-environment`. `getScene()` supplies the
 editable floor; `getScenes()` supplies all-floor drawing/analysis snapshots.
 The UI neither mutates project snapshots nor keeps another editable layout.
+
+Site/device-coordinate and building-dimension application include their
+`siteProvenance` / `buildingAssumptions` in the same command's optional
+`environmentPatch`. Each Apply/Save is one project history transaction, so one
+Undo restores both inputs and provenance. Application is not a browser-storage
+save; use the global Save now separately.
+
+Session input drafts retain their project owner. Building/storey/obstacle forms
+also retain the active-floor owner: switching floors displays that floor's own
+fields and returning restores its pending draft, never applying it to a new floor.
+Changed saved inputs block stale submission while preserving the draft.
+**Discard draft / reload project inputs** is explicit and confirmed for pending
+fields. Drafts are not included in project JSON or browser saves until applied.
+Obstacle removal confirms its name and floor, preserves other obstacles, and
+returns keyboard focus to the persistent obstacle heading.
+
+Restored/undone assembly inputs re-render only a matching saved assembly result.
+Mismatched or absent results are explicitly stale/unavailable; an unevaluated
+layer draft never inherits a previous U/R/capacity table.
 
 ### State owned inside `project.environment`
 
@@ -66,7 +92,8 @@ Manual latitude, longitude and IANA time zone are always available.
 handler. It saves returned coordinates with `update-site`, shows reported accuracy,
 does not infer a time zone or reverse-geocode, and does not assert that the device
 is at the building. Manual edits/project changes invalidate pending detection.
-Permission/timeout errors remain visible without erasing prior coordinates.
+Replacing an existing pending site draft requires confirmation. Permission,
+timeout or rejected-transaction errors preserve its fields and prior coordinates.
 
 Wall height, floor-to-floor height, building base elevation and roof/slab thickness
 are explicitly assumed preview dimensions. Obstacles are active-floor, local
@@ -264,6 +291,12 @@ site coordinates were sent during implementation/testing.
 
 ## Wind rose and window proposals
 
+Environment / Airflow first presents the [room/opening scenario workbench](airflow-workbench.md).
+The existing wind tools remain in their original mounted environment module
+under **Wind observations & window proposals**, an initially closed disclosure.
+Opening it does not compute or fetch anything. Weather/wind proposals do not
+provide the pressure-network forcing or Cd automatically.
+
 `windRose(records, options?)` always returns sixteen 22.5° **FROM** bins:
 
 ```js
@@ -352,6 +385,12 @@ field or occupant airspeed. Free area is distinct from discharge coefficient.
   solar-gain screen, not angular optics, frame modelling or daylight lux.
 
 ### Pressure experiment
+
+This expert JSON experiment remains available alongside the newer native
+room/opening workbench. Their drafts are explicitly independent, not silently
+converted or synchronized. The workbench uses a cancellable dedicated local
+Worker and exports its own captured scenario/results; this original experiment
+retains its existing environment input contract.
 
 The current scene provides room-volume estimates and actual opening identities.
 Density, Cd and signed imposed wind/stack pressure are **required user inputs**.

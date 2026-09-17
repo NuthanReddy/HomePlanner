@@ -1,0 +1,1 @@
+[10061708ms] [ERROR] Blocked attempt to show a 'beforeunload' confirmation panel for a frame that never had a user gesture since its load. https://www.chromestatus.com/feature/5082396709879808 @ http://127.0.0.1:8000/?workspace=design&section=layout:0

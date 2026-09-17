@@ -1,0 +1,7 @@
+*** Begin Patch
+*** Update File: index.html
+@@
+-<script src="planner-model.js"></script>
++<script src="planner-drafts.js"></script>
++<script src="planner-model.js"></script>
+*** End Patch

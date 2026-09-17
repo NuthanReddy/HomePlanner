@@ -118,7 +118,8 @@ svg{width:100%;height:auto;display:block;background:var(--panel2);border-radius:
 details{margin-top:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
 summary{cursor:pointer;color:var(--acc);font-size:12px;font-weight:600;list-style:none}
 summary::-webkit-details-marker{display:none}
-summary::before{content:'? ';font-weight:700}
+summary::before{content:'\25B8\00A0';font-weight:700}
+details[open]>summary::before{content:'\25BE\00A0'}
 details[open] summary{margin-bottom:8px}
 .help{font-size:12px;color:var(--dim);line-height:1.6}
 .help b{color:var(--txt)}
@@ -165,6 +166,9 @@ tr.hi td{background:rgba(47,129,247,.1)}
 .room-key{display:flex;align-items:center;gap:5px}
 .room-key i{width:12px;height:12px;border-radius:3px;border:1px solid var(--line)}
 .room-draggable,.room-furniture{cursor:move;touch-action:none}
+#roomPlan{touch-action:none}
+.room-move-preview{fill:var(--acc);fill-opacity:.18;stroke:var(--acc);stroke-width:2;stroke-dasharray:6 4;pointer-events:none}
+.room-move-preview[aria-invalid=true]{fill:var(--bad);stroke:var(--bad)}
 .room-resize{stroke-linecap:round}
 .room-plan-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;flex-wrap:wrap;text-align:right}
 .room-plan-actions .mini{max-width:520px;white-space:normal}
@@ -172,7 +176,8 @@ tr.hi td{background:rgba(47,129,247,.1)}
 .room-plan-actions button{white-space:nowrap}
 .room-plan-workspace{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
 .room-plan-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;
-  border-bottom:1px solid var(--line);background:var(--panel)}
+  border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+.room-history-controls{display:flex;align-items:center;gap:6px}
 .room-zoom-controls{display:flex;align-items:center;gap:6px;min-width:0}
 .room-tool{min-height:30px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--txt);
   padding:5px 9px;font:600 11.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer}
@@ -222,19 +227,25 @@ body.room-plan-lock{overflow:hidden}
 .component-pane details.library-item,.component-pane details.library-section{
   margin:0;padding:0;overflow:hidden;background:var(--panel2);border:1px solid var(--line);border-radius:8px}
 .component-pane details.library-item>summary,.component-pane details.library-section>summary{
-  display:grid;grid-template-columns:14px minmax(0,1fr) auto auto;align-items:center;gap:7px;margin:0;padding:8px 8px 8px 10px;
+  display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:7px;margin:0;padding:0 0 0 10px;
   color:var(--txt);font-size:11.5px;font-weight:650;list-style:none}
 .component-pane details.library-item>summary::before,.component-pane details.library-section>summary::before{
-  content:'>';display:block;color:var(--dim);font-size:11px;line-height:1;transform-origin:center;transition:transform .16s ease-out}
-.component-pane details[open]>summary::before{transform:rotate(90deg)}
+  content:none}
 .component-pane details.library-item>summary:hover,.component-pane details.library-section>summary:hover{background:rgba(47,129,247,.07)}
+.component-pane details.library-item>summary.library-add-row{grid-template-columns:minmax(0,1fr) auto;gap:0;padding:0;cursor:grab}
+.library-add{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;width:100%;min-height:42px;padding:9px 10px;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:grab;touch-action:manipulation}
+.library-add:active{cursor:grabbing}
+.library-toggle{display:grid;place-items:center;align-self:stretch;min-width:38px;min-height:42px;padding:8px;border:0;border-left:1px solid var(--line);background:transparent;color:var(--dim);font:inherit;cursor:pointer}
+.library-toggle span{display:block;transform-origin:center;transition:transform .16s ease-out}
+.library-toggle[aria-expanded=true] span{transform:rotate(90deg)}
+.library-add:focus-visible,.library-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.library-toggle:hover{background:var(--panel);color:var(--acc)}
+.component-pane>summary:has(.library-toggle){display:flex;justify-content:space-between;align-items:center;padding-left:10px}
+.hp-workspace details.component-pane>summary:has(.library-toggle)::before{content:none}
+.component-item[aria-pressed=true]{border-color:var(--acc);outline:1px solid var(--acc)}
 .library-title{display:grid;gap:1px;min-width:0}
 .library-dim{color:var(--dim);font-size:9.5px;font-weight:500;line-height:1.25;white-space:normal}
 .library-count{color:var(--dim);font-size:10px;font-weight:600;white-space:nowrap}
-.room-library-drag{display:grid;place-items:center;width:29px;height:29px;margin:0;border:1px solid var(--line);border-radius:6px;
-  background:var(--panel);color:var(--dim);font:700 15px/1 inherit;cursor:grab;touch-action:manipulation}
-.room-library-drag:hover,.room-library-drag:focus-visible{border-color:var(--acc);color:var(--acc);outline:none}
-.room-library-drag:active{cursor:grabbing}
 .library-body{display:grid;gap:9px;padding:0 10px 11px;border-top:1px solid var(--line)}
 .library-body>label:first-child{margin-top:9px}
 .quantity-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px}
@@ -300,31 +311,95 @@ body.room-plan-lock{overflow:hidden}
 <link rel="stylesheet" href="electrical-planner.css">
 <link rel="stylesheet" href="environment-ui.css">
 <link rel="stylesheet" href="prohibited-properties.css">
+<link rel="stylesheet" href="planner-workspace.css">
+<script src="planner-regions.js"></script>
+<link rel="stylesheet" href="planner-drawing-ui.css">
+<link rel="stylesheet" href="planner-structure-ui.css">
+<link rel="stylesheet" href="planner-elevation-ui.css">
+<link rel="stylesheet" href="planner-facade-ui.css">
+<link rel="stylesheet" href="planner-services-ui.css">
+<link rel="stylesheet" href="planner-airflow-ui.css">
+<link rel="stylesheet" href="planner-light-ui.css">
+<link rel="stylesheet" href="planner-package-ui.css">
 <script type="importmap">
 {"imports":{"three":"./vendor/three/three.module.min.js"}}
 </script>
 </head>
-<body>
-<header>
+<body class="hp-workspace">
+<header class="hp-project-bar">
   <div class="header-bar">
     <div class="header-copy">
       <h1>HomePlanner</h1>
     </div>
+    <div id="workspaceProjectIdentity"></div>
+    <div id="workspaceSaveActions"></div>
+    <label for="workspaceMode">View
+      <select id="workspaceMode"><option value="homeowner">Homeowner</option><option value="expert">Expert</option></select>
+    </label>
+    <details class="hp-project-menu" id="workspaceProjectMenu">
+      <summary>Projects &amp; backups</summary>
+      <div id="workspaceProjectControls"></div>
+      <nav aria-label="Quick tools">
+        <a href="?workspace=site&amp;section=plot" data-workspace="site" data-section="plot">Quick plot calculator</a>
+        <a href="?workspace=site&amp;section=prohibited" data-workspace="site" data-section="prohibited">Prohibited Properties</a>
+        <a href="?workspace=environment&amp;section=sun" data-workspace="environment" data-section="sun">Quick Sun Path</a>
+        <a href="?workspace=site&amp;section=references" data-workspace="site" data-section="references">Regulatory sources</a>
+      </nav>
+    </details>
     <button type="button" id="themeToggle" class="theme-toggle" role="switch" aria-checked="false">
       <span class="theme-toggle-track" aria-hidden="true"></span>
       <span class="theme-toggle-label" id="themeLabel">Dark theme</span>
     </button>
   </div>
+  <div id="workspaceSaveStatus"></div>
 </header>
 
-<div class="tabs primary-tabs">
-  <button data-page="optimizer" class="on">Plot Planner</button>
-  <button data-page="rooms">Room Planner</button>
-  <button data-page="sun">Sun Path</button>
-  <button data-page="environment">Environment</button>
-  <button data-page="electrical">Electrical</button>
-  <button data-page="prohibited">Prohibited Properties</button>
-</div>
+<nav class="tabs primary-tabs hp-project-nav" aria-label="Project destinations">
+  <button type="button" data-workspace="overview">Overview</button>
+  <button type="button" data-workspace="site">Site · Plot Planner</button>
+  <button type="button" data-workspace="design">Design</button>
+  <button type="button" data-workspace="environment">Environment</button>
+  <button type="button" data-workspace="compare">Compare</button>
+  <button type="button" data-workspace="report">Report</button>
+</nav>
+<nav class="tabs hp-workspace-subnav" id="workspaceSubnav" aria-label="Workspace sections"></nav>
+<div id="workspaceTools" class="hp-workspace-tools"></div>
+<p id="workspaceModeHint" class="mini"></p>
+<h2 id="workspaceHeading" tabindex="-1" class="hp-workspace-heading">Design</h2>
+<section id="workspaceOverview" class="hp-workspace-panel" hidden aria-label="Project overview">
+  <h3>Current project readiness</h3>
+  <p id="workspaceReadiness"></p>
+  <p>These are schematic inputs and local studies, not construction documents or certified compliance.</p>
+  <p><a href="?workspace=design" data-workspace="design">Continue design</a> ·
+    <a href="?workspace=site&amp;section=context" data-workspace="site" data-section="context">Review site and weather</a> ·
+    <a href="?workspace=report" data-workspace="report">Review schedules and backups</a></p>
+</section>
+<section id="workspaceReport" class="hp-workspace-panel" hidden aria-label="Current schedules and exports">
+  <div id="workspaceReportOverview">
+    <p>Reference drawing sheets, current schedules and JSON/CSV exports. Reference plans are not engineered drawings or certification.</p>
+    <p><button type="button" id="workspaceExportProject">Export current project JSON</button></p>
+  </div>
+  <div id="workspaceSchedules"></div>
+  <section id="workspaceDrawings" hidden aria-label="Reference drawing sheets"></section>
+  <section id="workspacePackage" hidden aria-label="Coordinated document package"></section>
+</section>
+<section id="workspaceReview" class="hp-workspace-panel hp-workspace-status" hidden aria-label="Design issues and guidance"></section>
+<section id="workspaceStructure" class="hp-workspace-panel" hidden aria-label="Conceptual structural intent"></section>
+<section id="workspacePlumbing" class="hp-workspace-panel" hidden aria-label="Plumbing networks, plans and risers"></section>
+<section id="workspaceDrainage" class="hp-workspace-panel" hidden aria-label="Drainage networks, levels and profiles"></section>
+<section id="workspaceAirflow" class="hp-workspace-panel" hidden aria-label="Explicit pressure-network airflow scenarios"></section>
+<section id="workspaceElevations" class="hp-workspace-panel" hidden aria-label="Elevations, sections and physical facade projections">
+  <section id="workspaceViews" aria-label="Saved elevation and section views"></section>
+  <section id="workspaceFacades" aria-label="Physical facade projections"></section>
+</section>
+<section id="workspaceLight" class="hp-workspace-panel" hidden aria-label="Room light studies and schematic guidance">
+  <section id="workspaceLightStudy" aria-label="Room workplane sunlight and sky access"></section>
+  <details id="workspaceLightGuidance">
+    <summary>Schematic daylight and ventilation checklist</summary>
+    <p>Current active-floor checklist: schematic guidance only, not indoor lux, airflow simulation or certification.</p>
+    <p><a href="?workspace=site&amp;section=context" data-workspace="site" data-section="context">Review site assumptions</a></p>
+  </details>
+</section>
 
 <div class="app-page on" id="page-optimizer">
 <div class="plot-introduction">
@@ -343,7 +418,7 @@ body.room-plan-lock{overflow:hidden}
   <div>
     <div class="card">
       <h2>Plot</h2>
-      <label>Plot facing <span class="mini">(which side the road is on)</span></label>
+      <label for="face">Plot facing <span class="mini">(which side the road is on)</span></label>
       <select id="face">
         <optgroup label="Single road">
           <option value="E">East facing</option>
@@ -359,14 +434,14 @@ body.room-plan-lock{overflow:hidden}
         </optgroup>
       </select>
 
-      <label>Units</label>
+      <label for="dunit">Units</label>
       <select id="dunit">
         <option value="0.3048">Feet</option>
         <option value="1">Metres</option>
       </select>
       <div class="row">
-        <div><label id="lblEW">South facing</label><input id="pEW" type="number" value="60" step="0.1"></div>
-        <div><label id="lblNS">East facing</label><input id="pNS" type="number" value="45" step="0.1"></div>
+        <div><label id="lblEW" for="pEW">South facing</label><input id="pEW" type="number" value="60" step="0.1"></div>
+        <div><label id="lblNS" for="pNS">East facing</label><input id="pNS" type="number" value="45" step="0.1"></div>
       </div>
       <div class="mini" id="dimHint" style="margin-top:6px"></div>
       <div class="mini" id="areaEcho" style="margin-top:8px"></div>
@@ -380,7 +455,7 @@ body.room-plan-lock{overflow:hidden}
 
     <div class="card">
       <h2>Site Category</h2>
-      <select id="cat">
+      <select id="cat" aria-label="Site category">
         <option value="B">B — New area / approved layout</option>
         <option value="A">A — Old / congested / gram kantam / abadi</option>
       </select>
@@ -404,7 +479,7 @@ body.room-plan-lock{overflow:hidden}
         </div>
       </details>
 
-      <label>Use</label>
+      <label for="use">Use</label>
       <select id="use">
         <option value="res">Individual residential</option>
         <option value="apt">Apartment / group housing</option>
@@ -414,7 +489,7 @@ body.room-plan-lock{overflow:hidden}
 
     <div class="card">
       <h2>Building</h2>
-      <label>Floor-to-floor height</label>
+      <label for="ffh">Floor-to-floor height</label>
       <select id="ffh">
         <option value="3">3.0 m (10 ft) — standard residential</option>
         <option value="3.2">3.2 m (10.5 ft) — residential</option>
@@ -449,37 +524,37 @@ body.room-plan-lock{overflow:hidden}
 
     <div class="card">
       <h2>Costs</h2>
-      <label>Plot purchase rate</label>
+      <label for="plotRate">Plot purchase rate</label>
       <div class="row">
         <div><input id="plotRate" type="number" value="50000" step="500"></div>
-        <div><select id="plotRateUnit">
+        <div><select id="plotRateUnit" aria-label="Plot purchase rate units">
           <option value="sqyd">per sq yd</option>
           <option value="sqft">per sq ft</option>
         </select></div>
       </div>
 
-      <label>Land / plot SRO value <span class="mini">(₹ per sq yd; drives stamp duty, LRS, BRS)</span></label>
+      <label for="govRate">Land / plot SRO value <span class="mini">(₹ per sq yd; drives stamp duty, LRS, BRS)</span></label>
       <div class="row">
         <div><input id="govRate" type="number" value="3000" step="500"></div>
-        <div><select id="govRateUnit">
+        <div><select id="govRateUnit" aria-label="Land SRO value units">
           <option value="sqyd">per sq yd</option>
           <option value="sqft">per sq ft</option>
         </select></div>
       </div>
 
-      <label>Flat / built-up SRO value <span class="mini">(₹ per sq ft)</span></label>
+      <label for="flatRate">Flat / built-up SRO value <span class="mini">(₹ per sq ft)</span></label>
       <input id="flatRate" type="number" value="2500" step="100">
 
-      <label>Construction cost <span class="mini">(₹ / sq ft built-up)</span></label>
+      <label for="buildRate">Construction cost <span class="mini">(₹ / sq ft built-up)</span></label>
       <input id="buildRate" type="number" value="2200" step="50">
 
-      <label>Stilt / parking cost <span class="mini">(₹ / sq ft — blank = 55% of above)</span></label>
+      <label for="stiltRate">Stilt / parking cost <span class="mini">(₹ / sq ft — blank = 55% of above)</span></label>
       <input id="stiltRate" type="number" placeholder="auto" step="50">
 
-      <label>Stamp duty + transfer + registration <span class="mini">(% of SRO value)</span></label>
+      <label for="stampPct">Stamp duty + transfer + registration <span class="mini">(% of SRO value)</span></label>
       <input id="stampPct" type="number" value="7.6" step="0.1">
 
-      <label>GST on construction</label>
+      <label for="gstPct">GST on construction</label>
       <select id="gstPct">
         <option value="0" selected>0% — no GST included</option>
         <option value="18">18% — works contract with a contractor</option>
@@ -680,11 +755,13 @@ body.room-plan-lock{overflow:hidden}
 
     </div>
 
-    <aside class="component-pane">
-      <section class="card planner-extension" id="plannerInspector" aria-label="Selected object properties"></section>
+    <details class="component-pane" open>
+      <summary>Tools &amp; rooms</summary>
+      <details class="card planner-extension" id="plannerInspector" aria-label="Selected object properties" open></details>
       <div class="card">
         <h2>Rooms &amp; Services <span class="mini">— add as needed</span></h2>
-        <div class="mini">The plan starts empty. Drag a room row by its grip onto the plan, or open it to set quantity and dimensions.</div>
+        <div class="mini">New projects start with one bedroom (NW/NE), one kitchen (SE), and bathrooms on the S and W sides. These guide suggestions; your manual layout stays editable.</div>
+        <div class="mini">Click a room tile to add it, or drag anywhere on the tile onto the plan. Use only the right-hand arrow to expand quantity and dimensions.</div>
         <div class="library-stack">
           <details class="library-item">
             <summary><span>Living / Dining</span><span class="library-count" id="livingCountEcho">None</span></summary>
@@ -707,7 +784,7 @@ body.room-plan-lock{overflow:hidden}
             <div class="library-body">
               <div class="quantity-row"><label>Quantity</label><div class="quantity-control">
                 <button type="button" data-count-target="bedCount" data-delta="-1" aria-label="Remove bedroom">-</button>
-                <input id="bedCount" type="number" min="0" max="8" step="1" value="0" aria-label="Bedroom quantity">
+                <input id="bedCount" type="number" min="0" max="8" step="1" value="1" aria-label="Bedroom quantity">
                 <button type="button" data-count-target="bedCount" data-delta="1" aria-label="Add bedroom">+</button>
               </div></div>
               <div class="range-editor">
@@ -728,7 +805,7 @@ body.room-plan-lock{overflow:hidden}
             <div class="library-body">
               <div class="quantity-row"><label>Quantity</label><div class="quantity-control">
                 <button type="button" data-count-target="kitchenCount" data-delta="-1" aria-label="Remove kitchen">-</button>
-                <input id="kitchenCount" type="number" min="0" max="3" step="1" value="0" aria-label="Kitchen quantity">
+                <input id="kitchenCount" type="number" min="0" max="3" step="1" value="1" aria-label="Kitchen quantity">
                 <button type="button" data-count-target="kitchenCount" data-delta="1" aria-label="Add kitchen">+</button>
               </div></div>
               <div class="range-editor">
@@ -749,7 +826,7 @@ body.room-plan-lock{overflow:hidden}
             <div class="library-body">
               <div class="quantity-row"><label>Quantity</label><div class="quantity-control">
                 <button type="button" data-count-target="bathCount" data-delta="-1" aria-label="Remove bathroom">-</button>
-                <input id="bathCount" type="number" min="0" max="8" step="1" value="0" aria-label="Bathroom quantity">
+                <input id="bathCount" type="number" min="0" max="8" step="1" value="2" aria-label="Bathroom quantity">
                 <button type="button" data-count-target="bathCount" data-delta="1" aria-label="Add bathroom">+</button>
               </div></div>
               <div class="component-size-fields">
@@ -806,7 +883,7 @@ body.room-plan-lock{overflow:hidden}
                 <label>Clear width (ft)<input id="liftW" type="number" min="3" step="0.5" value="5"></label>
                 <label>Clear depth (ft)<input id="liftD" type="number" min="3" step="0.5" value="5.5"></label>
               </div>
-              <div class="library-note">Placed over the side-corridor band instead of in a separate bay. Keep a compliant unobstructed route around it during architectural detailing.</div>
+              <div class="library-note">Place the lift anywhere inside the dwelling. Its footprint, including walls, is reserved from rooms beneath it. Lift and stair blocks cannot overlap each other. Shaft, landing and structural requirements need professional review.</div>
             </div>
           </details>
 
@@ -823,7 +900,8 @@ body.room-plan-lock{overflow:hidden}
                 <label>Block depth (ft)<input id="stairD" type="number" min="6" step="0.5" value="10"></label>
               </div>
               <div class="library-note" id="stairWidthEcho">Two 2.5 ft flights = 5.0 ft total stair-block width.</div>
-              <div class="library-note">The stair block overlays an end of the side-corridor band and opens to the remaining external corridor.</div>
+              <label for="stairPassageW">Along-stair passage width (ft)<input id="stairPassageW" type="number" min="0" step="0.25" value="3"></label>
+              <div class="library-note">New stairs align their long side parallel to the road. A 3 ft passage clearance is shown alongside by default; use 0 to disable it. The strip remains part of the existing floor area, not additional area. Access, headroom, landings and floor openings still need review.</div>
             </div>
           </details>
 
@@ -969,12 +1047,12 @@ body.room-plan-lock{overflow:hidden}
                 <div class="library-note">Use this to integrate a kitchen with living/dining or open living to an internal passage. Drop on a room wall shared with internal flex or passage. Exterior walls cannot be removed here. Use the red × to restore the partition.</div>
               </div>
             </div>
-            <div class="library-note" id="componentStatus" aria-live="polite">Add a compatible room first, then configure and drag a component into it. Placed items keep their own dimensions.</div>
+            <div class="library-note" id="componentStatus" aria-live="polite">Click a component to choose it, then click the plan to place it, or drag the full tile onto a compatible room or wall. Placed items keep their own dimensions.</div>
             <div class="split-snaps"><button type="button" id="clearCustomFurniture">Clear added components</button></div>
           </div>
         </details>
       </div>
-    </aside>
+    </details>
 
     <div class="room-output-pane">
       <section class="card planner-extension" id="plannerPersistence" aria-label="Local projects and backups"></section>
@@ -991,7 +1069,7 @@ body.room-plan-lock{overflow:hidden}
         </div>
         <div class="stats" id="roomStats"></div>
         <div class="room-plan-workspace" id="roomPlanWorkspace">
-          <div class="room-plan-toolbar" role="toolbar" aria-label="Floor plan view controls">
+          <div class="room-plan-toolbar" role="toolbar" aria-label="Floor plan editing and view controls">
             <div class="room-zoom-controls" role="group" aria-label="Zoom controls">
               <button type="button" class="room-tool" id="roomZoomOut" aria-label="Zoom out">-</button>
               <input id="roomZoom" type="range" min="50" max="300" step="10" value="100" aria-label="Floor plan zoom">
@@ -999,7 +1077,11 @@ body.room-plan-lock{overflow:hidden}
               <button type="button" class="room-tool" id="roomZoomIn" aria-label="Zoom in">+</button>
               <button type="button" class="room-tool" id="roomZoomFit">Fit</button>
             </div>
-            <button type="button" class="room-tool" id="roomFullscreen" aria-pressed="false">Fullscreen</button>
+            <div class="room-history-controls" role="group" aria-label="Layout history and view">
+              <button type="button" class="room-tool" id="roomUndo" title="Undo the last project edit (Ctrl/Cmd+Z)" disabled>Undo</button>
+              <button type="button" class="room-tool" id="roomRedo" title="Redo the last undone edit (Ctrl/Cmd+Shift+Z)" disabled>Redo</button>
+              <button type="button" class="room-tool" id="roomFullscreen" aria-pressed="false">Fullscreen</button>
+            </div>
           </div>
           <div class="room-plan-viewport" id="roomPlanViewport" tabindex="0" aria-label="Zoomable floor plan editing viewport">
             <div class="room-plan-canvas" id="roomPlanCanvas">
@@ -1064,7 +1146,11 @@ body.room-plan-lock{overflow:hidden}
   <div class="wrap sun-layout">
     <form class="card sun-controls" id="sunForm" novalidate>
       <h2>Sun Path</h2>
-      <p class="mini">Calculate sun angles locally from a date and location. No weather service is used. Device location is optional.</p>
+      <p class="mini">Explore sun angles locally. These coordinates and dates are temporary overrides, not changes to the project's site. No weather service is used.</p>
+      <p><button type="button" id="sunUseProject">Use project defaults</button>
+        <button type="button" id="sunApplyProject">Use for this project</button></p>
+      <p id="sunProjectStatus" class="mini" role="status"></p>
+      <p><a href="?workspace=site&amp;section=context" data-workspace="site" data-section="context">Edit authoritative site and weather in Site</a></p>
       <fieldset>
         <div class="row">
           <div><label for="sunLatitude">Latitude (&deg; N)</label><input id="sunLatitude" type="number" min="-90" max="90" step="any" value="17.385" required></div>
@@ -1316,8 +1402,8 @@ function buildRoadInputs(){
     <div class="roadbox">
       <div class="rl">${DIRNAME[d]} road</div>
       <div class="row">
-        <div><input type="number" data-dir="${d}" value="${existing[d]??30}" step="0.5"></div>
-        <div><select data-dir="${d}">
+        <div><input type="number" data-dir="${d}" value="${existing[d]??30}" step="0.5" aria-label="${DIRNAME[d]} road width"></div>
+        <div><select data-dir="${d}" aria-label="${DIRNAME[d]} road width units">
           <option value="0.3048" ${existing['u'+d]==='1'?'':'selected'}>Feet</option>
           <option value="1" ${existing['u'+d]==='1'?'selected':''}>Metres</option>
         </select></div>
@@ -1922,6 +2008,8 @@ const ROOM_BED_SIZES={
   single:{label:'Single',w:3*FT,d:6.25*FT}
 };
 const roomManualLayouts = new Map();
+const RoomRegions = window.HomePlannerRegions;
+let roomIdentityState = {};
 let roomFurnitureSeq = 0;
 let roomOpeningSeq = 0;
 const roomFixUndoStack = [];
@@ -1988,6 +2076,7 @@ function roomPlannerConfig(){
     living:{minW:livingW,minD:livingD,maxW:livingW*1.5,maxD:livingD*1.45},
     lift:{minW:liftW,minD:liftD,maxW:liftW,maxD:liftD},
     staircase:{minW:2*stairFlightW,minD:stairD,maxW:2*stairFlightW,maxD:stairD},
+    stairPassageWidthM:roomFt('stairPassageW'),
     corridors:{front:roomFt('frontCorr'),side:roomFt('sideCorr'),back:roomFt('backCorr')},
     side:$('sideCorrEdge').value,
     balconyDepth:roomFt('balconyDepth'),
@@ -2076,20 +2165,7 @@ function roomPlateFor(r){
 
 function deriveRoomGeometry(plate,cfg,warnings){
   const W=plate.width,D=plate.depth,F=cfg.corridors.front,B=cfg.corridors.back;
-  const serviceRanges=[
-    ...Array(cfg.counts.lift).fill(cfg.lift),
-    ...Array(cfg.counts.staircase).fill(cfg.staircase)
-  ];
-  const serviceBandWidth=serviceRanges.reduce((max,r)=>{
-    const w=(r.minW+r.maxW)/2+INT_WALL,h=(r.minD+r.maxD)/2+INT_WALL;
-    return Math.max(max,Math.min(w,h));
-  },0);
-  let S=cfg.corridors.side;
-  const requiredServiceBand=serviceRanges.length?Math.max(ROOM_PASSAGE_MIN,serviceBandWidth):0;
-  if(serviceRanges.length&&S<requiredServiceBand){
-    S=requiredServiceBand;
-    warnings.push(`The side-corridor band was raised to ${f1(S/FT)} ft so lift / stair blocks fit within it instead of consuming a separate service bay.`);
-  }
+  const S=cfg.corridors.side;
   const projectionEdge='N';
   const localSetback=Math.max(0,plate.localSetbacks&&plate.localSetbacks[projectionEdge]||0);
   const projectionAllowed=!!plate.balconyProjectionAllowed;
@@ -2103,7 +2179,7 @@ function deriveRoomGeometry(plate,cfg,warnings){
   if (!(W>ROOM_EPS && D>ROOM_EPS)) return {error:'The selected plot has no valid buildable floor plate.'};
   if (F+B >= D-ROOM_EPS) return {error:'Front and rear corridors consume the full floor-plate depth.'};
   if (S >= W-ROOM_EPS)
-    return {error:'The side corridor and its lift / stair overlays consume the full floor-plate width.'};
+    return {error:'The side corridor consumes the full floor-plate width.'};
   if(F+B+balconyReserve>=D-ROOM_EPS)
     return {error:'The front balcony reserve and external corridors consume the full floor-plate depth.'};
   const outerW=W-S, outerD=D-F-B-balconyReserve;
@@ -2115,9 +2191,8 @@ function deriveRoomGeometry(plate,cfg,warnings){
   if (F>ROOM_EPS) corridors.push({type:'corridor',label:'Front corridor',x:0,y:0,w:W,h:F});
   if (B>ROOM_EPS) corridors.push({type:'corridor',label:'Rear corridor',x:0,y:D-B,w:W,h:B});
   const sideCorridor=S>ROOM_EPS?{type:'corridor',label:'Side corridor',
-    x:cfg.side==='left'?0:W-S,y:F,w:S,h:D-F-B,side:cfg.side,serviceOverlay:serviceRanges.length>0}:null;
+    x:cfg.side==='left'?0:W-S,y:F,w:S,h:D-F-B,side:cfg.side,serviceOverlay:false}:null;
   if(sideCorridor)corridors.push(sideCorridor);
-  const serviceZone=serviceRanges.length?sideCorridor:null;
 
   const balconies=[];
   const balconyZone=maxBalconyDepth>ROOM_EPS?{
@@ -2150,7 +2225,7 @@ function deriveRoomGeometry(plate,cfg,warnings){
   ];
   return {W,D,F,S,B,frontEdge:plate.frontEdge,outerX,outerY,outerW,outerD,coreX,coreY,coreW,coreD,
           core:{x:coreX,y:coreY,w:coreW,h:coreD},corridors,balconies,externalWalls,
-          serviceZone,balconyPolicy:{allowed:projectionAllowed,edge:projectionEdge,
+          serviceZone:null,balconyPolicy:{allowed:projectionAllowed,edge:projectionEdge,
             globalEdge:roomLocalEdgeGlobal(projectionEdge,plate.frontEdge),maxDepth:maxBalconyDepth,maxProjection,
             depth:balconyDepth,zone:balconyZone,floorElevation:plate.floorElevation},
           corridorArea,outerArea,coreArea,externalWallArea:Math.max(0,outerArea-coreArea)};
@@ -2159,26 +2234,49 @@ function deriveRoomGeometry(plate,cfg,warnings){
 function makeRoomRequests(cfg){
   const req=[];
   let seq=0;
-  for(let i=1;i<=cfg.counts.living;i++)
-    req.push({id:`living-${i}`,label:'Living / Dining',type:'living',range:cfg.living,priority:0,seq:seq++});
-  for(let i=1;i<=cfg.counts.bedroom;i++)
-    req.push({id:`bed-${i}`,label:`Bedroom ${i}`,type:'bedroom',range:cfg.bed,priority:1,seq:seq++});
-  for(let i=1;i<=cfg.counts.kitchen;i++)
-    req.push({id:`kitchen-${i}`,label:`Kitchen ${i}`,type:'kitchen',range:cfg.kitchen,priority:2,seq:seq++});
-  for(let i=1;i<=cfg.counts.pooja;i++)
-    req.push({id:`pooja-${i}`,label:`Pooja Room ${i}`,type:'pooja',range:cfg.pooja,priority:3,seq:seq++});
-  for(let i=1;i<=cfg.counts.bathroom;i++){
+  const living=roomStableIds('living',cfg.counts.living),beds=roomStableIds('bed',cfg.counts.bedroom);
+  const kitchens=roomStableIds('kitchen',cfg.counts.kitchen),pooja=roomStableIds('pooja',cfg.counts.pooja);
+  for(const id of living)
+    req.push({id,label:'Living / Dining',type:'living',range:cfg.living,priority:0,seq:seq++});
+  for(const id of beds)
+    req.push({id,label:`Bedroom ${id.slice(4)}`,type:'bedroom',range:cfg.bed,priority:1,seq:seq++});
+  for(const id of kitchens)
+    req.push({id,label:`Kitchen ${id.slice(8)}`,type:'kitchen',range:cfg.kitchen,priority:2,seq:seq++});
+  for(const id of pooja)
+    req.push({id,label:`Pooja Room ${id.slice(6)}`,type:'pooja',range:cfg.pooja,priority:3,seq:seq++});
+  for(const id of roomStableIds('bath',cfg.counts.bathroom)){
+    const i=Number(id.slice(5));
     const bedroomIndex=i-1;
-    const accessMode=i===1?'common':bedroomIndex<=cfg.counts.bedroom?'ensuite':'overflow';
-    req.push({id:`bath-${i}`,label:i===1?'Common Bathroom':`Bathroom ${i}`,
+    const accessMode=i===1?'common':bedroomIndex<(roomIdentityState.bed?.next||1)?'ensuite':'overflow';
+    req.push({id,label:i===1?'Common Bathroom':`Bathroom ${i}`,
       type:'bathroom',range:cfg.bathroom,priority:4,seq:seq++,accessMode,
       bedroomId:accessMode==='ensuite'?`bed-${bedroomIndex}`:null});
   }
-  for(let i=1;i<=cfg.counts.lift;i++)
-    req.push({id:`lift-${i}`,label:`Lift ${i}`,type:'lift',range:cfg.lift,priority:5,seq:seq++});
-  for(let i=1;i<=cfg.counts.staircase;i++)
-    req.push({id:`stair-${i}`,label:`Staircase ${i}`,type:'staircase',range:cfg.staircase,priority:6,seq:seq++});
+  for(const id of roomStableIds('lift',cfg.counts.lift))
+    req.push({id,label:`Lift ${id.slice(5)}`,type:'lift',reserveFootprint:true,range:cfg.lift,priority:5,seq:seq++});
+  for(const id of roomStableIds('stair',cfg.counts.staircase))
+    req.push({id,label:`Staircase ${id.slice(6)}`,type:'staircase',reserveFootprint:true,
+      ...(Number.isFinite(cfg.stairPassageWidthM)?{passageWidthM:cfg.stairPassageWidthM}:{}),
+      range:cfg.staircase,priority:6,seq:seq++});
   return req;
+}
+
+function roomStableIds(prefix,count){
+  if(!roomIdentityState[prefix]&&!count)return [];
+  const entry=roomIdentityState[prefix]||(roomIdentityState[prefix]={next:1,ids:[]});
+  entry.ids=entry.ids.slice(0,count);
+  while(entry.ids.length<count){
+    if(!Number.isSafeInteger(entry.next)||entry.next>=Number.MAX_SAFE_INTEGER)
+      throw new Error('Room identity capacity exceeded. Export the project and start a new floor.');
+    entry.ids.push(`${prefix}-${entry.next++}`);
+  }
+  return entry.ids.slice();
+}
+
+function roomIdentitySignature(){
+  const customized=Object.entries(roomIdentityState).filter(([prefix,entry])=>
+    entry.ids.some((id,index)=>id!==`${prefix}-${index+1}`)).sort(([a],[b])=>a.localeCompare(b));
+  return customized.length?Object.fromEntries(customized.map(([prefix,entry])=>[prefix,entry.ids])):undefined;
 }
 
 function roomIntersects(a,b){
@@ -2329,6 +2427,34 @@ function roomRolePenalty(req,x,y,w,h,g){
   return functional*.2+passive*1.15+vastu;
 }
 
+function roomPreferredDirections(req){
+  if(req.type==='kitchen')return [['S','E']];
+  if(req.type==='bedroom')return [['N','W'],['N','E']];
+  if(req.type==='bathroom')return req.accessMode==='common'?[['S']]:[['W']];
+  return [];
+}
+
+function roomDirectionPenalty(req,module,g){
+  const choices=roomPreferredDirections(req);
+  if(!choices.length)return 0;
+  const gaps={
+    N:(module.y-g.core.y)/g.core.h,
+    S:(g.core.y+g.core.h-module.y-module.h)/g.core.h,
+    W:(module.x-g.core.x)/g.core.w,
+    E:(g.core.x+g.core.w-module.x-module.w)/g.core.w
+  };
+  const globalGaps=Object.fromEntries(Object.entries(gaps).map(([edge,value])=>
+    [roomLocalEdgeGlobal(edge,g.frontEdge),Math.max(0,value)]));
+  return Math.min(...choices.map((directions,index)=>directions.reduce((sum,edge)=>sum+globalGaps[edge],0)+index*1e-6));
+}
+
+function roomDirectionsSatisfied(p,g){
+  const choices=roomPreferredDirections(p.req);
+  if(!choices.length)return true;
+  const edges=new Set(roomExteriorEdges(p.module,g).map(edge=>roomLocalEdgeGlobal(edge,g.frontEdge)));
+  return choices.some(choice=>choice.every(edge=>edges.has(edge)));
+}
+
 function roomSharedWallLength(a,b){
   const vertical=Math.abs(a.x+a.w-b.x)<ROOM_EPS||Math.abs(b.x+b.w-a.x)<ROOM_EPS;
   const horizontal=Math.abs(a.y+a.h-b.y)<ROOM_EPS||Math.abs(b.y+b.h-a.y)<ROOM_EPS;
@@ -2430,9 +2556,11 @@ function roomOrder(requests,mode){
     : rank[a.type]-rank[b.type]||minArea(b)-minArea(a)||a.seq-b.seq);
   const ensuiteByBedroom=new Map(requests.filter(r=>r.type==='bathroom'&&r.accessMode==='ensuite')
     .map(r=>[r.bedroomId,r]));
-  const out=[];
+  const out=sorted.filter(req=>req.type==='lift'||req.type==='staircase')
+    .sort((a,b)=>Number(b.type==='staircase')-Number(a.type==='staircase'));
   sorted.forEach(req=>{
-    if(req.type==='bathroom'&&req.accessMode==='ensuite')return;
+    if(req.type==='lift'||req.type==='staircase')return;
+    if(req.type==='bathroom'&&req.accessMode==='ensuite'&&requests.some(parent=>parent.id===req.bedroomId))return;
     out.push(req);
     const ensuite=ensuiteByBedroom.get(req.id);
     if(ensuite)out.push(ensuite);
@@ -2440,152 +2568,75 @@ function roomOrder(requests,mode){
   return out;
 }
 
-function roomCornerModule(w,h,corner,g,zone='core'){
-  const bounds=zone==='service'?g.serviceZone:zone==='plate'?{x:0,y:0,w:g.W,h:g.D}:g.core;
-  return {
-    x:corner.endsWith('W')?bounds.x:bounds.x+bounds.w-w,
-    y:corner.startsWith('N')?bounds.y:bounds.y+bounds.h-h,
-    w,h
-  };
-}
-
-function roomServiceCorners(g){
-  return g.serviceZone&&g.serviceZone.side==='left'?['NE','SE']:['NW','SW'];
-}
-
-function roomServiceCorridorOpenings(module,g,width=ROOM_DOOR_WIDTH,minWidth=ROOM_DOOR_MIN){
-  const zone=g.serviceZone;
-  if(!zone||!roomRectInside(module,zone))return [];
-  const out=[],push=(edge,label)=>{
-    const span=(edge==='N'||edge==='S')?module.w:module.h;
-    const actual=Math.min(width,span-.16);
-    if(actual>=minWidth-ROOM_EPS&&!out.some(o=>o.edge===edge&&o.targetLabel===label))
-      out.push({edge,width:actual,available:span,targetType:'corridor',targetLabel:label,
-        segment:roomEdgeSegment(module,edge,actual)});
-  };
-  const northGap=module.y-zone.y,southGap=zone.y+zone.h-module.y-module.h;
-  const westGap=module.x-zone.x,eastGap=zone.x+zone.w-module.x-module.w;
-  if(Math.abs(northGap)<=ROOM_EPS&&g.F>ROOM_EPS)push('N','Front corridor');
-  if(northGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('N','Side corridor');
-  if(Math.abs(southGap)<=ROOM_EPS&&g.B>ROOM_EPS)push('S','Rear corridor');
-  if(southGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('S','Side corridor');
-  if(westGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('W','Side corridor');
-  if(eastGap>=ROOM_PASSAGE_MIN-ROOM_EPS)push('E','Side corridor');
-  return out;
-}
-
-function roomServiceTouchesCorridor(module,g){
-  return roomServiceCorridorOpenings(module,g,.9,ROOM_DOOR_MIN).length>0;
-}
-
-function roomStairAnchorOf(module,g){
-  if(!g.serviceZone)return null;
-  let best=null;
-  roomServiceCorners(g).forEach(corner=>{
-    const zone='service',snapped=roomCornerModule(module.w,module.h,corner,g,zone);
-    if(!roomRectInside(snapped,g.serviceZone)||!roomServiceTouchesCorridor(snapped,g))return;
-    const distance=Math.hypot(module.x-snapped.x,module.y-snapped.y);
-    if(!best||distance<best.distance)best={corner,zone,module:snapped,distance};
-  });
-  return best;
-}
-
-function roomCornerOf(module,g){
-  const anchor=roomStairAnchorOf(module,g);
-  return anchor&&anchor.corner;
-}
-
-function roomCornerAnchored(module,g){
-  const anchor=roomStairAnchorOf(module,g);
-  return !!anchor&&anchor.distance<ROOM_EPS;
-}
-
-function roomPlaceCorridorServices(g,requests){
-  const placed=[],unmet=[];
-  let free=g.serviceZone?[{...g.serviceZone}]:[];
-  let totalDeviation=0;
-  requests.slice().sort((a,b)=>(a.type==='staircase'?0:1)-(b.type==='staircase'?0:1)||a.seq-b.seq).forEach(req=>{
-    let best=null;
-    [false,true].forEach(rotated=>{
-      const r=req.range;
-      const minW=rotated?r.minD:r.minW,minD=rotated?r.minW:r.minD;
-      const maxW=rotated?r.maxD:r.maxW,maxD=rotated?r.maxW:r.maxD;
-      const cw=(minW+maxW)/2,cd=(minD+maxD)/2,mw=cw+INT_WALL,md=cd+INT_WALL;
-      free.forEach(fr=>{
-        if(mw>fr.w+ROOM_EPS||md>fr.h+ROOM_EPS)return;
-        const x=g.serviceZone.side==='left'?g.serviceZone.x+g.serviceZone.w-mw:g.serviceZone.x;
-        const ys=[fr.y,fr.y+fr.h-md];
-        ys.forEach(y=>{
-          const module={x,y,w:mw,h:md};
-          if(!roomRectInside(module,fr)||!roomServiceTouchesCorridor(module,g)||
-             placed.some(p=>roomIntersects(module,p.module)))return;
-          if(req.type==='staircase'&&!roomCornerAnchored(module,g))return;
-          const carpet={x:module.x+INT_WALL/2,y:module.y+INT_WALL/2,w:cw,h:cd};
-          const dev=0;
-          const endPenalty=Math.min(y-g.serviceZone.y,g.serviceZone.y+g.serviceZone.h-y-md);
-        const role=roomRolePenalty(req,module.x,module.y,module.w,module.h,g);
-          const score=[endPenalty,role,module.y,module.x,rotated?1:0];
-        if(roomScoreLess(score,best&&best.score))
-          best={req,module,carpet,x:module.x,y:module.y,mw,md,cw,cd,rotated,
-              minW,minD,maxW,maxD,dev,anchorZone:'service',corridorService:true,score};
-        });
-      });
-    });
-    if(!best){unmet.push(req);return;}
-    placed.push(best);
-    totalDeviation+=best.dev;
-    free=roomSubtractFree(free,best.module);
-  });
-  return {placed,unmet,totalDeviation};
-}
-
-function roomPackAttempt(g,requests,sizeMode,orderMode,index){
+function roomPackAttempt(g,requests,sizeMode,orderMode,index,initial=[],accessPassages=[]){
   let free=[{...g.core}];
-  const services=roomPlaceCorridorServices(g,requests.filter(r=>r.type==='staircase'||r.type==='lift'));
+  let serviceFree=[{...g.core}];
   const overflow=requests.filter(r=>r.type==='bathroom'&&r.accessMode==='overflow');
-  const placed=services.placed.slice(),unmet=services.unmet.concat(overflow);
-  const order=roomOrder(requests.filter(r=>r.type!=='staircase'&&r.type!=='lift'&&r.accessMode!=='overflow'),orderMode);
-  let totalDeviation=services.totalDeviation;
+  const placed=initial.map(p=>({...p,carpet:{...p.carpet},module:{...p.module}})),unmet=overflow.slice();
+  for(const p of placed){
+    if(p.req.reserveFootprint)serviceFree=roomSubtractFree(serviceFree,roomOccupiedBounds(p));
+    else free=roomSubtractFree(free,p.module);
+  }
+  const order=roomOrder(requests.filter(r=>r.accessMode!=='overflow'),orderMode);
+  let totalDeviation=0;
 
   order.forEach(req=>{
     let best=null;
-    free.forEach(fr=>{
+    const pad=req.reserveFootprint?2*INT_WALL:INT_WALL;
+    const placementContext={placed,accessPassages};
+    const keepClear=roomServiceKeepClear(placementContext,g);
+    (req.reserveFootprint?serviceFree:free).forEach(fr=>{
       [false,true].forEach(rotated=>{
         const r=req.range;
         const minW=rotated?r.minD:r.minW, minD=rotated?r.minW:r.minD;
         const maxW=rotated?r.maxD:r.maxW, maxD=rotated?r.maxW:r.maxD;
         const prefW=(minW+maxW)/2, prefD=(minD+maxD)/2;
-        let cw=sizeMode==='minimum'?minW:Math.min(prefW,fr.w-INT_WALL);
-        let cd=sizeMode==='minimum'?minD:Math.min(prefD,fr.h-INT_WALL);
+        let cw=sizeMode==='minimum'?minW:Math.min(prefW,fr.w-pad);
+        let cd=sizeMode==='minimum'?minD:Math.min(prefD,fr.h-pad);
         if (cw<minW-ROOM_EPS||cd<minD-ROOM_EPS) return;
         cw=Math.min(cw,maxW); cd=Math.min(cd,maxD);
-        const mw=cw+INT_WALL, md=cd+INT_WALL;
+        if(req.type==='staircase'&&cw<cd-ROOM_EPS)return;
+        const mw=cw+pad, md=cd+pad;
         if (mw>fr.w+ROOM_EPS||md>fr.h+ROOM_EPS) return;
         const poses=[
           [fr.x,fr.y],[fr.x+fr.w-mw,fr.y],
           [fr.x,fr.y+fr.h-md],[fr.x+fr.w-mw,fr.y+fr.h-md]
         ];
+        if(req.type==='lift'||req.type==='staircase'){
+          const companions=placed.filter(p=>p.req.type===(req.type==='lift'?'staircase':'lift')).map(roomOccupiedBounds);
+          const references=companions.concat(req.type==='lift'?keepClear.map(passage=>passage.rect):[]);
+          for(const reference of references){
+            for(const y of [reference.y,reference.y+reference.h-md,reference.y+(reference.h-md)/2])
+              poses.push([reference.x-mw,y],[reference.x+reference.w,y]);
+            for(const x of [reference.x,reference.x+reference.w-mw,reference.x+(reference.w-mw)/2])
+              poses.push([x,reference.y-md],[x,reference.y+reference.h]);
+          }
+        }
         const seen=new Set();
         poses.forEach(([x,y])=>{
           const key=`${x.toFixed(6)}:${y.toFixed(6)}`; if(seen.has(key))return; seen.add(key);
-          const module={x,y,w:mw,h:md};
+          if(!roomRectInside({x,y,w:mw,h:md},fr))return;
+          const carpet={x:x+pad/2,y:y+pad/2,w:cw,h:cd},module=roomCarpetModule(carpet);
+          if(!roomModuleClear(module,req.id,req,placementContext,g))return;
           const balconyTouches=g.balconies.filter(b=>roomBalconyTouches(module,b));
           if(balconyTouches.length&&!roomBalconyEligible(req))return;
           if(!roomHardAdjacencyValid(placed.concat({req,module})))return;
           const dev=Math.abs(cw*cd-prefW*prefD)/Math.max(prefW*prefD,ROOM_EPS);
           const short=Math.min(fr.w-mw,fr.h-md), long=Math.max(fr.w-mw,fr.h-md);
-          const score=[roomAdjacencyPenalty(req,module,placed),-balconyTouches.length,dev,roomRolePenalty(req,x,y,mw,md,g),short,long,y,x,rotated?1:0];
+          const serviceRank=roomServicePlacementRank(req,{x,y,w:mw,h:md},placed,keepClear);
+          const score=[...serviceRank,roomDirectionPenalty(req,module,g),roomAdjacencyPenalty(req,module,placed),-balconyTouches.length,dev,roomRolePenalty(req,x,y,mw,md,g),short,long,y,x,rotated?1:0];
           if (roomScoreLess(score,best&&best.score))
             best={req,x,y,mw,md,cw,cd,rotated,minW,minD,maxW,maxD,dev,score};
         });
       });
     });
     if (!best){ unmet.push(req); return; }
-    const module={x:best.x,y:best.y,w:best.mw,h:best.md};
-    const carpet={x:best.x+INT_WALL/2,y:best.y+INT_WALL/2,w:best.cw,h:best.cd};
+    const carpet={x:best.x+pad/2,y:best.y+pad/2,w:best.cw,h:best.cd};
+    const module=roomCarpetModule(carpet);
     placed.push({...best,module,carpet});
     totalDeviation+=best.dev;
-    free=roomSubtractFree(free,module);
+    if(req.reserveFootprint)serviceFree=roomSubtractFree(serviceFree,roomOccupiedBounds({req,module,carpet}));
+    else free=roomSubtractFree(free,module);
   });
 
   const plan={placed,unmet,free,totalDeviation,index};
@@ -2594,7 +2645,8 @@ function roomPackAttempt(g,requests,sizeMode,orderMode,index){
     .filter(a=>!a.eligible.length||a.ineligible.length).length;
   const by=t=>unmet.filter(x=>x.type===t).length;
   const inaccessible=roomCirculationAnalysis(g,plan).inaccessible.length;
-  const score=[by('living'),inaccessible,by('bedroom'),by('kitchen'),by('pooja'),by('bathroom'),by('staircase'),by('lift'),unmet.length,unattached,
+  const directionPenalty=placed.reduce((sum,p)=>sum+roomDirectionPenalty(p.req,p.module,g),0);
+  const score=[by('living'),inaccessible,by('bedroom'),by('kitchen'),by('pooja'),by('bathroom'),by('staircase'),by('lift'),unmet.length,unattached,directionPenalty,
                totalDeviation,-plan.carpetArea,plan.unassigned,index];
   return {...plan,score};
 }
@@ -2614,7 +2666,7 @@ function roomPackProgram(g,cfg){
 function roomPlanSignature(plate,cfg){
   return JSON.stringify({
     plate:[plate.id,plate.width,plate.depth,plate.frontEdge,plate.floorIndex,plate.floorElevation,plate.balconyProjectionAllowed],
-    counts:cfg.counts,bed:cfg.bed,kitchen:cfg.kitchen,pooja:cfg.pooja,bathroom:cfg.bathroom,living:cfg.living,
+    counts:cfg.counts,roomIds:roomIdentitySignature(),bed:cfg.bed,kitchen:cfg.kitchen,pooja:cfg.pooja,bathroom:cfg.bathroom,living:cfg.living,
     lift:cfg.lift,staircase:cfg.staircase,walls:cfg.walls,
     corridors:cfg.corridors,side:cfg.side,balconyDepth:cfg.balconyDepth,
     passive:cfg.passive,vastu:cfg.vastu,wind:cfg.wind
@@ -2622,11 +2674,24 @@ function roomPlanSignature(plate,cfg){
 }
 
 function roomRecalculatePlan(plan,g){
-  plan.carpetArea=plan.placed.reduce((s,p)=>s+p.carpet.w*p.carpet.h,0);
+  const reservations=plan.placed.filter(p=>p.req.reserveFootprint).map(roomOccupiedBounds);
+  plan.stairPassages=[];plan.stairPassageIssues=[];
+  for(const stair of plan.placed.filter(p=>p.req.type==='staircase'&&p.req.passageWidthM>0)){
+    const passage=roomStairPassage(stair,plan,g);
+    if(passage)plan.stairPassages.push(passage);
+    else plan.stairPassageIssues.push(`${stair.req.label}: no along-stair passage of the requested width fits here`);
+  }
+  for(const p of plan.placed){
+    p.usableRegions=p.req.reserveFootprint?[{...p.carpet}]:RoomRegions.subtractRectangle(p.carpet,reservations);
+    p.usableAreaM2=RoomRegions.area(p.usableRegions);
+    p.reservedAreaM2=Math.max(0,p.carpet.w*p.carpet.h-p.usableAreaM2);
+  }
+  plan.carpetArea=plan.placed.reduce((s,p)=>s+roomUsableArea(p),0);
   plan.serviceArea=plan.placed.filter(p=>p.req.type==='lift'||p.req.type==='staircase').reduce((s,p)=>s+p.carpet.w*p.carpet.h,0);
   plan.habitableCarpetArea=Math.max(0,plan.carpetArea-plan.serviceArea);
-  plan.moduleArea=plan.placed.reduce((s,p)=>s+p.module.w*p.module.h,0);
-  plan.coreModuleArea=plan.placed.reduce((s,p)=>s+roomIntersectionArea(p.module,g.core),0);
+  const occupied=plan.placed.map(roomOccupiedBounds);
+  plan.moduleArea=g.W*g.D-RoomRegions.area(RoomRegions.subtractRectangle({x:0,y:0,w:g.W,h:g.D},occupied));
+  plan.coreModuleArea=g.core.w*g.core.h-RoomRegions.area(RoomRegions.subtractRectangle(g.core,occupied));
   plan.balconyArea=g.balconies.reduce((s,b)=>s+b.w*b.h,0);
   plan.serviceCorridorOverlap=plan.placed
     .filter(p=>p.req.type==='lift'||p.req.type==='staircase')
@@ -2640,8 +2705,77 @@ function roomRecalculatePlan(plan,g){
   return plan;
 }
 
+function roomUsableArea(p){
+  return Number.isFinite(p.usableAreaM2)?p.usableAreaM2:p.carpet.w*p.carpet.h;
+}
+
+function roomOccupiedBounds(p){
+  return p.req.reserveFootprint?RoomRegions.reservationBounds(p.carpet,p.module):p.module;
+}
+
+function roomReservationCuts(p,plan){
+  return (plan.placed||[]).filter(room=>room.req.reserveFootprint&&room.req.id!==p.req.id)
+    .map(room=>roomIntersectionRect(p.carpet,roomOccupiedBounds(room))).filter(Boolean);
+}
+
+function roomPlacementConflict(a,b){
+  return !!a.req.reserveFootprint===!!b.req.reserveFootprint&&roomIntersects(roomOccupiedBounds(a),roomOccupiedBounds(b));
+}
+
+function roomServiceKeepClear(plan,g){
+  const stairs=plan.placed.filter(p=>p.req.type==='staircase'),ids=new Set(stairs.map(p=>p.req.id));
+  const guides=plan.stairPassages||stairs
+    .map(stair=>roomStairPassage(stair,plan,g)).filter(Boolean);
+  const clear=[...guides,...(plan.accessPassages||[])].filter(passage=>ids.has(passage.stairId));
+  for(const stair of stairs){
+    const access=plan.circulation?.accessByRoom?.get?.(stair.req.id),target=access?.target;
+    if(access?.targetType==='passage'&&target&&['x','y','w','h'].every(key=>Number.isFinite(target[key])))
+      clear.push({stairId:stair.req.id,rect:{x:target.x,y:target.y,w:target.w,h:target.h},source:'existing-access'});
+  }
+  return clear;
+}
+
+function roomServicePlacementRank(req,bounds,placed,passages){
+  if(req.type!=='lift'&&req.type!=='staircase')return [0,0,0];
+  const companions=placed.filter(p=>p.req.type===(req.type==='lift'?'staircase':'lift')).map(roomOccupiedBounds);
+  if(!companions.length)return [0,0,0];
+  const distance=other=>{
+    const dx=Math.max(0,bounds.x-other.x-other.w,other.x-bounds.x-bounds.w);
+    const dy=Math.max(0,bounds.y-other.y-other.h,other.y-bounds.y-bounds.h);
+    return dx*dx+dy*dy;
+  };
+  const passageRank=req.type==='lift'&&passages.length
+    ? (passages.some(passage=>roomSharedOpening(bounds,passage.rect,ROOM_DOOR_WIDTH,ROOM_DOOR_MIN,.001))?0:1):0;
+  const gap=Math.min(...companions.map(distance));
+  const centre=Math.min(...companions.map(other=>
+    (bounds.x+bounds.w/2-other.x-other.w/2)**2+(bounds.y+bounds.h/2-other.y-other.h/2)**2));
+  return [passageRank,gap,centre];
+}
+
+function roomStairPassage(stair,plan,g){
+  const width=stair.req.passageWidthM;
+  if(!Number.isFinite(width)||width<=0)return null;
+  const bounds=roomOccupiedBounds(stair),horizontal=bounds.w>=bounds.h;
+  const candidates=horizontal?[
+    {edge:'S',rect:{x:bounds.x,y:bounds.y+bounds.h,w:bounds.w,h:width}},
+    {edge:'N',rect:{x:bounds.x,y:bounds.y-width,w:bounds.w,h:width}}
+  ]:[
+    {edge:'E',rect:{x:bounds.x+bounds.w,y:bounds.y,w:width,h:bounds.h}},
+    {edge:'W',rect:{x:bounds.x-width,y:bounds.y,w:width,h:bounds.h}}
+  ];
+  const centre=horizontal?bounds.y+bounds.h/2:bounds.x+bounds.w/2;
+  const interior=horizontal?g.core.y+g.core.h/2:g.core.x+g.core.w/2;
+  if(centre>interior)candidates.reverse();
+  const valid=candidates.find(candidate=>roomRectInside(candidate.rect,g.core)&&
+    !plan.placed.some(other=>other!==stair&&other.req.reserveFootprint&&roomIntersects(candidate.rect,roomOccupiedBounds(other))));
+  if(!valid)return null;
+  const hosts=plan.placed.filter(p=>!p.req.reserveFootprint&&roomIntersects(valid.rect,p.module));
+  const crossesBoundary=hosts.length>0&&!hosts.some(p=>roomRectInside(valid.rect,p.carpet));
+  return {stairId:stair.req.id,edge:valid.edge,rect:valid.rect,widthM:width,crossesBoundary};
+}
+
 function roomFlexSpaces(plan,g){
-  const blockers=g.balconies.concat(plan.placed.map(p=>roomIntersectionRect(p.module,g.core)).filter(Boolean));
+  const blockers=g.balconies.concat(plan.placed.map(p=>roomIntersectionRect(roomOccupiedBounds(p),g.core)).filter(Boolean));
   const clipped=blockers.map(r=>roomIntersectionRect(r,g.core)).filter(Boolean);
   const xs=[...new Set([g.core.x,g.core.x+g.core.w,...clipped.flatMap(r=>[r.x,r.x+r.w])])].sort((a,b)=>a-b);
   const ys=[...new Set([g.core.y,g.core.y+g.core.h,...clipped.flatMap(r=>[r.y,r.y+r.h])])].sort((a,b)=>a-b);
@@ -2733,25 +2867,49 @@ function roomBalconyInside(rect,g){
 }
 
 function roomModuleInside(module,g,req){
-  if(req&&(req.type==='lift'||req.type==='staircase')){
-    if(!g.serviceZone||!roomRectInside(module,g.serviceZone)||!roomServiceTouchesCorridor(module,g))return false;
-    return req.type!=='staircase'||roomCornerAnchored(module,g);
-  }
-  return roomRectInside(module,g.core);
+  const bounds=req?.reserveFootprint
+    ? {x:module.x-INT_WALL/2,y:module.y-INT_WALL/2,w:module.w+INT_WALL,h:module.h+INT_WALL}:module;
+  return roomRectInside(bounds,g.core);
 }
 
 function roomModuleClear(module,id,req,plan,g){
   if (!roomModuleInside(module,g,req)) return false;
   if (g.balconies.some(b=>roomIntersects(module,b))) return false;
-  if(plan.placed.some(p=>p.req.id!==id&&roomIntersects(module,p.module)))return false;
+  const candidate={req,module,carpet:{x:module.x+INT_WALL/2,y:module.y+INT_WALL/2,w:module.w-INT_WALL,h:module.h-INT_WALL}};
+  if(plan.placed.some(p=>p.req.id!==id&&roomPlacementConflict(candidate,p)))return false;
+  if(req.reserveFootprint&&roomServiceKeepClear(plan,g).some(passage=>
+    passage.stairId!==id&&roomIntersects(roomOccupiedBounds(candidate),passage.rect)))return false;
   const placements=plan.placed.map(p=>p.req.id===id?{...p,module}:p);
   return roomHardAdjacencyValid(placements,false);
 }
 
-function roomApplyManualLayout(plan,g,signature){
+function roomApplyManualLayout(plan,g,signature,cfg){
   const saved=roomManualLayouts.get(signature);
   if (!saved) return roomRecalculatePlan(plan,g);
-  const rooms=saved.rooms||saved;
+  const rooms={...(saved.rooms||saved)},requests=cfg?makeRoomRequests(cfg):plan.placed.map(p=>p.req);
+  const outdated=requests.filter(req=>req.reserveFootprint&&rooms[req.id]&&
+    !roomModuleInside(roomCarpetModule(rooms[req.id]),g,req));
+  outdated.forEach(req=>{delete rooms[req.id];});
+  if(outdated.length)
+    plan.manualWarning='A saved lift or staircase position no longer fits inside the dwelling. This preview uses an interior suggestion where possible, otherwise leaves the service unplaced. Previous saved positions are retained until you edit or reset the layout.';
+  if(saved.preserveRooms&&cfg){
+    const retained=requests.filter(req=>rooms[req.id]).map(req=>{
+      const s=rooms[req.id],range=req.range,rotated=!!s.rotated;
+      const carpet={x:s.x,y:s.y,w:s.w,h:s.h};
+      return {req,carpet,module:roomCarpetModule(carpet),rotated,
+        minW:rotated?range.minD:range.minW,minD:rotated?range.minW:range.minD,
+        maxW:rotated?range.maxD:range.maxW,maxD:rotated?range.maxW:range.maxD};
+    });
+    if(!retained.every(p=>roomModuleInside(p.module,g,p.req))||
+      retained.some((a,i)=>retained.some((b,j)=>j>i&&roomPlacementConflict(a,b)))||
+      !roomHardAdjacencyValid(retained,false))
+      throw new Error('The retained room layout no longer fits this floor. Restore the previous settings or explicitly reset the suggested layout.');
+    const added=plan.placed.filter(p=>!rooms[p.req.id]);
+    plan.placed=retained;
+    for(const p of added)if(roomModuleClear(p.module,p.req.id,p.req,plan,g))plan.placed.push(p);
+    plan.unmet=requests.filter(req=>!plan.placed.some(p=>p.req.id===req.id));
+    plan.preserveRooms=true;
+  }
   const candidates=plan.placed.map(p=>{
     const s=rooms[p.req.id];
     if(!s)return {p,carpet:p.carpet,module:p.module};
@@ -2759,18 +2917,20 @@ function roomApplyManualLayout(plan,g,signature){
       module:{x:s.x-INT_WALL/2,y:s.y-INT_WALL/2,w:s.w+INT_WALL,h:s.h+INT_WALL}};
   });
   let valid=candidates.every(c=>roomModuleInside(c.module,g,c.p.req)&&!g.balconies.some(b=>roomIntersects(c.module,b)))&&
-    candidates.every((a,i)=>candidates.every((b,j)=>i===j||!roomIntersects(a.module,b.module)))&&
+    candidates.every((a,i)=>candidates.every((b,j)=>i===j||!roomPlacementConflict({req:a.p.req,module:a.module,carpet:a.carpet},{req:b.p.req,module:b.module,carpet:b.carpet})))&&
     roomHardAdjacencyValid(candidates.map(c=>({req:c.p.req,module:c.module})),false);
   if(valid){
     const shadow={...plan,placed:candidates.map(c=>({...c.p,carpet:c.carpet,module:c.module}))};
     roomRecalculatePlan(shadow,g);
     const inaccessible=roomCirculationAnalysis(g,shadow).inaccessible;
     if(inaccessible.length)
-      plan.manualWarning=`Manual layout retained, but ${inaccessible.map(p=>p.req.label).join(', ')} ${inaccessible.length===1?'has':'have'} no internal circulation door yet. Continue rearranging rooms or add a reachable passage.`;
+      plan.manualWarning=(plan.manualWarning?plan.manualWarning+' ':'')+`Manual layout retained, but ${inaccessible.map(p=>p.req.label).join(', ')} ${inaccessible.length===1?'has':'have'} no internal circulation door yet. Continue rearranging rooms or add a reachable passage.`;
   }
   if (valid){
     candidates.forEach(c=>{c.p.carpet=c.carpet;c.p.module=c.module;});
     roomAssignBalconies(plan,g,false);
+  }else if(candidates.some(c=>c.p.req.type==='lift'&&!roomModuleInside(c.module,g,c.p.req))){
+    plan.manualWarning='A saved lift position is outside the dwelling or lacks corridor access. The preview shows a new inside-dwelling suggestion; the previous saved layout is retained until you reposition items or reset it.';
   }
   return roomRecalculatePlan(plan,g);
 }
@@ -2814,6 +2974,8 @@ function roomFurnitureClearances(plan,p,type){
   const passages=(plan.wallOpenings||[]).filter(o=>o.roomId===p.req.id&&o.width>=ROOM_DOOR_MIN)
     .map(o=>roomOpeningClearance(p,o,.9)).filter(Boolean);
   doors.push(...passages);
+  doors.push(...roomReservationCuts(p,plan),
+    ...(plan.stairPassages||[]).map(passage=>roomIntersectionRect(p.carpet,passage.rect)).filter(Boolean));
   (plan.openings?.doors||[]).filter(door=>door.sweep).forEach(door=>{
     const s=door.sweep;
     const xs=[s.hinge.x,s.closedEnd.x,s.openEnd.x],ys=[s.hinge.y,s.closedEnd.y,s.openEnd.y];
@@ -2847,32 +3009,40 @@ function roomFurnitureDefaults(p,cfg,plan){
   for(let bi=0;bi<bedCandidates.length&&!pair;bi++)
     for(let ci=0;ci<cupboardCandidates.length&&!pair;ci++)
       if(!roomIntersects(bedCandidates[bi],cupboardCandidates[ci]))pair={bed:bedCandidates[bi],cupboard:cupboardCandidates[ci]};
-  const out=[],unmet=[];
+  const out=[],unmet=[],missing=[];
   if(pair){
     out.push({id:`furniture-bed-${p.req.id}`,type:'bed',label:`${bed.label} bed`,roomId:p.req.id,...pair.bed});
     out.push({id:`furniture-cupboard-${p.req.id}`,type:'cupboard',label:'Cupboard',roomId:p.req.id,...pair.cupboard});
   }else{
     if(bedCandidates[0])out.push({id:`furniture-bed-${p.req.id}`,type:'bed',label:`${bed.label} bed`,roomId:p.req.id,...bedCandidates[0]});
-    else unmet.push(`${p.req.label}: ${bed.label.toLowerCase()} bed`);
+    else{
+      const message=`${p.req.label}: ${bed.label.toLowerCase()} bed`;
+      unmet.push(message);missing.push({type:'bed',message});
+    }
     const cupboard=cupboardCandidates.find(c=>!out.some(f=>roomIntersects(f,c)));
     if(cupboard)out.push({id:`furniture-cupboard-${p.req.id}`,type:'cupboard',label:'Cupboard',roomId:p.req.id,...cupboard});
-    else unmet.push(`${p.req.label}: cupboard`);
+    else{
+      const message=`${p.req.label}: cupboard`;
+      unmet.push(message);missing.push({type:'cupboard',message});
+    }
   }
-  return {out,unmet};
+  return {out,unmet,missing};
 }
 
 function roomPlanFurniture(plan,cfg,signature){
   const saved=roomManualLayouts.get(signature);
   const savedFurniture=saved&&saved.furniture||{};
   const hiddenFurniture=new Set(saved&&saved.hiddenFurniture||[]);
-  const furniture=[],unmet=[];
+  const preservedFurnitureRooms=new Set(saved?.furnitureRooms||[]);
+  const furniture=[],unmet=[],missingDefaults=[];
   plan.hiddenFurniture=hiddenFurniture;
   plan.placed.filter(p=>p.req.type==='bedroom').forEach(p=>{
     const defaults=roomFurnitureDefaults(p,cfg,plan);
-    unmet.push(...defaults.unmet);
+    missingDefaults.push(...(defaults.missing||[]).map(item=>({...item,roomId:p.req.id})));
     defaults.out.forEach(f=>{
       if(hiddenFurniture.has(f.id))return;
       const s=savedFurniture[f.id];
+      if(preservedFurnitureRooms.has(p.req.id)&&!s)return;
       const candidate=s?{...f,x:p.carpet.x+s.ox,y:p.carpet.y+s.oy,
         w:Number.isFinite(s.w)&&s.w>ROOM_EPS?s.w:f.w,
         h:Number.isFinite(s.h)&&s.h>ROOM_EPS?s.h:f.h,
@@ -2885,7 +3055,13 @@ function roomPlanFurniture(plan,cfg,signature){
         !furniture.some(other=>other.roomId===p.req.id&&roomIntersects(f,other))&&
         !clearances.some(c=>roomIntersects(f,c));
       if(valid)furniture.push(candidate);
-      else if(fallbackValid&&!s?.pinned)furniture.push(f);
+      else if(s&&['x','y','w','h'].every(key=>Number.isFinite(candidate[key]))&&candidate.w>0&&candidate.h>0&&
+        ['N','E','S','W'].includes(candidate.headLocal)){
+        furniture.push({...candidate,needsRelocation:true,pinned:true});
+        unmet.push(`${p.req.label}: saved ${f.label.toLowerCase()} needs relocation; its dimensions were retained`);
+      }
+      else if(s)unmet.push(`${p.req.label}: saved ${f.label.toLowerCase()} has invalid geometry; its source record is retained`);
+      else if(fallbackValid)furniture.push(f);
       else unmet.push(`${p.req.label}: ${f.label.toLowerCase()}`);
     });
   });
@@ -2908,17 +3084,40 @@ function roomPlanFurniture(plan,cfg,signature){
     if(valid)furniture.push(candidate);
     else unmet.push(`${parent.req.label}: saved ${candidate.label.toLowerCase()}`);
   });
+  for(const s of Object.values(savedFurniture)){
+    if(!s||furniture.some(f=>f.id===s.id)||hiddenFurniture.has(s.id))continue;
+    const parent=plan.placed.find(p=>p.req.id===s.roomId);
+    if(!parent||typeof s.id!=='string'||['__proto__','prototype','constructor'].includes(s.id)||typeof s.label!=='string'||
+      !Object.prototype.hasOwnProperty.call(ROOM_COMPONENTS,s.type)||!ROOM_COMPONENTS[s.type].rooms.includes(parent.req.type))continue;
+    const candidate={id:s.id,type:s.type,label:s.label,roomId:s.roomId,custom:!!s.custom,
+      x:parent.carpet.x+s.ox,y:parent.carpet.y+s.oy,w:s.w,h:s.h,rotated:!!s.rotated,
+      headLocal:s.headLocal||(s.w<=s.h?'N':'W'),pinned:!!s.pinned,needsRelocation:true};
+    if(!['x','y','w','h'].every(key=>Number.isFinite(candidate[key]))||candidate.w<=0||candidate.h<=0)continue;
+    const conflict=!roomRectInside(candidate,parent.carpet)||
+      furniture.some(f=>f.roomId===candidate.roomId&&roomIntersects(f,candidate))||
+      roomFurnitureClearances(plan,parent,candidate.type).some(rect=>roomIntersects(candidate,rect));
+    candidate.needsRelocation=conflict;
+    furniture.push(candidate);
+    if(conflict)unmet.push(`${parent.req.label}: saved ${s.label} needs relocation; its dimensions were retained`);
+  }
+  for(const missing of missingDefaults)
+    if(!furniture.some(f=>f.roomId===missing.roomId&&f.type===missing.type))unmet.push(missing.message);
   plan.furniture=furniture;
+  plan.unresolvedFurniture=Object.fromEntries(Object.entries(savedFurniture)
+    .filter(([,record])=>record&&!furniture.some(f=>f.id===record.id)&&!hiddenFurniture.has(record.id)));
   plan.furnitureUnmet=unmet;
   return plan;
 }
 
 function roomSaveManualLayout(ctx){
-  const saved={rooms:{},balconies:{},furniture:{},
+  const saved={rooms:{},balconies:{},furniture:{...(ctx.plan.unresolvedFurniture||{})},preserveRooms:true,
+    unplacedRoomIds:(ctx.plan.unmet||[]).map(req=>req.id),
+    furnitureRooms:ctx.plan.placed.map(p=>p.req.id),
     openings:(ctx.plan.customOpenings||[]).map(o=>({...o,segment:undefined})),
     wallOpenings:(ctx.plan.wallOpenings||[]).map(o=>({...o,segment:undefined})),
     hiddenFurniture:[...(ctx.plan.hiddenFurniture instanceof Set?ctx.plan.hiddenFurniture:new Set(ctx.plan.hiddenFurniture||[]))]};
-  ctx.plan.placed.forEach(p=>{ saved.rooms[p.req.id]={x:p.carpet.x,y:p.carpet.y,w:p.carpet.w,h:p.carpet.h}; });
+  ctx.plan.preserveRooms=true;
+  ctx.plan.placed.forEach(p=>{ saved.rooms[p.req.id]={x:p.carpet.x,y:p.carpet.y,w:p.carpet.w,h:p.carpet.h,rotated:!!p.rotated}; });
   ctx.g.balconies.forEach(b=>{saved.balconies[b.id]={x:b.x,y:b.y,w:b.w,h:b.h};});
   (ctx.plan.furniture||[]).forEach(f=>{
     const room=ctx.plan.placed.find(p=>p.req.id===f.roomId);
@@ -2927,6 +3126,60 @@ function roomSaveManualLayout(ctx){
       headLocal:f.headLocal,pinned:!!f.pinned};
   });
   roomManualLayouts.set(ctx.signature,saved);
+}
+
+function roomRemoveFromPlan(ctx,sourceId){
+  const room=ctx.plan.placed.find(p=>p.req.id===sourceId);
+  if(!room)throw new Error('The selected room is no longer on this floor.');
+  const library=Object.entries(ROOM_LIBRARY_CONFIG).find(([,meta])=>meta.type===room.req.type);
+  if(!library)throw new Error('This room type cannot be removed from the room programme.');
+  const [inputId,meta]=library,input=$(inputId),count=input.valueAsNumber;
+  if(!Number.isSafeInteger(count)||count<1)throw new Error('The room quantity is inconsistent. Reopen this floor before deleting a room.');
+  makeRoomRequests(ctx.cfg);
+  const identities=roomIdentityState[meta.prefix],index=identities?.ids.indexOf(sourceId);
+  if(index===undefined||index<0)throw new Error('The room identity is not in the current programme. Reopen this floor before deleting.');
+  roomSaveManualLayout(ctx);
+  const saved=JSON.parse(JSON.stringify(roomManualLayouts.get(ctx.signature)));
+  delete saved.rooms[sourceId];
+  saved.furniture=Object.fromEntries(Object.entries(saved.furniture).filter(([,item])=>item.roomId!==sourceId));
+  saved.openings=saved.openings.filter(item=>item.roomId!==sourceId&&item.targetRoomId!==sourceId);
+  saved.wallOpenings=saved.wallOpenings.filter(item=>item.roomId!==sourceId&&item.targetRoomId!==sourceId);
+  saved.preserveRooms=true;
+  identities.ids.splice(index,1);input.value=String(count-1);
+  const cfg=roomPlannerConfig();
+  makeRoomRequests(cfg);
+  roomManualLayouts.set(roomPlanSignature(ctx.plate,cfg),saved);
+}
+
+function roomPreserveProgrammeChange(previous,plate,g,cfg,signature,project){
+  if(!previous||!project||window.HomePlanner?.isBusy()||
+    previous.ownerProjectId!==project.id||previous.ownerFloorId!==project.activeFloorId||
+    previous.plate.id!==plate.id||previous.plate.frontEdge!==plate.frontEdge||
+    JSON.stringify(previous.cfg.counts)===JSON.stringify(cfg.counts))return;
+  if(['x','y','w','h'].some(key=>Math.abs(previous.g.core[key]-g.core[key])>ROOM_EPS))return;
+  roomSaveManualLayout(previous);
+  const saved=JSON.parse(JSON.stringify(roomManualLayouts.get(previous.signature)));
+  const requests=makeRoomRequests(cfg),wanted=new Set(requests.map(req=>req.id));
+  const prior=new Set([...previous.plan.placed.map(p=>p.req.id),...(previous.plan.unmet||[]).map(req=>req.id)]);
+  saved.rooms=Object.fromEntries(Object.entries(saved.rooms).filter(([id])=>wanted.has(id)));
+  saved.furniture=Object.fromEntries(Object.entries(saved.furniture).filter(([,f])=>wanted.has(f.roomId)));
+  for(const key of ['openings','wallOpenings'])
+    saved[key]=(saved[key]||[]).filter(opening=>wanted.has(opening.roomId)&&(!opening.targetRoomId||wanted.has(opening.targetRoomId)));
+  roomManualLayouts.set(signature,saved);
+  roomApplySavedBalconies(g,signature);
+  const retained=roomApplyManualLayout({placed:[],unmet:[],free:[],totalDeviation:0,index:0},g,signature,cfg);
+  const added=requests.filter(req=>!prior.has(req.id));
+  let placed=retained.placed;
+  if(added.length){
+    const attempts=[['preferred','large'],['minimum','large'],['preferred','service'],['minimum','privacy']]
+      .map(([size,order],index)=>roomPackAttempt(g,added,size,order,index,retained.placed,
+        roomServiceKeepClear(previous.plan,previous.g).filter(passage=>passage.source==='existing-access')));
+    placed=attempts.reduce((best,attempt)=>roomScoreLess(attempt.score,best?.score)?attempt:best,null).placed;
+  }
+  saved.rooms=Object.fromEntries(placed.map(p=>[p.req.id,{...p.carpet,rotated:!!p.rotated}]));
+  saved.unplacedRoomIds=requests.filter(req=>!placed.some(p=>p.req.id===req.id)).map(req=>req.id);
+  roomManualLayouts.set(signature,saved);
+  return true;
 }
 
 function roomEdgeSegment(rect,edge,length){
@@ -2962,7 +3215,7 @@ function roomSharedOpening(a,b,width,minWidth=ROOM_DOOR_MIN,maxGap=INT_WALL+.001
 }
 
 function roomCorridorOpenings(rect,g,width=ROOM_DOOR_WIDTH,minWidth=ROOM_DOOR_MIN){
-  const out=roomServiceCorridorOpenings(rect,g,width,minWidth),push=(edge,label)=>{
+  const out=[],push=(edge,label)=>{
     const span=(edge==='N'||edge==='S')?rect.w:rect.h;
     const actual=Math.min(width,span-.16);
     if(actual>=minWidth-ROOM_EPS)out.push({edge,width:actual,available:span,
@@ -2982,6 +3235,34 @@ function roomCorridorOpenings(rect,g,width=ROOM_DOOR_WIDTH,minWidth=ROOM_DOOR_MI
 
 function roomUsablePassages(plan){
   return (plan.flexSpaces||[]).filter(r=>Math.min(r.w,r.h)>=ROOM_PASSAGE_MIN-ROOM_EPS);
+}
+
+function roomReservationHostOpenings(service,host,plan,width=ROOM_DOOR_WIDTH){
+  if(!service.req.reserveFootprint||host.req.reserveFootprint)return [];
+  const footprint=roomOccupiedBounds(service),module=service.module,out=[];
+  const regions=host.usableRegions||RoomRegions.subtractRectangle(host.carpet,
+    plan.placed.filter(p=>p.req.reserveFootprint).map(roomOccupiedBounds));
+  for(const edge of ['N','E','S','W']){
+    const horizontal=edge==='N'||edge==='S';
+    const start=horizontal?module.x:module.y,span=horizontal?module.w:module.h;
+    const boundary=edge==='N'?footprint.y:edge==='S'?footprint.y+footprint.h:edge==='W'?footprint.x:footprint.x+footprint.w;
+    const outside=boundary+(edge==='N'||edge==='W'?-1:1)*ROOM_EPS*4;
+    for(const region of regions){
+      if(horizontal?(outside<region.y||outside>region.y+region.h):(outside<region.x||outside>region.x+region.w))continue;
+      const lo=Math.max(start+.08,horizontal?region.x:region.y);
+      const hi=Math.min(start+span-.08,horizontal?region.x+region.w:region.y+region.h);
+      const actual=Math.min(width,hi-lo);
+      if(actual<ROOM_DOOR_MIN-ROOM_EPS)continue;
+      const middle=(lo+hi)/2;
+      const fixed=edge==='N'?module.y:edge==='S'?module.y+module.h:edge==='W'?module.x:module.x+module.w;
+      out.push({edge,width:actual,available:hi-lo,targetType:'room',targetRoomId:host.req.id,
+        passagePreferred:(plan.stairPassages||[]).some(passage=>passage.stairId===service.req.id&&passage.edge===edge),
+        targetLabel:host.req.label,target:host,segment:horizontal
+          ?{x1:middle-actual/2,y1:fixed,x2:middle+actual/2,y2:fixed}
+          :{x1:fixed,y1:middle-actual/2,x2:fixed,y2:middle+actual/2}});
+    }
+  }
+  return out;
 }
 
 function roomCirculationAnalysis(g,plan){
@@ -3022,7 +3303,7 @@ function roomCirculationAnalysis(g,plan){
     const outside=roomCorridorOpenings(p.module,g,ROOM_DOOR_WIDTH,ROOM_DOOR_MIN)[0];
     if(outside)accessByRoom.set(p.req.id,outside);
   });
-  plan.placed.filter(p=>p!==living&&p.req.type!=='lift'&&p.req.type!=='staircase'&&
+  plan.placed.filter(p=>p!==living&&!accessByRoom.has(p.req.id)&&
     !(p.req.type==='bathroom'&&p.req.accessMode==='ensuite')).forEach(p=>{
     const width=p.req.type==='bathroom'?.75:ROOM_DOOR_WIDTH;
     const passage=passages.map((r,i)=>{
@@ -3044,6 +3325,13 @@ function roomCirculationAnalysis(g,plan){
     if(opening)accessByRoom.set(p.req.id,{...opening,targetType:'bedroom',
       targetLabel:bedroom.req.label,target:bedroom});
   });
+  for(const service of plan.placed.filter(p=>p.req.reserveFootprint&&!accessByRoom.has(p.req.id))){
+    const openings=plan.placed.filter(host=>!host.req.reserveFootprint&&accessByRoom.has(host.req.id))
+      .flatMap(host=>roomReservationHostOpenings(service,host,plan))
+      .sort((a,b)=>Number(b.passagePreferred)-Number(a.passagePreferred)||
+        Number(b.target.req.type==='living')-Number(a.target.req.type==='living')||b.available-a.available);
+    if(openings[0])accessByRoom.set(service.req.id,openings[0]);
+  }
   for(let pass=0;pass<plan.placed.length;pass++){
     let changed=false;
     (plan.wallOpenings||[]).filter(opening=>opening.width>=ROOM_DOOR_MIN).forEach(opening=>{
@@ -3159,6 +3447,7 @@ function roomPlanOpenings(g,plan,cfg){
       roomSegmentsOverlap(opening.segment,access.segment,0)))return;
     doors.push({id:`door-${p.req.id}-${access.edge}`,roomId:p.req.id,label:p.req.label,kind:'access',edge:access.edge,
       global:roomLocalEdgeGlobal(access.edge,g.frontEdge),width:access.width,
+      ...(access.targetRoomId?{targetRoomId:access.targetRoomId}:{}),
       targetType:access.targetType,targetLabel:access.targetLabel,segment:access.segment});
   });
 
@@ -3182,7 +3471,7 @@ function roomPlanOpenings(g,plan,cfg){
       })).sort((a,b)=>(doorEdges.has(a.edge)?1:0)-(doorEdges.has(b.edge)?1:0)||
         roomWindowRank(a.edge,a.length,g,cfg)-roomWindowRank(b.edge,b.length,g,cfg)||b.length-a.length);
       const selected=cfg.passive&&edgeInfo.length>1?edgeInfo.slice(0,2):edgeInfo.slice(0,1);
-      const floorArea=p.carpet.w*p.carpet.h;
+      const floorArea=roomUsableArea(p);
       // Generate above the 10% room minimum so the 12.5% dwelling target remains achievable.
       const targetOpenable=p.req.type==='bathroom'?Math.max(.37,floorArea*.125):floorArea*.125;
       selected.forEach((e,i)=>{
@@ -3403,6 +3692,37 @@ function roomDropOpeningComponent(ctx,type,point){
   return true;
 }
 
+function roomEditableError(ctx,item,rect){
+  if(!rect||!['x','y','w','h'].every(key=>Number.isFinite(rect[key]))||rect.w<=0||rect.h<=0)
+    return 'Choose a finite position and positive dimensions.';
+  if(item.kind==='room'){
+    const p=item.room,module=roomCarpetModule(rect);
+    if(!roomModuleClear(module,p.req.id,p.req,ctx.plan,ctx.g))
+      return p.req.reserveFootprint
+        ? `${p.req.label} must stay inside the dwelling, including its wall footprint, and cannot overlap another lift or staircase or block a staircase passage.`
+        : `${p.req.label} needs a free destination inside the dwelling, without overlapping another room or the prohibited pooja-bathroom wall. Move across other rooms to a valid destination before releasing.`;
+  }else if(item.kind==='balcony'){
+    const b=item.balcony;
+    if(!roomBalconyInside(rect,ctx.g))
+      return `${b.label} must stay in its allowed facade strip.`;
+    if(ctx.g.balconies.some(other=>other.id!==b.id&&roomIntersects(rect,other)))
+      return `${b.label} cannot overlap another balcony.`;
+    if(ctx.plan.placed.some(p=>roomIntersects(rect,roomOccupiedBounds(p))))
+      return `${b.label} cannot overlap a room or service block.`;
+    const next=ctx.g.balconies.map(other=>other.id===b.id?{...other,...rect}:other);
+    if(!roomBalconyAdjacencyValid(ctx.plan.placed,next))
+      return `${b.label} must keep a usable shared wall with living/dining, a bedroom, or the kitchen.`;
+  }else if(item.kind==='furniture'){
+    const f=item.furniture,parent=item.parent;
+    if(!roomRectInside(rect,parent.carpet))return `${f.label} must stay fully inside ${parent.req.label}.`;
+    if((ctx.plan.furniture||[]).some(other=>other.id!==f.id&&other.roomId===f.roomId&&roomIntersects(rect,other)))
+      return `${f.label} cannot overlap another component.`;
+    if(roomFurnitureClearances(ctx.plan,parent,f.type).some(clearance=>roomIntersects(rect,clearance)))
+      return `${f.label} cannot occupy a reserved lift/stair footprint or block a door${f.type==='cupboard'||f.type==='sofa'?' or window':''} clear zone.`;
+  }else return 'This object does not support movement.';
+  return null;
+}
+
 function roomRotateFromPlan(ctx,item){
   if(!window.HomePlanner)return roomRotateFurniture(ctx,item);
   const entity=window.HomePlanner.getScene()?.furniture.find(f=>f.sourceId===item.id);
@@ -3549,7 +3869,7 @@ function roomScienceItems(g,plan,cfg){
   const doorFor=id=>plan.openings.doors.find(d=>d.roomId===id);
   const exterior=eligible.filter(p=>byRoom(p.req.id).length);
   const openableFor=id=>byRoom(id).reduce((s,w)=>s+w.openableArea,0);
-  const openingPass=eligible.filter(p=>openableFor(p.req.id)>=p.carpet.w*p.carpet.h*.10-ROOM_EPS);
+  const openingPass=eligible.filter(p=>roomUsableArea(p)>ROOM_EPS&&openableFor(p.req.id)>=roomUsableArea(p)*.10-ROOM_EPS);
   const bathrooms=eligible.filter(p=>p.req.type==='bathroom');
   const bathOpenable=bathrooms.filter(p=>byRoom(p.req.id).length&&openableFor(p.req.id)>=.37-ROOM_EPS);
   const opposite={N:'S',S:'N',E:'W',W:'E'};
@@ -3624,19 +3944,19 @@ function roomGreenItems(g,plan,cfg){
   const openableFor=id=>windowsFor(id).reduce((s,w)=>s+w.openableArea,0);
   const regular=plan.placed.filter(p=>['living','bedroom','kitchen'].includes(p.req.type));
   const ventilated=plan.placed.filter(p=>['living','bedroom','kitchen','bathroom'].includes(p.req.type));
-  const regularArea=regular.reduce((s,p)=>s+p.carpet.w*p.carpet.h,0);
+  const regularArea=regular.reduce((s,p)=>s+roomUsableArea(p),0);
   const direct=regular.filter(p=>windowsFor(p.req.id).length);
   const directPct=regular.length?direct.length/regular.length*100:0;
   const highFloors=(cfg.floors||0)>5;
   const mandatoryRatio=p=>p.req.type==='kitchen'?(highFloors?.06:.08):p.req.type==='bathroom'?.04:(highFloors?.08:.10);
   const enhancedRatio=p=>p.req.type==='kitchen'?(highFloors?.08:.10):p.req.type==='bathroom'?.05:(highFloors?.10:.12);
-  const mandatoryPass=ventilated.filter(p=>openableFor(p.req.id)>=p.carpet.w*p.carpet.h*mandatoryRatio(p)-ROOM_EPS);
-  const enhancedPass=ventilated.filter(p=>openableFor(p.req.id)>=p.carpet.w*p.carpet.h*enhancedRatio(p)-ROOM_EPS);
+  const mandatoryPass=ventilated.filter(p=>roomUsableArea(p)>ROOM_EPS&&openableFor(p.req.id)>=roomUsableArea(p)*mandatoryRatio(p)-ROOM_EPS);
+  const enhancedPass=ventilated.filter(p=>roomUsableArea(p)>ROOM_EPS&&openableFor(p.req.id)>=roomUsableArea(p)*enhancedRatio(p)-ROOM_EPS);
   const crossRooms=regular.filter(p=>{
     const orientations=new Set(windowsFor(p.req.id).map(w=>w.global));
     return orientations.size>=2&&Math.max(p.carpet.w,p.carpet.h)<=5*cfg.ceilingHeight+ROOM_EPS;
   });
-  const crossArea=crossRooms.reduce((s,p)=>s+p.carpet.w*p.carpet.h,0);
+  const crossArea=crossRooms.reduce((s,p)=>s+roomUsableArea(p),0);
   const crossPct=regularArea?crossArea/regularArea*100:0;
   let primaryArea=0,totalSidelitArea=0;
   regular.forEach(p=>{
@@ -3796,7 +4116,7 @@ function roomWindowModeEdges(ctx,p,mode){
 function roomWindowRecords(ctx,p,mode){
   const edges=roomWindowModeEdges(ctx,p,mode);
   if(!edges.length)return [];
-  const area=p.carpet.w*p.carpet.h,height=Math.max(1.5*FT,ctx.cfg.openingComponents.windowHeight);
+  const area=roomUsableArea(p),height=Math.max(1.5*FT,ctx.cfg.openingComponents.windowHeight);
   const targetRatio=mode==='green-ventilation'
     ? (p.req.type==='kitchen'?((ctx.cfg.floors||0)>5?.08:.10):p.req.type==='bathroom'?.05:((ctx.cfg.floors||0)>5?.10:.12))
     : .125;
@@ -4026,8 +4346,54 @@ function roomComponentSpec(type,cfg){
 
 function roomFurnitureCandidateValid(plan,parent,candidate){
   return roomRectInside(candidate,parent.carpet)&&
-    !(plan.furniture||[]).some(other=>other.roomId===parent.req.id&&roomIntersects(candidate,other))&&
+    !(plan.furniture||[]).some(other=>other.id!==candidate.id&&other.roomId===parent.req.id&&roomIntersects(candidate,other))&&
     !roomFurnitureClearances(plan,parent,candidate.type).some(c=>roomIntersects(candidate,c));
+}
+
+function roomFindFurniturePosition(plan,parent,desired){
+  const bounds=parent.carpet;
+  if(desired.w>bounds.w+ROOM_EPS||desired.h>bounds.h+ROOM_EPS)return null;
+  const minX=bounds.x,maxX=bounds.x+bounds.w-desired.w;
+  const minY=bounds.y,maxY=bounds.y+bounds.h-desired.h;
+  const preferred={...desired,x:roomClamp(desired.x,minX,maxX),y:roomClamp(desired.y,minY,maxY)};
+  if(roomFurnitureCandidateValid(plan,parent,preferred))return preferred;
+  const blockers=(plan.furniture||[]).filter(item=>item.id!==desired.id&&item.roomId===parent.req.id)
+    .concat(roomFurnitureClearances(plan,parent,desired.type));
+  const xs=new Set([preferred.x,minX,maxX]),ys=new Set([preferred.y,minY,maxY]);
+  const addX=x=>{if(Number.isFinite(x)&&x>=minX-ROOM_EPS&&x<=maxX+ROOM_EPS)xs.add(roomClamp(x,minX,maxX));};
+  const addY=y=>{if(Number.isFinite(y)&&y>=minY-ROOM_EPS&&y<=maxY+ROOM_EPS)ys.add(roomClamp(y,minY,maxY));};
+  for(const block of blockers){
+    addX(block.x-desired.w);addX(block.x+block.w);
+    addY(block.y-desired.h);addY(block.y+block.h);
+  }
+  for(const block of blockers.filter(item=>item.doorSector)){
+    const {hinge,radiusM}=block.doorSector;
+    for(const y of [...ys]){
+      const lo=Math.max(y,block.y),hi=Math.min(y+desired.h,block.y+block.h);
+      if(lo>hi)continue;
+      const dy=roomClamp(hinge.y,lo,hi)-hinge.y;
+      if(Math.abs(dy)>radiusM)continue;
+      const dx=Math.sqrt(Math.max(0,radiusM*radiusM-dy*dy));
+      addX(hinge.x+dx);addX(hinge.x-dx-desired.w);
+    }
+    for(const x of [...xs]){
+      const lo=Math.max(x,block.x),hi=Math.min(x+desired.w,block.x+block.w);
+      if(lo>hi)continue;
+      const dx=roomClamp(hinge.x,lo,hi)-hinge.x;
+      if(Math.abs(dx)>radiusM)continue;
+      const dy=Math.sqrt(Math.max(0,radiusM*radiusM-dx*dx));
+      addY(hinge.y+dy);addY(hinge.y-dy-desired.h);
+    }
+  }
+  if(xs.size*ys.size>100000)throw new Error('Rotation placement search is too large for this room. Move the component manually or simplify its overlapping constraints.');
+  let best=null,distance=Infinity;
+  for(const x of xs)for(const y of ys){
+    const score=(x-preferred.x)**2+(y-preferred.y)**2;
+    if(score>=distance)continue;
+    const candidate={...desired,x,y};
+    if(roomFurnitureCandidateValid(plan,parent,candidate)){best=candidate;distance=score;}
+  }
+  return best;
 }
 
 function roomDropComponent(ctx,type,point){
@@ -4124,6 +4490,27 @@ function roomUpdateLibrarySummaries(){
 }
 
 function roomDecorateLibraryItems(){
+  function disclosure(details,summary,label,id){
+    summary.tabIndex=-1;
+    const body=details.querySelector(':scope > .library-body');
+    if(body)body.id=id;
+    const toggle=document.createElement('button');
+    toggle.type='button';toggle.className='library-toggle';
+    toggle.innerHTML='<span aria-hidden="true">&gt;</span>';
+    if(body)toggle.setAttribute('aria-controls',body.id);
+    const sync=()=>{
+      toggle.setAttribute('aria-expanded',String(details.open));
+      toggle.setAttribute('aria-label',`${details.open?'Collapse':'Expand'} ${label} settings`);
+    };
+    toggle.addEventListener('click',event=>{
+      event.preventDefault();event.stopPropagation();
+      details.open=!details.open;sync();
+    });
+    toggle.addEventListener('dragstart',event=>{event.preventDefault();event.stopPropagation();});
+    summary.addEventListener('click',event=>event.preventDefault());
+    details.addEventListener('toggle',sync);sync();
+    summary.appendChild(toggle);
+  }
   Object.entries(ROOM_LIBRARY_CONFIG).forEach(([inputId,meta])=>{
     const input=$(inputId),details=input&&input.closest('details.library-item');
     const summary=details&&details.querySelector(':scope > summary');
@@ -4133,25 +4520,39 @@ function roomDecorateLibraryItems(){
     const dim=document.createElement('small');
     dim.className='library-dim';dim.id=`${inputId}Dims`;
     title.appendChild(dim);
-    const drag=document.createElement('button');
-    drag.type='button';drag.className='room-library-drag';drag.draggable=true;
-    drag.dataset.roomSource=inputId;drag.textContent='⠿';
-    drag.title=`Drag ${meta.label} to the plan, or click to add automatically`;
-    drag.setAttribute('aria-label',drag.title);
-    drag.addEventListener('click',ev=>{
+    const add=document.createElement('button');
+    add.type='button';add.className='library-add';add.dataset.roomSource=inputId;add.draggable=true;
+    add.title=`Click to add ${meta.label}, or drag this tile onto the plan`;
+    add.setAttribute('aria-label',`Add ${meta.label}`);
+    while(summary.firstChild)add.appendChild(summary.firstChild);
+    summary.appendChild(add);summary.draggable=true;summary.classList.add('library-add-row');
+    let dragging=false;
+    add.addEventListener('click',ev=>{
       ev.preventDefault();ev.stopPropagation();
-      roomAddLibraryItem(inputId);
+      if(!dragging)roomAddLibraryItem(inputId);
     });
-    drag.addEventListener('dragstart',ev=>{
+    summary.addEventListener('dragstart',ev=>{
+      if(ev.target.closest('.library-toggle')){ev.preventDefault();return;}
+      dragging=true;
       ev.stopPropagation();
       ev.dataTransfer.setData('application/x-room-library',inputId);
       ev.dataTransfer.setData('text/plain',`room:${inputId}`);
       ev.dataTransfer.effectAllowed='copy';
       $('roomPlan').classList.add('drop-ready');
     });
-    drag.addEventListener('dragend',()=>$('roomPlan').classList.remove('drop-ready'));
-    summary.appendChild(drag);
+    summary.addEventListener('dragend',()=>{
+      $('roomPlan').classList.remove('drop-ready');
+      setTimeout(()=>{dragging=false;},0);
+    });
+    disclosure(details,summary,meta.label,`${inputId}Settings`);
   });
+  document.querySelectorAll('.component-pane details.library-item,.component-pane details.library-section').forEach((details,index)=>{
+    const summary=details.querySelector(':scope > summary');
+    if(!summary||summary.querySelector('.library-toggle'))return;
+    disclosure(details,summary,summary.children[0].textContent.trim(),`roomLibrarySettings${index}`);
+  });
+  const palette=document.querySelector('details.component-pane'),heading=palette?.querySelector(':scope > summary');
+  if(heading&&!heading.querySelector('.library-toggle'))disclosure(palette,heading,'Tools & rooms','roomToolsSettings');
 }
 
 function roomPlaceLibraryDrop(ctx,item,point){
@@ -4187,7 +4588,7 @@ function roomAddLibraryItem(inputId,point=null){
   roomUpdateLibrarySummaries();
   const ctx=window.__roomPlanner;
   if(!ctx)return false;
-  const id=`${meta.prefix}-${before+1}`;
+  const id=meta.type==='balcony'?`${meta.prefix}-${before+1}`:roomStableIds(meta.prefix,before+1).at(-1);
   const editable=meta.type==='balcony'
     ? roomFindEditable(ctx,id)
     : roomFindEditable(ctx,id);
@@ -4231,14 +4632,49 @@ function initRoomLibrary(){
 
 function initComponentPalette(){
   const svg=$('roomPlan');
+  let selectedComponent=null;
+  const choose=type=>{
+    selectedComponent=type;
+    document.querySelectorAll('.component-item').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.component===type)));
+    svg.classList.toggle('drop-ready',!!type);
+  };
   document.querySelectorAll('.component-item').forEach(item=>{
+    item.setAttribute('aria-pressed','false');
+    item.addEventListener('click',()=>{
+      const type=item.dataset.component;
+      choose(selectedComponent===type?null:type);
+      $('componentStatus').textContent=selectedComponent
+        ? `${item.querySelector('b').textContent} selected. Click a compatible room or wall in the plan to place it. Press Escape to cancel.`
+        : 'Placement cancelled. Choose a component or drag its tile to the plan.';
+    });
     item.addEventListener('dragstart',ev=>{
+      choose(null);
       ev.dataTransfer.setData('text/plain',item.dataset.component);
       ev.dataTransfer.effectAllowed='copy';
       svg.classList.add('drop-ready');
     });
     item.addEventListener('dragend',()=>svg.classList.remove('drop-ready'));
   });
+  svg.addEventListener('pointerdown',event=>{
+    if(selectedComponent&&event.button===0){
+      event.preventDefault();event.stopImmediatePropagation();
+    }
+  },true);
+  svg.addEventListener('click',event=>{
+    if(!selectedComponent)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    const ctx=window.__roomPlanner,point=roomPointerLocal(svg,event);
+    if(!ctx||!point){$('componentStatus').textContent='Generate a valid floor plan before placing components.';return;}
+    if(roomDropComponent(ctx,selectedComponent,point))choose(null);
+  },true);
+  document.addEventListener('keydown',event=>{
+    if(event.key!=='Escape'||event.isComposing||!selectedComponent)return;
+    if(event.target.closest?.('input,select,textarea,[contenteditable="true"]'))return;
+    choose(null);$('componentStatus').textContent='Placement cancelled.';
+    event.preventDefault();
+  });
+  document.addEventListener('homeplanner:project-context',()=>choose(null));
+  document.addEventListener('homeplanner:workspace-change',()=>choose(null));
   svg.addEventListener('dragover',ev=>{ev.preventDefault();ev.dataTransfer.dropEffect='copy';svg.classList.add('drop-ready');});
   svg.addEventListener('dragleave',ev=>{if(!svg.contains(ev.relatedTarget))svg.classList.remove('drop-ready');});
   svg.addEventListener('drop',ev=>{
@@ -4247,6 +4683,7 @@ function initComponentPalette(){
     if(!ctx||!point)return;
     const roomSource=ev.dataTransfer.getData('application/x-room-library');
     const plain=ev.dataTransfer.getData('text/plain');
+    choose(null);
     if(roomSource||plain.startsWith('room:'))roomAddLibraryItem(roomSource||plain.slice(5),point);
     else roomDropComponent(ctx,plain,point);
   });
@@ -4278,15 +4715,10 @@ function roomEditBlocked(ctx,message){
 }
 
 function roomCommitManual(ctx,p,carpet,fullRender=false,persist=true){
-  let module=roomCarpetModule(carpet);
-  if(p.req.type==='staircase'){
-    const anchor=roomStairAnchorOf(module,ctx.g);
-    if(!anchor)return roomEditBlocked(ctx,`${p.req.label} needs an available end of the side-corridor band.`);
-    module=anchor.module;
-    carpet={x:module.x+INT_WALL/2,y:module.y+INT_WALL/2,w:carpet.w,h:carpet.h};
-  }
-  if (!roomModuleClear(module,p.req.id,p.req,ctx.plan,ctx.g))
-    return roomEditBlocked(ctx,`${p.req.label} must remain ${p.req.type==='lift'||p.req.type==='staircase'?'within the side-corridor band with corridor access':'in the rectangular dwelling'} without overlapping another space or the prohibited pooja–bathroom wall.`);
+  const problem=roomEditableError(ctx,{kind:'room',room:p},carpet);
+  if(problem)return roomEditBlocked(ctx,problem);
+  roomSaveManualLayout(ctx);
+  const module=roomCarpetModule(carpet);
   ctx.editError='';
   p.carpet=carpet;p.module=module;
   roomAssignBalconies(ctx.plan,ctx.g,false);
@@ -4302,15 +4734,9 @@ function roomCommitManual(ctx,p,carpet,fullRender=false,persist=true){
 
 function roomCommitBalcony(ctx,b,rect,fullRender=false,persist=true){
   rect=roomBalconySnap(rect,ctx.g);
-  if(!roomBalconyInside(rect,ctx.g))
-    return roomEditBlocked(ctx,`${b.label} must stay in its ${ctx.g.balconyPolicy.allowed?'permitted setback-projection':'within-envelope balcony'} strip and against the dwelling facade.`);
-  if(ctx.g.balconies.some(other=>other.id!==b.id&&roomIntersects(rect,other)))
-    return roomEditBlocked(ctx,`${b.label} cannot overlap another balcony.`);
-  if(ctx.plan.placed.some(p=>roomIntersects(rect,p.module)))
-    return roomEditBlocked(ctx,`${b.label} cannot overlap a room or service block.`);
-  const next=ctx.g.balconies.map(other=>other.id===b.id?{...other,...rect}:other);
-  if(!roomBalconyAdjacencyValid(ctx.plan.placed,next))
-    return roomEditBlocked(ctx,`${b.label} must keep a usable shared wall with living/dining, a bedroom, or the kitchen.`);
+  const problem=roomEditableError(ctx,{kind:'balcony',balcony:b},rect);
+  if(problem)return roomEditBlocked(ctx,problem);
+  roomSaveManualLayout(ctx);
   ctx.editError='';
   Object.assign(b,rect);
   roomAssignBalconies(ctx.plan,ctx.g,false);
@@ -4325,12 +4751,8 @@ function roomCommitBalcony(ctx,b,rect,fullRender=false,persist=true){
 }
 
 function roomCommitFurniture(ctx,f,parent,rect,fullRender=false,persist=true){
-  if(!roomRectInside(rect,parent.carpet))
-    return roomEditBlocked(ctx,`${f.label} must stay fully inside ${parent.req.label}. Its own width is included at the right and bottom limits.`);
-  if((ctx.plan.furniture||[]).some(other=>other.id!==f.id&&other.roomId===f.roomId&&roomIntersects(rect,other)))
-    return roomEditBlocked(ctx,`${f.label} cannot overlap another component.`);
-  if(roomFurnitureClearances(ctx.plan,parent,f.type).some(c=>roomIntersects(rect,c)))
-    return roomEditBlocked(ctx,`${f.label} cannot block a door${f.type==='cupboard'||f.type==='sofa'?' or window':''} clear zone.`);
+  const problem=roomEditableError(ctx,{kind:'furniture',furniture:f,parent},rect);
+  if(problem)return roomEditBlocked(ctx,problem);
   ctx.editError='';
   Object.assign(f,rect);
   if(persist){roomSaveManualLayout(ctx);roomManualHint();}
@@ -4372,16 +4794,18 @@ function roomDeleteOpening(ctx,item){
 function roomRotateFurniture(ctx,item){
   if(!item||item.kind!=='furniture')return false;
   const f=item.furniture,parent=item.parent,cx=f.x+f.w/2,cy=f.y+f.h/2;
+  if(!ctx.plan||!parent?.carpet)return roomEditBlocked(ctx,'Choose a component on a valid floor before rotating it.');
   const heads=['N','E','S','W'],head=f.headLocal||(f.w<=f.h?'N':'W');
-  const rect={x:cx-f.h/2,y:cy-f.w/2,w:f.h,h:f.w,rotated:!f.rotated,
+  const desired={id:f.id,type:f.type,x:cx-f.h/2,y:cy-f.w/2,w:f.h,h:f.w,rotated:!f.rotated,
     headLocal:f.type==='bed'?heads[(heads.indexOf(head)+1)%4]:f.headLocal,pinned:true};
-  rect.x=roomClamp(rect.x,parent.carpet.x,parent.carpet.x+parent.carpet.w-rect.w);
-  rect.y=roomClamp(rect.y,parent.carpet.y,parent.carpet.y+parent.carpet.h-rect.h);
+  const rect=roomFindFurniturePosition(ctx.plan,parent,desired);
+  if(!rect)return roomEditBlocked(ctx,`${f.label} could not find a valid rotated placement in ${parent.req.label}. Its position and dimensions were kept; move another component or free some usable space.`);
+  const repositioned=Math.abs(rect.x-desired.x)>ROOM_EPS||Math.abs(rect.y-desired.y)>ROOM_EPS;
   if(!roomCommitFurniture(ctx,f,parent,rect,true,true)){
-    $('componentStatus').innerHTML=`<b style="color:var(--bad)">${roomEscapeMarkup(f.label)} cannot rotate here.</b> Move it to a larger clear area first.`;
+    $('componentStatus').innerHTML=`<b style="color:var(--bad)">${roomEscapeMarkup(f.label)} could not be rotated.</b> ${roomEscapeMarkup(ctx.editError)}`;
     return false;
   }
-  $('componentStatus').innerHTML=`<b style="color:var(--ok)">${roomEscapeMarkup(f.label)} rotated.</b> Width and depth were swapped.`;
+  $('componentStatus').innerHTML=`<b style="color:var(--ok)">${roomEscapeMarkup(f.label)} rotated${repositioned?' and repositioned to fit':''}.</b> Width and depth were swapped; room, door and service clearances were retained.`;
   return true;
 }
 
@@ -4394,18 +4818,10 @@ function roomCommitEditable(ctx,item,rect,fullRender=false,persist=true){
     ? roomCommitManual(ctx,item.room,rect,fullRender,persist)
     : item.kind==='balcony'
       ? roomCommitBalcony(ctx,item.balcony,rect,fullRender,persist)
-      : roomCommitFurniture(ctx,item.furniture,item.parent,rect,fullRender,persist);
+      : roomCommitFurniture(ctx,item.furniture,item.parent,{...rect,pinned:true},fullRender,persist);
 }
 
 function roomMoveCandidate(item,start,dx,dy,g){
-  if(item.kind==='room'&&item.room.req.type==='staircase'){
-    const module=roomCarpetModule(start);
-    const desired={...module,x:module.x+dx,y:module.y+dy};
-    const anchor=roomStairAnchorOf(desired,g);
-    if(!anchor)return {...start};
-    const snapped=anchor.module;
-    return {x:snapped.x+INT_WALL/2,y:snapped.y+INT_WALL/2,w:start.w,h:start.h};
-  }
   if(item.kind==='balcony'){
     const zone=g.balconyPolicy.zone;
     const horizontal=g.balconyPolicy.edge==='N'||g.balconyPolicy.edge==='S';
@@ -4413,13 +4829,7 @@ function roomMoveCandidate(item,start,dx,dy,g){
       x:horizontal?roomClamp(start.x+dx,zone.x,zone.x+zone.w-start.w):start.x,
       y:horizontal?start.y:roomClamp(start.y+dy,zone.y,zone.y+zone.h-start.h)},g);
   }
-  if(item.kind==='room'&&item.room.req.type==='lift'){
-    const bounds=g.serviceZone,pad=INT_WALL;
-    const x=bounds.side==='left'?bounds.x+bounds.w-start.w-pad/2:bounds.x+pad/2;
-    const y=roomClamp(start.y+dy,bounds.y+pad/2,bounds.y+bounds.h-start.h-pad/2);
-    return {x,y,w:start.w,h:start.h};
-  }
-  const pad=item.kind==='room'?INT_WALL:0;
+  const pad=item.kind==='room'?(item.room.req.reserveFootprint?2*INT_WALL:INT_WALL):0;
   const bounds=item.kind==='furniture'?item.parent.carpet:g.core;
   const outerX=start.x-pad/2,outerY=start.y-pad/2;
   const nx=roomClamp(outerX+dx,bounds.x,bounds.x+bounds.w-start.w-pad);
@@ -4461,19 +4871,8 @@ function roomResizeCandidate(item,start,dx,dy,g,edge){
   const minW=item.kind==='furniture'?(horizontalFurniture?longMin:depthMin):longMin;
   const minH=item.kind==='furniture'?(horizontalFurniture?depthMin:longMin):longMin;
   edge=edge||((Math.abs(dx)>=Math.abs(dy))?'E':'S');
-  if(item.kind==='room'&&item.room.req.type==='staircase'){
-    const module=roomCarpetModule(start),anchor=roomStairAnchorOf(module,g);
-    if(!anchor)return {...start};
-    const corner=anchor.corner;
-    const horizontal=edge==='E'||edge==='W',delta=edge==='E'?dx:edge==='W'?-dx:edge==='S'?dy:-dy;
-    const w=horizontal?roomClamp(start.w+delta,minW,g.serviceZone.w-INT_WALL):start.w;
-    const h=horizontal?start.h:roomClamp(start.h+delta,minH,g.serviceZone.h-INT_WALL);
-    const anchored=roomCornerModule(w+INT_WALL,h+INT_WALL,corner,g,anchor.zone);
-    return {x:anchored.x+INT_WALL/2,y:anchored.y+INT_WALL/2,w,h};
-  }
-  const pad=item.kind==='room'?INT_WALL:0;
-  const service=item.kind==='room'&&(item.room.req.type==='lift'||item.room.req.type==='staircase');
-  const bounds=item.kind==='furniture'?item.parent.carpet:service?g.serviceZone:g.core;
+  const pad=item.kind==='room'?(item.room.req.reserveFootprint?2*INT_WALL:INT_WALL):0;
+  const bounds=item.kind==='furniture'?item.parent.carpet:g.core;
   const leftBound=bounds.x+pad/2,topBound=bounds.y+pad/2;
   const rightBound=bounds.x+bounds.w-pad/2,bottomBound=bounds.y+bounds.h-pad/2;
   const next={...start};
@@ -4490,19 +4889,7 @@ function roomResizeCandidate(item,start,dx,dy,g,edge){
     const top=roomClamp(start.y+dy,topBound,start.y+start.h-minH);
     next.y=top;next.h=start.y+start.h-top;
   }
-  if(item.kind==='room'&&item.room.req.type==='lift')
-    next.x=g.serviceZone.side==='left'?g.serviceZone.x+g.serviceZone.w-next.w-pad/2:g.serviceZone.x+pad/2;
   return next;
-}
-
-function roomKeyboardStairMove(item,dx,dy,g){
-  const start=item.rect,module=roomCarpetModule(start),anchor=roomStairAnchorOf(module,g);
-  if(!anchor)return {...start};
-  const current=anchor.corner;
-  const vertical=dy<0?'N':dy>0?'S':current[0];
-  const horizontal=dx<0?'W':dx>0?'E':current[1];
-  const snapped=roomCornerModule(module.w,module.h,vertical+horizontal,g,anchor.zone);
-  return {x:snapped.x+INT_WALL/2,y:snapped.y+INT_WALL/2,w:start.w,h:start.h};
 }
 
 function roomPointerLocal(svg,ev){
@@ -4514,7 +4901,24 @@ function roomPointerLocal(svg,ev){
 
 function initRoomEditing(){
   const svg=$('roomPlan');
-  let drag=null,frame=0,suppressClick=false;
+  let drag=null,frame=0,suppressClick=false,preview=null;
+  const clearPreview=()=>{preview?.remove();preview=null;};
+  const showPreview=(item,rect,problem)=>{
+    if(!window.__roomView?.box)return;
+    if(!preview?.isConnected){
+      preview=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      preview.setAttribute('class','room-move-preview');
+      preview.setAttribute('aria-hidden','true');
+      svg.appendChild(preview);
+    }
+    const bounds=item.kind==='room'
+      ? roomOccupiedBounds({req:item.room.req,carpet:rect,module:roomCarpetModule(rect)}):rect;
+    const box=window.__roomView.box(bounds);
+    for(const [key,value] of Object.entries({x:box.x,y:box.y,width:box.w,height:box.h}))
+      preview.setAttribute(key,String(value));
+    preview.setAttribute('aria-invalid',String(!!problem));
+    $('roomEditHint').textContent=problem||'Release to place here. Moving across other objects does not change them; Escape cancels.';
+  };
   const applyPending=()=>{
     frame=0;
     if(!drag||!drag.point)return;
@@ -4522,20 +4926,9 @@ function initRoomEditing(){
     const ctx=window.__roomPlanner;if(!ctx)return;
     const item=roomFindEditable(ctx,drag.id);if(!item)return;
     const dx=pt.x-drag.start.x,dy=pt.y-drag.start.y,g=ctx.g,c=drag.rect;
-    let changed=false;
-    if(drag.action==='move'){
-      const next=roomMoveCandidate(item,c,dx,dy,g);
-      const tries=item.kind==='room'&&item.room.req.type==='staircase'
-        ? [next]
-        : [next,{x:next.x,y:c.y,w:c.w,h:c.h},{x:c.x,y:next.y,w:c.w,h:c.h}];
-      for(const candidate of tries){
-        if(roomCommitEditable(ctx,item,candidate,false,false)){changed=true;break;}
-      }
-    }else{
-      const next=roomResizeCandidate(item,c,dx,dy,g,drag.edge);
-      changed=roomCommitEditable(ctx,item,next,false,false);
-    }
-    drag.changed=drag.changed||changed;
+    drag.previewRect=drag.action==='move'?roomMoveCandidate(item,c,dx,dy,g):
+      roomResizeCandidate(item,c,dx,dy,g,drag.edge);
+    showPreview(item,drag.previewRect,roomEditableError(ctx,item,drag.previewRect));
   };
   svg.addEventListener('pointerdown',ev=>{
     if(ev.button!==0)return;
@@ -4549,7 +4942,8 @@ function initRoomEditing(){
     }
     drag={id:item.id,kind:item.kind,action:target.dataset.action,edge:target.dataset.edge,start:pt,
       screenStart:{x:ev.clientX,y:ev.clientY},threshold:ev.pointerType==='touch'?8:4,activated:false,
-      rect:{...item.rect},pointerId:ev.pointerId,point:null,changed:false};
+      rect:{...item.rect},pointerId:ev.pointerId,point:null,signature:ctx.signature,
+      project:window.HomePlanner?.getProject()};
     try{svg.setPointerCapture(ev.pointerId);}catch(e){}
     ev.preventDefault();
   });
@@ -4592,15 +4986,38 @@ function initRoomEditing(){
     if(!drag||ev.pointerId!==drag.pointerId)return;
     const cancelled=ev.type==='pointercancel'||ev.type==='lostpointercapture';
     if(frame){cancelAnimationFrame(frame);frame=0;if(!cancelled)applyPending();}
-    const ctx=window.__roomPlanner,changed=drag.changed,pointerId=drag.pointerId,error=ctx&&ctx.editError;
+    const ctx=window.__roomPlanner,pointerId=drag.pointerId;
     const ended=drag;
     drag=null;
+    clearPreview();
     svg.classList.remove('is-editing');
     try{svg.releasePointerCapture(pointerId);}catch(e){}
+    const current=window.HomePlanner?.getProject();
+    if(ctx?.signature!==ended.signature||ended.project&&
+      (!current||current.id!==ended.project.id||current.activeFloorId!==ended.project.activeFloorId||
+        current.revision!==ended.project.revision)){
+      window.HomePlanner?.endLegacyGesture();
+      $('roomEditHint').textContent='The project or floor changed during the drag. The preview was discarded.';
+      return;
+    }
     if(cancelled){
       if(window.HomePlanner)window.HomePlanner.endLegacyGesture(true);
-      else if(ended.changed)renderRoomPlanner(window.__last);
+      else if(ended.activated)renderRoomPlanner(window.__last);
       return;
+    }
+    let changed=false,error='';
+    if(ended.activated&&ended.previewRect&&ctx){
+      const item=roomFindEditable(ctx,ended.id);
+      try{
+        if(item&&['x','y','w','h'].some(key=>Math.abs(ended.previewRect[key]-ended.rect[key])>ROOM_EPS))
+          changed=roomCommitEditable(ctx,item,ended.previewRect,false,false);
+      }catch(problem){
+        if(window.HomePlanner)window.HomePlanner.endLegacyGesture(true);
+        else renderRoomPlanner(window.__last);
+        $('roomEditHint').textContent=`Move could not be applied: ${problem.message}`;
+        return;
+      }
+      error=ctx.editError;
     }
     if(changed&&ctx){roomSaveManualLayout(ctx);roomManualHint();}
     if(ended.activated){
@@ -4614,6 +5031,12 @@ function initRoomEditing(){
   svg.addEventListener('pointerup',finish);
   svg.addEventListener('pointercancel',finish);
   svg.addEventListener('lostpointercapture',finish);
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&drag&&!event.isComposing){
+      finish({type:'pointercancel',pointerId:drag.pointerId});
+      event.preventDefault();event.stopPropagation();
+    }
+  },true);
   svg.addEventListener('focusin',ev=>{
     if(!window.HomePlanner)return;
     const semantic=ev.target.closest?.('[data-planner-id][data-planner-kind]');
@@ -4650,9 +5073,7 @@ function initRoomEditing(){
     if(ev.shiftKey&&item.kind==='furniture'&&!roomFurnitureResizable(item.furniture))return;
     const next=ev.shiftKey
       ? roomResizeCandidate(item,item.rect,dx,dy,ctx.g)
-      : item.kind==='room'&&item.room.req.type==='staircase'
-        ? roomKeyboardStairMove(item,dx,dy,ctx.g)
-        : roomMoveCandidate(item,item.rect,dx,dy,ctx.g);
+      : roomMoveCandidate(item,item.rect,dx,dy,ctx.g);
     roomCommitEditable(ctx,item,next,true);ev.preventDefault();
   });
   $('roomReset').addEventListener('click',()=>{
@@ -4710,6 +5131,7 @@ function roomUpdateFullscreenControl(){
   const workspace=$('roomPlanWorkspace');
   const active=document.fullscreenElement===workspace||workspace.classList.contains('room-plan-maximized');
   if(active)roomDockComponentPane();else roomRestoreComponentPane();
+  window.HomePlannerWorkspace?.dockInspector(active);
   $('roomFullscreen').textContent=active?'Exit fullscreen':'Fullscreen';
   $('roomFullscreen').setAttribute('aria-pressed',String(active));
 }
@@ -4738,6 +5160,26 @@ async function roomToggleFullscreen(){
 
 function initRoomViewport(){
   const viewport=$('roomPlanViewport');
+  const historyButtons={undo:$('roomUndo'),redo:$('roomRedo')};
+  const syncHistory=()=>{
+    const planner=window.HomePlanner;
+    historyButtons.undo.disabled=!planner?.canUndo();
+    historyButtons.redo.disabled=!planner?.canRedo();
+  };
+  for(const [action,button] of Object.entries(historyButtons))button.addEventListener('click',()=>{
+    try{
+      const planner=window.HomePlanner;
+      if(!planner)throw new Error('Edit history is unavailable. Keep planner-bridge.js beside the page and reload after saving your work.');
+      const applied=planner[action]();
+      $('roomEditHint').textContent=applied?`${action==='undo'?'Undo':'Redo'} applied to the project.`:`Nothing to ${action}.`;
+    }catch(error){
+      $('roomEditHint').textContent=`${action==='undo'?'Undo':'Redo'} failed: ${error.message}`;
+    }
+    syncHistory();
+  });
+  const connectHistory=()=>{window.HomePlanner?.subscribe(syncHistory);syncHistory();};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',connectHistory,{once:true});
+  else connectHistory();
   $('roomZoomOut').addEventListener('click',()=>roomSetZoom(roomPlanZoom-.1));
   $('roomZoomIn').addEventListener('click',()=>roomSetZoom(roomPlanZoom+.1));
   $('roomZoomFit').addEventListener('click',()=>roomSetZoom(1,null,true));
@@ -4790,12 +5232,12 @@ function roomSvgPlan(plate,g,plan){
     const dx=x-cx,dy=y-cy;
     return {x:(dx*co+dy*si)/scale+layoutCx,y:(-dx*si+dy*co)/scale+layoutCy};
   };
-  window.__roomView={toLocal,scale};
   const box=r=>{
     const pts=[point(r.x,r.y),point(r.x+r.w,r.y),point(r.x,r.y+r.h),point(r.x+r.w,r.y+r.h)];
     const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
     return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
   };
+  window.__roomView={toLocal,scale,box};
   const rect=(r,fill,stroke='var(--svg-line)',extra='')=>{
     const b=box(r); return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="${fill}" stroke="${stroke}" ${extra}/>`;
   };
@@ -4883,22 +5325,31 @@ function roomSvgPlan(plate,g,plan){
     out+=resizeHandles(b,b.id,b.label);
     out+='</g>';
   });
-  plan.placed.forEach(p=>{
+  plan.placed.slice().sort((a,b)=>Number(!!a.req.reserveFootprint)-Number(!!b.req.reserveFootprint)).forEach(p=>{
     out+=`<g data-room-id="${p.req.id}" tabindex="0" role="group" aria-label="${p.req.label}, draggable and resizable">`;
     if(!effective)out+=rect(p.module,'var(--svg-deep)','var(--svg-line-strong)',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
-    out+=rect(p.carpet,ROOM_COLORS[p.req.type],'var(--svg-muted)',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
+    (p.usableRegions||[p.carpet]).forEach(region=>{
+      out+=rect(region,ROOM_COLORS[p.req.type],'none',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
+    });
     out+=`<title>${p.req.label}: ${f1(p.carpet.w/FT)} by ${f1(p.carpet.h/FT)} ft. Drag to move.</title>`;
-    out+=label(p.carpet,p.req.label,showDims?`${f1(p.carpet.w/FT)} × ${f1(p.carpet.h/FT)} ft`:'');
+    const labelRegion=(p.usableRegions||[p.carpet]).slice().sort((a,b)=>b.w*b.h-a.w*a.h)[0];
+    if(labelRegion)out+=label(labelRegion,p.req.label,showDims?(p.reservedAreaM2>ROOM_EPS
+      ?`${f0(roomUsableArea(p)*M2SF)} sq ft usable`:`${f1(p.carpet.w/FT)} × ${f1(p.carpet.h/FT)} ft`):'');
     out+=resizeHandles(p.carpet,p.req.id,p.req.label);
     out+='</g>';
   });
+  for(const passage of plan.stairPassages||[]){
+    out+=rect(passage.rect,'var(--plan-corridor)',passage.crossesBoundary?'var(--warn)':'var(--svg-muted)',
+      'fill-opacity=".6" stroke-dasharray="5 3" pointer-events="none"');
+    out+=corridorLabel(passage.rect,'Passage',`${f1(passage.widthM/FT)} ft clearance${passage.crossesBoundary?' · review boundary':''}`);
+  }
   if(effective)out+=window.HomePlanner.renderLayer(effective,point,scale,'walls');
   (plan.furniture||[]).forEach(f=>{
-    const parent=plan.placed.find(p=>p.req.id===f.roomId),color=ROOM_COLORS[f.type]||'#d2a8ff';
+    const parent=plan.placed.find(p=>p.req.id===f.roomId),color=f.needsRelocation?'var(--bad)':ROOM_COLORS[f.type]||'#d2a8ff';
     const resizable=roomFurnitureResizable(f);
     out+=`<g class="room-furniture-group" data-room-id="${roomEscapeMarkup(f.id)}" tabindex="0" role="group" aria-label="${roomEscapeMarkup(f.label)}, movable${resizable?' and resizable':''} within ${parent?parent.req.label:'its room'}, deletable">`;
     out+=rect(f,color,color,
-      `class="room-furniture" data-room-id="${roomEscapeMarkup(f.id)}" data-action="move" fill-opacity=".38" stroke-width="1.3"`);
+      `class="room-furniture" data-room-id="${roomEscapeMarkup(f.id)}" data-action="move" fill-opacity=".38" stroke-width="1.3"${f.needsRelocation?' stroke-dasharray="4 3"':''}`);
     if(f.type==='bed'){
       const head=f.headLocal||(f.w<=f.h?'N':'W');
       const depth=Math.min((head==='N'||head==='S'?f.h:f.w)*.16,.38);
@@ -4970,6 +5421,7 @@ function roomRangeText(range){
 function renderRoomPlanner(r){
   if(window.__plotInputError)return;
   if (!r) return;
+  const previous=window.__roomPlanner,project=window.HomePlanner?.getProject();
   const plate=roomPlateFor(r),cfg=roomPlannerConfig(),warnings=cfg.warnings.slice();
   cfg.frontEdge=plate.frontEdge;
   roomUpdateLibrarySummaries();
@@ -5002,15 +5454,22 @@ function renderRoomPlanner(r){
     return;
   }
 
+  makeRoomRequests(cfg);
   const signature=roomPlanSignature(plate,cfg);
+  const programmeChanged=roomPreserveProgrammeChange(previous,plate,g,cfg,signature,project);
   roomApplySavedBalconies(g,signature);
-  const plan=roomApplyManualLayout(roomPackProgram(g,cfg),g,signature);
+  const savedLayout=roomManualLayouts.get(signature);
+  const initialPlan=savedLayout?.preserveRooms
+    ? {placed:[],unmet:[],free:[],totalDeviation:0,index:0}
+    : roomPackProgram(g,cfg);
+  const plan=roomApplyManualLayout(initialPlan,g,signature,cfg);
   plan.layoutSignature=signature;
   plan.openings=roomPlanOpenings(g,plan,cfg);
   roomApplySavedOpenings(g,plan,cfg,signature);
   roomPlanFurniture(plan,cfg,signature);
   const manualActive=roomManualLayouts.has(signature);
-  window.__roomPlanner={plate,g,plan,cfg,signature};
+  window.__roomPlanner={plate,g,plan,cfg,signature,ownerProjectId:project?.id,ownerFloorId:project?.activeFloorId};
+  if(programmeChanged)roomSaveManualLayout(window.__roomPlanner);
   if(window.HomePlanner){
     const scene=window.HomePlanner.sceneForRender(plate,g,plan,cfg);
     if(scene)plan.wallFootprint=scene.metrics.wallFootprintM2;
@@ -5024,7 +5483,10 @@ function renderRoomPlanner(r){
     .filter(a=>!a.eligible.length||a.ineligible.length);
   const inaccessible=plan.circulation.inaccessible;
   const requestedTotal=Object.values(cfg.counts).reduce((sum,count)=>sum+count,0);
-  const allFit=requestedTotal>0&&plan.unmet.length===0&&balconyUnmet===0&&balconyIssues.length===0&&inaccessible.length===0;
+  const reservedRooms=plan.placed.filter(p=>p.reservedAreaM2>ROOM_EPS);
+  const fullyReserved=reservedRooms.filter(p=>roomUsableArea(p)<=ROOM_EPS);
+  const directionExceptions=plan.placed.filter(p=>!roomDirectionsSatisfied(p,g));
+  const allFit=requestedTotal>0&&plan.unmet.length===0&&balconyUnmet===0&&balconyIssues.length===0&&inaccessible.length===0&&!fullyReserved.length;
   const circulation=g.corridorArea+plan.balconyArea+plan.serviceArea+plan.unassigned-plan.serviceCorridorOverlap;
   const walls=plan.wallFootprint;
   const internalWall=Math.max(0,walls-g.externalWallArea);
@@ -5034,7 +5496,12 @@ function renderRoomPlanner(r){
   const alerts=[];
   if(plate.nonCompliant)alerts.push('<div class="verdict v-bad"><b>NON-COMPLIANT SETBACK SCENARIO.</b> This layout uses custom setbacks below the modeled rules. It is not a sanctioned or permission-eligible design.</div>');
   if(!requestedTotal)alerts.push(`<div class="verdict v-info"><b>The floor plate is empty.</b> Drag only the rooms and services you need from the right sidebar; each collapsed row shows its current dimensions.</div>`);
-  else if (allFit) alerts.push(`<div class="verdict v-ok"><b>The requested program fits in this deterministic schematic.</b> The dwelling is rectangular, lift / stair access stays on the external corridor, and every balcony follows the selected floor's projection rule.</div>`);
+  else if (allFit) alerts.push(`<div class="verdict v-ok"><b>The requested program fits in this deterministic schematic.</b> Lift and stair footprints are reserved inside the dwelling; access and vertical construction still need review. Every balcony follows the selected floor's projection rule.</div>`);
+  if(reservedRooms.length)alerts.push(`<div class="verdict v-info"><b>Lift / stair footprints are reserved.</b> ${reservedRooms.map(p=>`${roomEscapeMarkup(p.req.label)}: ${f0(p.reservedAreaM2*M2SF)} sq ft reserved, ${f0(roomUsableArea(p)*M2SF)} sq ft usable`).join('; ')}. The deduction includes service-wall footprints and is not counted again as usable room area.</div>`);
+  if(directionExceptions.length)alerts.push(`<div class="verdict v-info"><b>Compass preference exceptions:</b> ${directionExceptions.map(p=>roomEscapeMarkup(p.req.label)).join(', ')}. Suggestions prefer kitchen SE, bedrooms NW/NE and bathrooms S/W; valid manual placements are retained rather than moving other rooms automatically.</div>`);
+  if(fullyReserved.length)alerts.push(`<div class="verdict v-warn"><b>No usable area remains in ${fullyReserved.map(p=>roomEscapeMarkup(p.req.label)).join(', ')}.</b> Move or resize the service block, or remove the displaced room. Its original outline remains editable.</div>`);
+  if(plan.stairPassages?.length)alerts.push('<div class="verdict v-info"><b>Along-stair passage clearance shown.</b> It is part of the existing floor area and is not counted twice. Existing furniture in the strip is retained for relocation. A dashed strip crossing a room boundary does not remove that wall or establish an escape route.</div>');
+  if(plan.stairPassageIssues?.length)alerts.push(`<div class="verdict v-warn">${plan.stairPassageIssues.map(roomEscapeMarkup).join('; ')}. Move the staircase or adjust the passage width; other rooms were not moved.</div>`);
   if(cfg.counts.balcony)alerts.push(`<div class="verdict v-info"><b>Balcony rule for floor ${plate.floorIndex}:</b> ${g.balconyPolicy.allowed
     ? `high-rise projection is active from ${f1(plate.floorElevation)} m; depth is capped at ${f1(g.balconyPolicy.maxDepth/FT)} ft on the ${DIRNAME[g.balconyPolicy.globalEdge].toLowerCase()} side.`
     : 'setback projection is not allowed; balconies remain between the rectangular dwelling facade and the statutory envelope.'}</div>`);
@@ -5063,7 +5530,7 @@ function renderRoomPlanner(r){
   $('roomStats').innerHTML=`
     <div class="stat"><div class="k">${plate.customSetbacks?'Custom setback':'Statutory floor'} envelope</div><div class="v">${f0(plate.area*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">rectangular dwelling ${f1(g.outerW)} × ${f1(g.outerD)} m${plate.nonCompliant?' · NON-COMPLIANT':''}</div></div>
     <div class="stat"><div class="k">Room carpet</div><div class="v" style="color:var(--ok)">${f0(plan.habitableCarpetArea*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">occupied rooms, excluding lift / stair</div></div>
-    <div class="stat"><div class="k">Circulation + service</div><div class="v">${f0(circulation*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.corridorArea*M2SF)} external corridor · ${f0(plan.unassigned*M2SF)} internal flex · ${f0(plan.balconyArea*M2SF)} balcony · ${f0(plan.serviceArea*M2SF)} corridor-overlaid lift / stair</div></div>
+    <div class="stat"><div class="k">Circulation + service</div><div class="v">${f0(circulation*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.corridorArea*M2SF)} external corridor · ${f0(plan.unassigned*M2SF)} internal flex · ${f0(plan.balconyArea*M2SF)} balcony · ${f0(plan.serviceArea*M2SF)} lift / stair</div></div>
     <div class="stat"><div class="k">Wall footprint</div><div class="v">${f0(walls*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${f0(g.externalWallArea*M2SF)} external · ${f0(internalWall*M2SF)} internal</div></div>
     <div class="stat"><div class="k">Carpet efficiency</div><div class="v" style="color:${efficiency>=55?'var(--ok)':'var(--warn)'}">${f1(efficiency)}%</div><div class="s">room carpet ÷ gross floor plate</div></div>
     <div class="stat"><div class="k">Across selected floors</div><div class="v">${f0(repeatable*M2SF)} <span style="font-size:13px;color:var(--dim)">sq ft</span></div><div class="s">${plate.floors} floor${plate.floors===1?'':'s'} if this plate repeats</div></div>`;
@@ -5084,8 +5551,8 @@ function renderRoomPlanner(r){
       (doors.length?` · ${doors.map(d=>d.kind==='balcony-slider'?`${d.global} ${f1(d.width/FT)} ft sliding balcony door`:
         `${d.global} ${f1(d.width/FT)} ft door → ${roomEscapeMarkup(d.targetLabel)}`).join(' + ')}`:passages.length?'':' · no access opening')+
       (passages.length?` · ${passages.map(o=>`${f1(o.width/FT)} ft open connection to ${roomEscapeMarkup(o.targetLabel||'passage')}`).join(' + ')}`:'');
-    return `<tr><td><b>${p.req.label}</b></td><td class="n">${f1(p.carpet.w/FT)} × ${f1(p.carpet.h/FT)} ft</td>`+
-      `<td class="n">${f0(p.carpet.w*p.carpet.h*M2SF)} sq ft</td><td class="mini">${roomRangeText(p.req.range)}</td>`+
+    return `<tr><td><b>${p.req.label}</b></td><td class="n">${f1(p.carpet.w/FT)} × ${f1(p.carpet.h/FT)} ft${p.reservedAreaM2>ROOM_EPS?'<br><span class="mini">bounding dimensions</span>':''}</td>`+
+      `<td class="n">${f0(roomUsableArea(p)*M2SF)} sq ft${p.reservedAreaM2>ROOM_EPS?`<br><span class="mini">${f0(p.reservedAreaM2*M2SF)} sq ft reserved</span>`:''}</td><td class="mini">${roomRangeText(p.req.range)}</td>`+
       `<td class="mini">${openings}</td><td><span class="badge ${s[0]}">${s[1]}</span></td></tr>`;
   });
   plan.unmet.forEach(x=>rows.push(`<tr><td><b>${x.label}</b></td><td class="n">—</td><td class="n">—</td><td class="mini">${roomRangeText(x.range)}</td><td class="mini">—</td><td><span class="badge b-bad">Not placed</span></td></tr>`));
@@ -5104,9 +5571,9 @@ function renderRoomPlanner(r){
   for(let i=g.balconies.length;i<cfg.counts.balcony;i++)
     rows.push(`<tr><td><b>Balcony ${i+1}</b></td><td class="n">—</td><td class="n">—</td><td class="mini">${f1(cfg.balconyDepth/FT)} ft depth</td><td class="mini">—</td><td><span class="badge b-bad">Not placed</span></td></tr>`);
   const scheduleRows=rows.length?rows.join(''):'<tr><td colspan="6" class="mini">No rooms or services requested yet. Add them from the right sidebar.</td></tr>';
-  $('roomTable').innerHTML=`<tr><th>Space</th><th class="n">Actual clear size</th><th class="n">Carpet area</th><th>Requested range</th><th>Openings</th><th>Status</th></tr>${scheduleRows}`;
-  $('roomNote').innerHTML=`Front / side / rear external corridor bands are <b>${f1(g.F/FT)} / ${f1(g.S/FT)} / ${f1(g.B/FT)} ft</b> and remain inside the statutory envelope. Lift and stair blocks overlay the side band, so its configured width is not an unobstructed-clear-width claim where they sit. `+
-    `Internal flex / circulation after room expansion: <b>${f0(plan.unassigned*M2SF)} sq ft</b>. ${cfg.counts.living?'Living/dining receives the dwelling entry. ':'When no living room is requested, rooms connect to an internal passage reached from the dwelling entry. '}The common bathroom opens only to reachable internal flex / passage; each other bathroom is assigned to one bedroom, with no bedroom receiving more than one ensuite. Lift and stair doors open only to the remaining external corridor and never through the home. Rooms without the required access are flagged rather than given an exterior detour or a fake opening through another room. Pooja rooms and bathrooms are prevented from sharing a wall. External walls use <b>${f1(cfg.walls.external/IN)} in</b>; internal wall modules reserve <b>${f1(cfg.walls.internal/IN)} in</b>. `+
+  $('roomTable').innerHTML=`<tr><th>Space</th><th class="n">Size / bounding dimensions</th><th class="n">Usable carpet area</th><th>Requested range</th><th>Openings</th><th>Status</th></tr>${scheduleRows}`;
+  $('roomNote').innerHTML=`Front / side / rear external corridor bands are <b>${f1(g.F/FT)} / ${f1(g.S/FT)} / ${f1(g.B/FT)} ft</b> and remain inside the statutory envelope. Lifts and staircases can be positioned over rooms inside the dwelling; their complete footprints are reserved from host usable area. `+
+    `Internal flex / circulation after room expansion: <b>${f0(plan.unassigned*M2SF)} sq ft</b>. ${cfg.counts.living?'Living/dining receives the dwelling entry. ':'When no living room is requested, rooms connect to an internal passage reached from the dwelling entry. '}The common bathroom opens only to reachable internal flex / passage; each other bathroom is assigned to one bedroom, with no bedroom receiving more than one ensuite. Lift/stair access may use a corridor or a valid internal connection; missing access is flagged without forcing the service back to a fixed location. Pooja rooms and bathrooms are prevented from sharing a wall. External walls use <b>${f1(cfg.walls.external/IN)} in</b>; internal wall modules reserve <b>${f1(cfg.walls.internal/IN)} in</b>. `+
     `The enclosed dwelling shell is rectangular; balconies remain outside it and may cross the statutory envelope only when the selected high-rise floor is at least 6 m above ground, capped at 2 m and the available setback. `+
     `Wall figures are plan-footprint estimates, not vertical wall surface area.<br><br>`+
     `<b>Planning limit.</b> This is a deterministic packing heuristic, not an architectural, structural, fire-safety, accessibility, cultural-guidance or sanction drawing. Structural columns, stair rise/run and landing calculations, lift machinery/pits, ducts, plumbing stacks, detailed door swings, parking and escape-path widths still need an architect and engineer.`;
@@ -5787,12 +6254,6 @@ function initSplitDrag(){
 
 /* ================= Wiring ================= */
 $('face').addEventListener('change',()=>{buildRoadInputs();render();});
-document.querySelectorAll('.primary-tabs button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.primary-tabs button').forEach(x=>x.classList.toggle('on',x===b));
-  document.querySelectorAll('.app-page').forEach(p=>p.classList.toggle('on',p.id==='page-'+b.dataset.page));
-  $('plotSources').hidden=b.dataset.page!=='optimizer';
-  if (b.dataset.page==='rooms'&&!window.__plotInputError) renderRoomPlanner(window.__last);
-}));
 document.querySelectorAll('.sub-tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.sub-tabs button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on', p.id==='pane-'+b.dataset.pane));
@@ -5838,7 +6299,7 @@ $('floorCount').addEventListener('change',()=>{delete $('floorCount').dataset.ad
 ['roomTarget','roomFloor','showPlanDims','passiveMode','windowType','windowHeadHeight','ceilingHeight','windDir','vastuMode','greenMode','livingCount','bedCount','bathCount','kitchenCount','poojaCount','balconyCount','liftCount','stairCount',
  'bedMinW','bedMinD','bedMaxW','bedMaxD','kitMinW','kitMinD','kitMaxW','kitMaxD',
  'poojaMinW','poojaMinD','poojaMaxW','poojaMaxD',
- 'bathW','bathD','livingW','livingD','liftW','liftD','stairFlightW','stairD',
+ 'bathW','bathD','livingW','livingD','liftW','liftD','stairFlightW','stairD','stairPassageW',
  'frontCorr','backCorr','sideCorr','sideCorrEdge','balconyDepth','externalWallThickness','internalWallThickness']
   .forEach(id=>{const e=$(id);if(!e)return;const update=()=>{renderRoomPlanner(window.__last);roomUpdateComponentSizes();};e.addEventListener('input',update);e.addEventListener('change',update);});
 ['bedSize','cupboardLength','cupboardDepth','diningTableW','diningTableD','studyTableW','studyTableD',
@@ -5870,17 +6331,45 @@ render();
 <script src="sun-model.js"></script>
 <script src="planner-location.js"></script>
 <script src="sun-planner.js"></script>
+<script src="planner-features.js"></script>
 <script src="planner-model.js"></script>
+<script src="electrical-planner.js"></script>
+<script src="planner-projection.js"></script>
+<script src="planner-structure.js"></script>
+<script src="planner-services.js"></script>
+<script src="planner-drainage.js"></script>
 <script src="planner-bridge.js"></script>
 <script src="planner-editor.js"></script>
 <script src="planner-3d.js"></script>
 <script src="building-physics.js"></script>
+<script src="planner-airflow.js"></script>
+<script src="planner-airflow-runner.js"></script>
+<script src="planner-airflow-display.js"></script>
+<script src="planner-light.js"></script>
+<script src="planner-light-runner.js"></script>
+<script src="planner-light-display.js"></script>
 <script src="sun-exposure.js"></script>
 <script src="environment-data.js"></script>
 <script src="environment-ui.js"></script>
-<script src="electrical-planner.js"></script>
 <script src="planner-storage.js"></script>
 <script src="planner-persistence.js"></script>
 <script src="prohibited-properties.js"></script>
+<script src="planner-workspace.js"></script>
+<script src="planner-drawing.js"></script>
+<script src="planner-structure-drawing.js"></script>
+<script src="planner-services-drawing.js"></script>
+<script src="planner-drainage-drawing.js"></script>
+<script src="planner-elevation.js"></script>
+<script src="planner-drawing-export.js"></script>
+<script src="planner-drawing-ui.js"></script>
+<script src="planner-structure-ui.js"></script>
+<script src="planner-elevation-ui.js"></script>
+<script src="planner-facade-ui.js"></script>
+<script src="planner-services-ui.js"></script>
+<script src="planner-drainage-ui.js"></script>
+<script src="planner-airflow-ui.js"></script>
+<script src="planner-light-ui.js"></script>
+<script src="planner-package.js"></script>
+<script src="planner-package-ui.js"></script>
 </body>
 </html>

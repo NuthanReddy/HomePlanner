@@ -4,14 +4,23 @@ A local-first browser workbench for GHMC/HMDA plot comparisons, editable
 multi-floor layouts, sun paths, environmental scenarios and electrical-point
 planning.
 
-| Workspace | Capabilities |
+The six project destinations are **Overview**, **Site · Plot Planner**,
+**Design**, **Environment**, **Compare**, and **Report**. Project/save context
+and the shared active-floor toolbar remain available throughout. See
+[workspace navigation](docs/workspace-navigation.md) for routes and state behavior.
+
+| Tool (within its project destination) | Capabilities |
 |---|---|
 | Plot Planner | Setbacks, selectable G+n floor counts, explicit non-compliant setback scenarios, plot splitting and indicative costs. Regulatory sources stay on this page. |
-| Room Planner | Independent floors, shared wall/opening geometry, click-to-inspect, door swings, removable internal partitions, bed-head preferences and optional stacked 3D. |
-| Sun Path | Local SunCalc angles, daylight/twilight/golden-hour summary, monthly and seasonal paths, same-clock-time curves, 1 ft pole-shadow length, neighbour-blocked roof/exterior-wall sunlight hours, coordinate detection on request and CSV export. |
+| Room Planner | Independent floors, destination-based room movement, movable lift/stair reservations deducted from usable area, selected-room deletion with Undo, full-tile placement with separate settings arrows, shared wall/opening geometry and optional stacked 3D. |
+| Sun Path (Environment) | Local SunCalc angles, daylight/twilight/golden-hour summary, monthly and seasonal paths, same-clock-time curves, 1 ft pole-shadow length, neighbour-blocked roof/exterior-wall sunlight hours, coordinate detection on request and CSV export. Exploratory overrides apply to the project only on explicit request. |
 | Environment | Local weather import, opt-in historical-weather fetch, geometric shadows, layer comparisons, wind proposals and explicitly supplied reduced-model experiments. |
+| Airflow (Environment) | Room/opening pressure scenarios, signed opening arrows, residual/pressure tables, cancellation, scenario comparison and local JSON/CSV/SVG evidence. Explicit density, free area, Cd and forcing; not CFD or room airspeed. |
+| Light (Environment) | Room workplane direct-sun masks, presence/transmitted-equivalent hours, normalized cosine-weighted sky access, scenarios, local evidence and opt-in 3D cells. Real electrical-point intent remains a separate non-emitting layer. Not lux, daylight factor or lighting adequacy. |
 | Electrical | Per-floor points, wall/surface anchors, unknown-height states and ergonomic/professional-review guidance. |
-| Prohibited Properties | Telangana location dropdowns, source reports, local Tesseract OCR, searchable tables and a Markdown cache. Requires the local Flask server. |
+| Drainage (Design) | Separate sanitary/storm intent, supplied ground/finished-floor/invert levels, explicit discharge destinations, geometric fall/clearance review, plans/profiles, PDF/SVG/PNG and opt-in 3D centerlines. Not hydraulic sizing, safe discharge or construction approval. |
+| Prohibited Properties (Site · Plot Planner) | Telangana location dropdowns, source reports, local Tesseract OCR, searchable tables and a Markdown cache. Requires an explicit connection to the local Flask server. |
+| Document package (Report) | Ordered conceptual drawing set, coordination findings, available analysis evidence and explicit unavailable sections from one captured project snapshot. Multipage vector PDF, individual SVG/PNG sheets and revision manifest; editable package settings stay in project JSON. |
 
 ## Run locally
 
@@ -19,7 +28,9 @@ Open [`index.html`](index.html) with the accompanying scripts, stylesheets and
 `vendor` folder. There is no application build or dependency-install step.
 The 2D tools, local data imports and numerical scenarios can operate offline.
 
-The optional 3D ES modules need HTTP/HTTPS and WebGL2. For a full local preview
+Room airflow and light studies need HTTP/HTTPS and local Web Workers; they do not
+fall back to blocking the editor with main-thread analysis. The optional 3D ES
+modules also need HTTP/HTTPS and WebGL2. For a full local preview
 on Windows with Python installed:
 
 ```powershell
@@ -42,6 +53,8 @@ py -m venv .venv
 
 Open `http://127.0.0.1:8000/?workspace=prohibited`. The existing planning
 workspaces are served from the same origin and retain their browser storage.
+Choose **Connect local lookup** to load location options. Opening the route alone
+does not contact the backend.
 Tesseract must be installed with English and Telugu language data; the
 application does not need a GPU or a cloud OCR account.
 
@@ -57,7 +70,7 @@ API, Tesseract setup, cache layout, downloader and limitations.
 
 ## Keeping projects
 
-Room Planner's **Local projects** controls provide opt-in IndexedDB autosave,
+The persistent **Projects & backups** menu provides opt-in IndexedDB autosave,
 saved-project management and JSON backup/import. Floors, manual edits,
 electrical points and environment data are retained together. Browser storage
 is not a backup; keep exported JSON separately. File-origin storage varies by
@@ -66,6 +79,28 @@ browser, and changing the origin/profile can hide or remove local data.
 Nothing detects location or fetches weather automatically. Device location is
 requested only by its button; online weather requires a separate consent/action.
 There is no cloud database, account or automatic project upload.
+**Report → Drawings** exports architectural and conceptual structural sheets as
+fixed-scale vector PDF/SVG or PNG, including structural schedule continuation
+pages. Individual drawing preferences are browser-session state.
+**Report → Document package** assembles the full conceptual set and a revision
+manifest. Its **Save package settings** action records editable intentions in
+the project; use the shared project save or JSON backup to retain them outside
+the current session. It does not save a second editable drawing model.
+Missing views, levels or current analysis remain explicitly unavailable; a
+generated PDF is not proof of design completeness or construction approval.
+See [coordinated packages](docs/coordinated-package.md) and
+[the package workbench](docs/package-workbench.md).
+**Design → Structure** edits grid, column, beam, slab and footing intent with
+explicit dimensions/provenance, coordination findings and an opt-in layer in the
+shared 3D view. These are not engineered member designs or structural approvals.
+**Design → Elevations & sections** saves geographic elevations and finite section
+cuts, with real floor/opening levels and physical facade-box authoring. Export
+selected or all saved views through Report. Fit-to-screen preview zoom does not
+change print scale; PNG offers 72/150 dpi and cancellation.
+**Design → Plumbing** authors fixtures, explicit ports, cold/hot water and
+soil/waste/vent routes. Plans, riser diagrams, schedules and the optional 3D
+centerline layer use the same network. Connectivity and geometric lengths are
+review aids, not hydraulic sizing or approved penetrations.
 
 ## Documentation
 

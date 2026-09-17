@@ -1,6 +1,6 @@
 (function (root, factory) {
   'use strict';
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./planner-drafts.js') : root.HomePlannerDrafts);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (!root.document) return;
   root.HomePlannerElectrical = api;
@@ -13,7 +13,7 @@
   };
   start();
   if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', start, { once: true });
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Drafts) {
   'use strict';
 
   const EPS = 1e-8;
@@ -223,6 +223,16 @@
       if (!room || !contains(room.rect, anchor)) {
         checks.push(finding('incomplete', 'unknown', 'surface-room-unknown', 'Choose a room containing this surface point; a ceiling or floor surface here is not established.'));
         return result;
+      }
+      if (room.usableRegions !== undefined) {
+        if (!Array.isArray(room.usableRegions) || room.usableRegions.some(region => !rectValid(region))) {
+          checks.push(finding('incomplete', 'unknown', 'usable-surface-unknown', 'The room usable-surface geometry is invalid. Recalculate the layout before locating this point.'));
+          return result;
+        }
+        if (!room.usableRegions.some(region => contains(region, anchor))) {
+          checks.push(finding('geometry', 'conflict', 'reserved-room-area', 'This point lies in space reserved for a lift or staircase, not on the associated room usable surface. Move or rehost it explicitly.'));
+          return result;
+        }
       }
       const surfaceHeight = anchor.kind === 'floor' ? 0 : scene.wallHeightM;
       if (finite(point.elevationM) && finite(surfaceHeight) && Math.abs(point.elevationM - surfaceHeight) > EPS) {
@@ -676,9 +686,11 @@
     const radius = Math.max(0.12, size * 0.012), font = Math.max(0.16, size * 0.015);
     let body = `<rect class="elec-floor-outline" x="${floor.x}" y="${floor.y}" width="${floor.w}" height="${floor.h}"/>`;
     for (const room of list(scene.rooms).filter(item => rectValid(item.rect))) {
-      const r = room.rect;
-      body += `<rect class="elec-room-outline" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/>
-        <text class="elec-room-name" x="${r.x + r.w / 2}" y="${r.y + r.h / 2}" font-size="${font}" text-anchor="middle">${escape(room.label || room.type || room.id)}</text>`;
+      const regions=room.usableRegions===undefined?[room.rect]:list(room.usableRegions).filter(rectValid);
+      for(const r of regions)
+        body += `<rect class="elec-room-outline" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/>`;
+      const r=regions.slice().sort((a,b)=>b.w*b.h-a.w*a.h)[0];
+      if(r)body += `<text class="elec-room-name" x="${r.x + r.w / 2}" y="${r.y + r.h / 2}" font-size="${font}" text-anchor="middle">${escape(room.label || room.type || room.id)}</text>`;
     }
     for (const wall of list(scene.walls).filter(item => !item.removed && length(item) > EPS)) {
       for (const segment of list(wall.solidSegments)) {
@@ -927,6 +939,17 @@
       <a href="docs/electrical-planning.md">Sources, measurement meanings and limitations</a>.</p>`;
     const query = selector => host.querySelector(selector);
     const form = query('[data-elec-form]'), suggestionForm = query('[data-elec-suggest-form]');
+    const drafts = Drafts.createStore(planner, 'Electrical point');
+    const scopeFor = (project, id = '') => ({ projectId: project.id, floorId: project.activeFloorId, entityId: id });
+    let formOwner = null;
+    const rememberForm = () => {
+      if (!formOwner || form.dataset.elecDirty !== 'true') return;
+      const fields = [...form.elements].filter(input => input.name).map(input => ({
+        name: input.name, value: input.value, checked: input.checked
+      }));
+      drafts.put(formOwner, { fields, geometry: form.dataset.elecGeometry, basePoint: form.dataset.elecBasePoint });
+    };
+    query('#elec-editor-title').tabIndex = -1;
     let floorSeen, formKey, pointSeen, geometrySeen, forceForm = true, disposed = false, proposals = [], proposalMessages = [];
     const suffix = () => win?.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     const error = message => { const box = query('[data-elec-error]'); box.textContent = message || ''; box.hidden = !message; };
@@ -984,6 +1007,8 @@
       const suppliedScene = planner.getScene(), scene = suppliedScene?.floorId === project.activeFloorId ? suppliedScene : null;
       const points = activePoints(project), selection = planner.getSelection?.();
       const selected = selection?.kind === 'electrical' ? points.find(point => point.id === selection.id) : null;
+      const selectedDraft = selection?.kind === 'electrical' ? drafts.get(scopeFor(project, selection.id)) : null;
+      const selectedId = selected?.id || (selectedDraft ? selection.id : '');
       const floor = list(project.floors).find(item => item.id === project.activeFloorId);
       if (floorSeen !== project.activeFloorId) {
         proposals = []; proposalMessages = []; forceForm = true; error('');
@@ -997,18 +1022,42 @@
       query('[data-elec-action="redo"]').disabled = !planner.canRedo?.();
       query('[data-elec-diagram]').innerHTML = renderDiagram(scene, points, selected?.id, { model, showPoints: query('[data-elec-show]').checked });
       query('[data-elec-list]').innerHTML = renderPointList(points, scene, selected?.id, model);
+      for (const pending of Drafts.pending(planner, project.id).filter(entry => entry.label === 'Electrical point' &&
+          entry.floorId === project.activeFloorId && entry.entityId && !points.some(point => point.id === entry.entityId))) {
+        const button = doc.createElement('button'); button.type = 'button';
+        button.dataset.elecSelect = pending.entityId;
+        button.textContent = `Retained input draft · unavailable point ${pending.entityId}`;
+        query('[data-elec-list]').append(button);
+      }
       query('[data-elec-schedule]').innerHTML = renderSchedule(points, scene, floor?.name || project.activeFloorId, model);
-      const key = `${project.activeFloorId}|${selected?.id || 'new'}`, signature = JSON.stringify(selected || null), geometry = geometryFingerprint(scene);
+      const key = JSON.stringify([project.id, project.activeFloorId, selectedId || 'new']), signature = JSON.stringify(selected || null), geometry = geometryFingerprint(scene);
       if (forceForm || key !== formKey || signature !== pointSeen || (geometry !== geometrySeen && form.dataset.elecDirty !== 'true')) {
         const details = key === formKey ? [...form.querySelectorAll('details')].map(item => item.open) : [];
-        form.innerHTML = renderPointForm(selected, scene);
+        const pending = drafts.get(scopeFor(project, selectedId));
+        form.innerHTML = renderPointForm(selected || (pending?.basePoint ? JSON.parse(pending.basePoint) : null), scene);
         [...form.querySelectorAll('details')].forEach((item, index) => { item.open = !!details[index]; });
-        form.dataset.elecPointId = selected?.id || '';
-        form.dataset.elecDirty = 'false';
-        form.dataset.elecGeometry = geometry;
+        if (pending) for (const field of pending.fields) {
+          const input = form.elements.namedItem(field.name);
+          if (!input) continue;
+          if (input.tagName === 'SELECT' && field.value && ![...input.options].some(option => option.value === field.value)) {
+            const option = doc.createElement('option'); option.value = field.value;
+            option.textContent = `Unavailable draft value: ${field.value}`; input.append(option);
+          }
+          input.value = field.value;
+          if (typeof field.checked === 'boolean') input.checked = field.checked;
+        }
+        formOwner = scopeFor(project, selectedId);
+        form.dataset.elecPointId = selectedId;
+        form.dataset.elecDirty = pending ? 'true' : 'false';
+        form.dataset.elecGeometry = pending?.geometry || geometry;
+        form.dataset.elecBasePoint = pending?.basePoint || signature;
         formKey = key; pointSeen = signature; geometrySeen = geometry; forceForm = false;
       }
-      query('[data-elec-stale-form]').hidden = form.dataset.elecGeometry === geometry;
+      const conflictingRecord = form.dataset.elecBasePoint !== signature;
+      query('[data-elec-stale-form]').hidden = form.dataset.elecGeometry === geometry && !conflictingRecord;
+      query('[data-elec-stale-form]').textContent = conflictingRecord
+        ? 'The saved point changed or was deleted. This input draft is retained. Copy needed values, then Reload fields to review the current record before saving.'
+        : 'Geometry changed while these fields were being edited. Reload fields and review the current wall orientation before saving.';
       updateFormHints(scene);
       updateSuggestionTargets(scene);
       if (selected) {
@@ -1034,10 +1083,25 @@
         if (button.dataset.elecSelect) { planner.select({ kind: 'electrical', id: button.dataset.elecSelect }); return; }
         const action = button.dataset.elecAction;
         if (action === 'new') { forceForm = true; planner.select(null); render(); status('New point: provide your needed device, actual host and measurement datum.'); }
-        else if (action === 'reload') { forceForm = true; render(); status('Fields reloaded from the current project and geometry. Unsaved field edits were discarded.'); }
+        else if (action === 'reload') {
+          if (form.dataset.elecDirty === 'true' && !win.confirm('Discard the pending electrical point draft and reload current fields?')) return;
+          drafts.remove(formOwner); forceForm = true; render();
+          status('Fields reloaded from the current project and geometry. Unsaved field edits were discarded.');
+        }
         else if (action === 'undo') { planner.undo(); status('Undid the last shared project edit.'); }
         else if (action === 'redo') { planner.redo(); status('Redid the shared project edit.'); }
-        else if (action === 'delete') { deletePoint(planner, form.dataset.elecPointId); status('Point deleted. Shared Undo restores it.'); }
+        else if (action === 'delete') {
+          const project = planner.getProject(), point = project.electrical.find(point => point.id === form.dataset.elecPointId);
+          if (!point) throw new Error('This point no longer exists. Reload fields; retained drafts are not deleted automatically.');
+          const floor = project.floors.find(floor => floor.id === project.activeFloorId), scope = formOwner;
+          if (!win.confirm(`Delete electrical point “${point.label || point.id}” on ${floor?.name || project.activeFloorId}? Pending edits to this point will be discarded. Other points are retained; shared Undo restores the saved point.`)) return;
+          const latest = planner.getProject();
+          if (latest.id !== project.id || latest.activeFloorId !== project.activeFloorId ||
+              JSON.stringify(latest.electrical.find(item => item.id === point.id)) !== JSON.stringify(point))
+            throw new Error('The selected point or floor changed. Review it before deleting.');
+          deletePoint(planner, point.id); drafts.remove(scope); forceForm = true; render();
+          status('Point deleted. Shared Undo restores it.'); query('#elec-editor-title').focus();
+        }
         else if (action === 'height-ceiling' || action === 'height-floor') {
           const scene = planner.getScene(), value = action === 'height-floor' ? 0 : scene?.wallHeightM;
           if (!finite(value)) throw new Error('The nominal ceiling height is unknown. Enter a measured mounting height instead.');
@@ -1046,6 +1110,7 @@
           const note = form.elements.namedItem('note');
           note.value = `${note.value ? `${note.value}\n` : ''}User assumption: ${action === 'height-floor' ? 'floor mounting point' : 'nominal ceiling height'} ${format(value)} m above finished floor; verify actual finished surface and datum.`;
           form.dataset.elecDirty = 'true';
+          rememberForm();
           status('Height filled only by your explicit assumption action. Save to record it.');
         } else if (action === 'reject') {
           proposals = proposals.filter(candidate => candidate.id !== button.dataset.elecProposal);
@@ -1067,9 +1132,10 @@
         form.dataset.elecDirty = 'true';
         if (event.target.name === 'anchorKind' && controlText(form, 'anchorKind') !== 'wall') form.elements.namedItem('elevationReference').value = 'mounting-point';
         updateFormHints(planner.getScene());
+        rememberForm();
       } else if (suggestionForm.contains(event.target)) updateSuggestionTargets(planner.getScene());
     }
-    function onInput(event) { if (form.contains(event.target)) form.dataset.elecDirty = 'true'; }
+    function onInput(event) { if (form.contains(event.target)) { form.dataset.elecDirty = 'true'; rememberForm(); } }
     function onKey(event) {
       const point = event.target.closest?.('g[data-elec-select]');
       if (point && (event.key === 'Enter' || event.key === ' ')) {
@@ -1087,9 +1153,15 @@
           if (form.dataset.elecGeometry !== geometryFingerprint(scene)) throw new Error('Geometry changed while editing. Reload fields and review the current physical host before saving.');
           const existing = list(project.electrical).find(point => point.id === form.dataset.elecPointId);
           if (form.dataset.elecPointId && !existing) throw new Error('The selected point was removed. Reload fields before saving.');
+          if (formOwner?.projectId !== project.id || formOwner?.floorId !== project.activeFloorId ||
+              form.dataset.elecBasePoint !== JSON.stringify(existing || null))
+            throw new Error('Project, floor or saved point changed while editing. Your draft is retained; reload fields and review the current record.');
           const point = readPointForm(form, scene, existing, suffix());
+          const originalScope = formOwner;
           form.dataset.elecDirty = 'false';
-          try { savePoint(planner, point, model); } catch (failure) { form.dataset.elecDirty = 'true'; throw failure; }
+          try {
+            savePoint(planner, point, model); drafts.remove(originalScope); forceForm = true; render();
+          } catch (failure) { form.dataset.elecDirty = 'true'; rememberForm(); throw failure; }
           status('Point saved to the active-floor project slice. Review missing inputs and use shared Undo if needed.');
         } else {
           const request = {};
@@ -1110,6 +1182,7 @@
     const unsubscribe = planner.subscribe(render);
     const workspace = { render, destroy() {
       disposed = true; unsubscribe?.();
+      drafts.dispose();
       for (const [name, handler] of [['click', onClick], ['change', onChange], ['input', onInput], ['keydown', onKey], ['submit', onSubmit]]) host.removeEventListener(name, handler);
       delete host.dataset.elecMounted; delete host.elecWorkspace; host.innerHTML = '';
     } };

@@ -23,7 +23,17 @@
   const PREVIEW = Object.freeze({
     slabM: 0.14, finishM: 0.02, doorLeafM: 0.035, glassM: 0.012, frameM: 0.045
   });
+  const STRUCTURE_COLORS = Object.freeze({
+    unspecified: 0x777777, assumed: 0xd99b38, authored: 0x367fbd, 'engineer-provided': 0x9567bd
+  });
+  const STRUCTURE_CAVEAT = 'Structural engineering is not assessed. Colors identify provenance claims only: assumed (amber), authored (blue), engineer-provided (purple), unspecified (gray); none are verified. No safety, capacity or shadow analysis is provided. Full findings and edits are available in Design → Structure (2D).';
+  const PLUMBING_COLORS = Object.freeze({
+    cold: 0x368cdb, hot: 0xe76b53, soil: 0x986744, waste: 0xc89832, vent: 0x946ac4, storm: 0x32a7a0, unknown: 0x888888
+  });
+  const DRAINAGE_CAVEAT = 'Drainage engineering is not assessed. Sanitary waste and storm intent are nonphysical centerlines and screen-space nodes; storm is teal, sanitary circuits retain plumbing colors. No pipe sizes, fittings, chambers, shafts, terrain, safe access volumes or invert-to-axis conversion are inferred. Ground, finished floor, invert, discharge and provenance are supplied unverified metadata, not verified connection, cover, capacity or compliance. Null geometry gaps are never bridged. No hydraulic flow is calculated. Review coordination findings in 2D.';
+  const PLUMBING_CAVEAT = 'Plumbing engineering is not assessed. Colors identify proposed circuits only: cold (blue), hot (red), soil (brown), waste (amber), vent (purple), unknown (gray); not velocity, hydraulics or verified flow. All routes are nonphysical centerlines with screen-space linewidth, regardless of supplied diameter. Diameter values are recorded exactly, not interpreted as outer diameter or wall thickness. Gaps and missing levels remain unknown, never bridged or defaulted. Nodes are screen-space points, not valves or fittings. Fixture boxes show only explicit extents, not internals. No sizing, pressure, capacity, fall, clearance, penetration, compliance or shadow analysis is performed. Review findings and edit in 2D.';
   const mounts = new WeakMap();
+  const LIGHT_CAVEAT = 'NOT LUX. Display-only midpoint workplane cells, not a continuous lighting field or an area-average measurement. Gray outlines mean unavailable, not zero shade. Modeled values require explicit 2D opt-in; SUBTOTAL hours are not complete-period results. Sky access is dimensionless geometric access, independent of night. No photometry, adequacy or approval is assessed. Active-floor inspection filters sensors only: analysis still uses all floors and foreign occluders, even when hidden here.';
   let enginePromise;
   const finite = (value, fallback = 0) => Number.isFinite(value) ? value : fallback;
   const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
@@ -31,9 +41,21 @@
   const validRect = r => r && ['x', 'y', 'w', 'h'].every(k => Number.isFinite(r[k])) &&
     r.w > EPS && r.h > EPS;
 
+  function roomFloorRegions(room) {
+    if (!Object.hasOwn(room, 'usableRegions')) return validRect(room.rect) ? [room.rect] : [];
+    const regions = typeof module === 'object' && module.exports ? require('./planner-regions.js') : root.HomePlannerRegions;
+    if (!regions?.area || !regions?.subtractRectangle)
+      throw new Error('Load planner-regions.js to inspect supplied usable room-floor regions.');
+    regions.area(room.usableRegions);
+    if (!validRect(room.rect) || room.usableRegions.some(region => regions.subtractRectangle(region, [room.rect]).length))
+      throw new Error(`Room ${room.id} has invalid or unrepresentable usable floor regions; no bounding-box floor was substituted.`);
+    return room.usableRegions;
+  }
+
   function toThree(point, scene, up = 0) {
     const a = finite(scene.headingDeg) * Math.PI / 180;
-    const dx = point.x - scene.floor.w / 2, dy = point.y - scene.floor.h / 2;
+    const frame = scene.coordinateSpace === 'site-local' ? scene.plot : scene.floor;
+    const dx = point.x - frame.w / 2, dy = point.y - frame.h / 2;
     return {
       x: dx * Math.cos(a) - dy * Math.sin(a),
       y: up,
@@ -173,7 +195,175 @@
     textures.forEach(value => value.dispose());
   }
 
+  function requireSiteScenes(scenes, project) {
+    const ids = new Set(Array.isArray(scenes) ? scenes.map(scene => scene?.floorId) : []);
+    const first = scenes?.[0];
+    if (!Array.isArray(scenes) || !project.floors?.length || scenes.length !== project.floors.length ||
+      ids.size !== scenes.length || project.floors.some(floor => !ids.has(floor.id)) ||
+      scenes.some(scene => !scene || scene.coordinateSpace !== 'site-local' || !validRect(scene.plot) ||
+        scene.plot.x !== 0 || scene.plot.y !== 0 || !Number.isFinite(scene.headingDeg) ||
+        Math.abs(scene.headingDeg - first.headingDeg) > EPS ||
+        Math.abs(scene.plot.w - first.plot.w) > EPS || Math.abs(scene.plot.h - first.plot.h) > EPS ||
+        !validRect(scene.floor) || !Number.isFinite(scene.floorElevationM) || !Number.isFinite(scene.wallHeightM))) {
+      throw new Error('3D intent requires exactly all registered floors in one common site frame. Repair missing geometry / plot registration in 2D; no partial or floor-centered overlay is shown.');
+    }
+  }
+
+  function structureObject(THREE, element, scene) {
+    const g = element.geometry;
+    if (!g) return null;
+    let object;
+    if (g.kind === 'grid') {
+      const points = [g.start, g.end].map(p => {
+        const v = toThree(p, scene, p.z);
+        return new THREE.Vector3(v.x, v.y, v.z);
+      });
+      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),
+        new THREE.LineBasicMaterial({ color: STRUCTURE_COLORS[element.sizeSource] ?? STRUCTURE_COLORS.unspecified }));
+    } else if (g.kind === 'box' || g.kind === 'beam') {
+      const mat = new THREE.MeshStandardMaterial({
+        color: STRUCTURE_COLORS[element.sizeSource] ?? STRUCTURE_COLORS.unspecified, roughness: 0.82, metalness: 0
+      });
+      if (g.kind === 'box') {
+        object = new THREE.Mesh(new THREE.BoxGeometry(g.w, g.h, g.d), mat);
+        const p = toThree({ x: g.x + g.w / 2, y: g.y + g.d / 2 }, scene, g.z + g.h / 2);
+        object.position.set(p.x, p.y, p.z);
+        object.rotation.y = -scene.headingDeg * Math.PI / 180;
+      } else {
+        const p = toThree(g.start, scene, g.start.z + g.depthM / 2);
+        const q = toThree(g.end, scene, g.start.z + g.depthM / 2);
+        object = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(q.x - p.x, q.z - p.z), g.depthM, g.widthM), mat);
+        object.position.set((p.x + q.x) / 2, p.y, (p.z + q.z) / 2);
+        object.rotation.y = -Math.atan2(q.z - p.z, q.x - p.x);
+      }
+    }
+    if (!object) return null;
+    object.name = element.label;
+    object.userData.structuralId = element.id;
+    object.castShadow = object.receiveShadow = false;
+    return object;
+  }
+
+  function currentLight(drawing, project, state, foundation) {
+    if (typeof foundation?.discover !== 'function') throw new Error('Load planner-light.js to inspect an already computed light result. Continue in 2D.');
+    requireSiteScenes(drawing?.scenes, project);
+    let inventory;
+    try { inventory = foundation.discover(drawing); }
+    catch (error) {
+      return { result: null, inventory: null, visualization: state?.visualization || {},
+        error: `Light study unavailable: ${error.message}. Architectural inspection remains available.` };
+    }
+    const result = state?.result;
+    const valid = !state?.stale && result?.kind === 'RoomLightStudy' &&
+      ['complete', 'incomplete'].includes(result.status) && Array.isArray(result.sensors) &&
+      drawing.projectId === project.id && result.provenance?.projectId === project.id &&
+      inventory.projectId === project.id &&
+      result.provenance?.scenePhysicalFingerprint === inventory.physicalFingerprint;
+    return { result: valid ? result : null, inventory, visualization: state?.visualization || {} };
+  }
+
+  function buildLight(THREE, scenes, project, data, activeOnly = false) {
+    const result = data?.result, view = data?.visualization || {};
+    const metric = ['direct', 'presence-hours', 'equivalent-hours', 'sky'].includes(view.metric) ? view.metric : 'direct';
+    const index = Number.isInteger(view.intervalIndex) && view.intervalIndex >= 0 ? view.intervalIndex : 0;
+    const mask = result?.direct?.masks?.[index], modeled = view.modeled === true;
+    const units = metric.endsWith('hours') ? 'hours' : 'dimensionless 0–1';
+    const time = metric === 'sky' ? 'geometry-only; not day/night' : metric === 'direct' ?
+      `${mask?.sampleUTC || 'interval unavailable'} UTC` :
+      `${result?.config?.period?.startUTC || '?'} – ${result?.config?.period?.endUTC || '?'} UTC`;
+    const layer = { objects: [], schedule: [], averages: [], metric, units,
+      label: `${metric} · ${time} · ${result ? result.status : data?.error || 'unavailable: compute a current result in 2D'} · ${modeled ? 'MODELED / hours SUBTOTAL' : 'primary known values only'} · ${units} · NOT LUX.` };
+    if (!result) return layer;
+    const sceneById = new Map(scenes.map(s => [s.floorId, s]));
+    const roomKey = ref => JSON.stringify([ref?.floorId, ref?.entityId]);
+    const rooms = new Map((data.inventory?.rooms || []).map(r => [roomKey(r.ref), r]));
+    const groups = new Map();
+    const sky = new Map((result.sky?.sensorResults || []).map(s => [s.sensorId, s]));
+    const direct = new Map((result.direct?.sensorResults || []).map(s => [s.sensorId, s]));
+    const hasPoint = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]));
+    const attach = (object, metadata) => {
+      object.userData = metadata;
+      object.castShadow = object.receiveShadow = false;
+      object.raycast = () => {};
+      layer.objects.push(object);
+    };
+    try {
+      result.sensors.forEach((sensor, sensorIndex) => {
+        if (activeOnly && sensor.room?.floorId !== project.activeFloorId) return;
+        const scene = sceneById.get(sensor.room?.floorId);
+        const rect = rooms.get(roomKey(sensor.room))?.geometry?.rect;
+        let value = null, status = 'unavailable';
+        if (metric === 'direct') value = (modeled ? mask?.modeledDirectPathWeights : mask?.directPathWeights)?.[sensorIndex];
+        else if (metric === 'sky') {
+          const row = sky.get(sensor.id);
+          value = modeled ? row?.modeledCosineWeightedSkyAccess : row?.cosineWeightedSkyAccess;
+        } else {
+          const row = direct.get(sensor.id), presence = metric === 'presence-hours';
+          if (modeled) value = row?.[presence ? 'modeledProcessedPositivePathPresenceHours' : 'modeledProcessedTransmittedEquivalentSunHours'];
+          else if (result.direct?.complete === true) value = row?.[presence ? 'positivePathPresenceHours' : 'transmittedEquivalentSunHours'];
+        }
+        value = Number.isFinite(value) && value >= 0 ? value : null;
+        if (value !== null) status = modeled ? metric.endsWith('hours') ? 'MODELED SUBTOTAL' : 'MODELED' : 'known';
+        const record = { sensorId: sensor.id, workplaneId: sensor.workplaneId, room: sensor.room, point: sensor.point, metric, value, units, status,
+          grid: sensor.grid, areaWeightM2: sensor.areaWeightM2, geometryStatus: 'unavailable' };
+        layer.schedule.push(record);
+        const key = JSON.stringify([sensor.workplaneId, roomKey(sensor.room)]);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(record);
+        if (!scene || !hasPoint(sensor.point) || !validRect(rect) ||
+          !['columns', 'rows'].every(k => Number.isInteger(sensor.grid?.[k]) && sensor.grid[k] > 0)) return;
+        if (sensor.cell && !validRect(sensor.cell)) return;
+        const w = sensor.cell?.w ?? rect.w / sensor.grid.columns, h = sensor.cell?.h ?? rect.h / sensor.grid.rows;
+        const geometry = new THREE.PlaneGeometry(w, h);
+        const fraction = value === null ? 0 : clamp(value / (metric.endsWith('hours') ? Math.max(EPS, finite(result.direct?.periodHours, 1)) : 1), 0, 1);
+        const object = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+          color: value === null ? 0x999999 : value === 0 ? 0x234b78 : 0xf0b43c,
+          transparent: true, opacity: value === null ? 0.8 : 0.3 + fraction * 0.4,
+          depthWrite: false, toneMapped: false, side: THREE.DoubleSide, wireframe: value === null
+        }));
+        const p = toThree(sensor.point, scene, sensor.point.z);
+        object.position.set(p.x, p.y, p.z);
+        object.rotation.set(-Math.PI / 2, 0, -scene.headingDeg * Math.PI / 180);
+        record.geometryStatus = 'midpoint-cell';
+        attach(object, { lightSensorId: sensor.id, floorId: sensor.room.floorId, value, status, metric });
+      });
+      for (const records of groups.values()) {
+        const known = records.every(r => r.value !== null && Number.isFinite(r.areaWeightM2) && r.areaWeightM2 > 0);
+        const area = records.reduce((sum, r) => sum + r.areaWeightM2, 0);
+        const average = known ? records.reduce((sum, r) => sum + r.value * (r.areaWeightM2 / area), 0) : null;
+        layer.averages.push({ kind: 'numerical-area-weighted-midpoint-average', workplaneId: records[0].workplaneId,
+          room: records[0].room, metric, units, value: Number.isFinite(average) ? average : null,
+          status: known ? records[0].status : 'unavailable; not a partial-room average',
+          meaning: 'Numerical midpoint approximation, not measured continuous area illumination.' });
+      }
+      if (view.showElectrical === true) for (const e of data.inventory?.electrical || []) {
+        if (activeOnly && e.floorId !== project.activeFloorId) continue;
+        const scene = sceneById.get(e.floorId), known = scene && hasPoint(e.point);
+        layer.schedule.push({ electrical: e, geometryStatus: known ? 'explicit-point' : 'unavailable; schedule only', photometry: 'not calculated' });
+        if (!known) continue;
+        const p = toThree(e.point, scene, e.point.z);
+        attach(new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(p.x, p.y, p.z)]),
+          new THREE.PointsMaterial({ color: 0xc996e8, size: 7, sizeAttenuation: false, depthWrite: false, toneMapped: false })),
+        { lightElectricalId: e.record.id, floorId: e.floorId });
+      }
+      return layer;
+    } catch (error) {
+      layer.objects.forEach(disposeObject);
+      throw error;
+    }
+  }
+
   function buildContent(THREE, scenes, project, model, options = {}) {
+    if (options.structuralIntent || options.plumbingIntent || options.drainageIntent || options.lightStudy) requireSiteScenes(scenes, project);
+    if (options.structuralIntent) {
+      if (!options.structure?.elements || !options.structure?.findings) throw new Error('Structural coordination output is unavailable.');
+    }
+    if (options.plumbingIntent && !['nodes', 'routes', 'fixtures', 'findings'].every(k => Array.isArray(options.services?.[k]))) {
+      throw new Error('Plumbing services output is unavailable. Load planner-services.js and continue in 2D.');
+    }
+    if (options.drainageIntent && !['nodes', 'routes', 'findings'].every(k => Array.isArray(options.drainage?.[k]))) {
+      throw new Error('Drainage coordination output is unavailable. Load planner-drainage.js and continue in 2D.');
+    }
     const group = new THREE.Group(), refs = new Map(), pickables = [], roofs = [], warnings = [];
     const validScenes = scenes.filter(scene => scene && validRect(scene.floor) &&
       Number.isFinite(scene.floorElevationM) && Number.isFinite(scene.wallHeightM));
@@ -198,8 +388,9 @@
       pickables.push(mesh);
       return mesh;
     };
-    const localBox = (owner, scene, rect, base, height, mat, ref, detail) => {
-      if (!validRect(rect) || height <= EPS) return null;
+    const localBox = (owner, scene, rect, base, height, mat, ref, detail, minimumSpan = EPS) => {
+      if (!rect || !['x', 'y', 'w', 'h'].every(key => Number.isFinite(rect[key])) ||
+          rect.w <= minimumSpan || rect.h <= minimumSpan || height <= EPS) return null;
       const mesh = add(owner, new THREE.BoxGeometry(rect.w, height, rect.h), mat, ref, detail);
       const p = toThree({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, scene, base + height / 2);
       mesh.position.set(p.x, p.y, p.z);
@@ -217,7 +408,7 @@
     };
     try {
       const groundScene = validScenes.reduce((a, b) => a.floorElevationM < b.floorElevationM ? a : b);
-      const plot = groundScene.floor;
+      const plot = groundScene.coordinateSpace === 'site-local' ? groundScene.plot : groundScene.floor;
       localBox(group, groundScene, { x: plot.x - 0.5, y: plot.y - 0.5, w: plot.w + 1, h: plot.h + 1 },
         groundScene.floorElevationM - PREVIEW.slabM - 0.06, 0.04, material(0xb1b5a1));
       const seenWalls = new Set(), seenObstacles = new Set();
@@ -238,11 +429,15 @@
           roofs.push(roof);
         }
         for (const room of scene.rooms || []) {
+          const regions = roomFloorRegions(room);
+          if (!regions.length) continue;
           const type = String(room.type || '').toLowerCase();
           const color = /bath|toilet|utility/.test(type) ? 0xb4c7cc : /kitchen/.test(type) ? 0xcac6ad :
             /bed/.test(type) ? 0xc4c5d6 : 0xd4c6b2;
-          localBox(owner, scene, room.rect, base, PREVIEW.finishM, material(color),
-            { kind: 'room', id: room.id }, detail(room.label || 'Room'));
+          const mat = material(color), ref = { kind: 'room', id: room.id }, info = detail(room.label || 'Room');
+          // Valid clipping fragments can be thinner than the legacy full-box cutoff.
+          for (const region of regions)
+            localBox(owner, scene, region, base, PREVIEW.finishM, mat, ref, info, 0);
         }
         const walls = new Map((scene.walls || []).map(wall => [wall.id, wall]));
         const hosted = new Map();
@@ -342,9 +537,121 @@
         (scene.diagnostics || []).filter(d => ['warning', 'error'].includes(d.level))
           .forEach(d => warnings.push(d.message));
       }
+      let structural = null;
+      if (options.structuralIntent) {
+        const result = options.structure, sceneById = new Map(shown.map(scene => [scene.floorId, scene]));
+        const elements = result.elements.filter(e => sceneById.has(e.floorId));
+        structural = { total: result.elements.length, shown: elements.length, solids: 0, grids: 0, missing: 0,
+          findings: result.findings, objects: [] };
+        for (const element of elements) {
+          const object = structureObject(THREE, element, sceneById.get(element.floorId));
+          if (!object) { structural.missing++; continue; }
+          // Structural records are not part of the shared architectural selection schema.
+          group.add(object);
+          structural.objects.push(object);
+          if (object.isLine) structural.grids++; else structural.solids++;
+        }
+      }
+      const intentLayers = {}, sharedObjects = new Map();
+      for (const domain of ['plumbing', 'drainage']) {
+        if (!options[`${domain}Intent`]) continue;
+        const isDrainage = domain === 'drainage';
+        const result = isDrainage ? { ...options.drainage, fixtures: [] } : options.services;
+        const sceneById = new Map(validScenes.map(scene => [scene.floorId, scene]));
+        const selectedSystem = e => (isDrainage ? ['waste', 'rain'] : ['water', 'waste']).includes(e.system);
+        const allRoutes = result.routes.filter(selectedSystem), allNodes = result.nodes.filter(selectedSystem);
+        const ownsFloor = e => !options.activeOnly || e.floorId === project.activeFloorId;
+        const routes = allRoutes.filter(e => ownsFloor(e) ||
+          [e.from, e.to].some(ref => ref?.floorId === project.activeFloorId));
+        const endpointKey = ref => JSON.stringify([ref?.floorId, ref?.entityId]);
+        const endpoints = new Set(routes.flatMap(e => [endpointKey(e.from), endpointKey(e.to)]));
+        const nodes = allNodes.filter(e => ownsFloor(e) || endpoints.has(endpointKey({ floorId: e.floorId, entityId: e.id })));
+        const fixtures = result.fixtures.filter(ownsFloor);
+        const hasPoint = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]));
+        const vector = (p, scene) => {
+          const v = toThree(p, scene, p.z);
+          return new THREE.Vector3(v.x, v.y, v.z);
+        };
+        const color = e => PLUMBING_COLORS[e.circuit] ?? PLUMBING_COLORS.unknown;
+        const plumbing = intentLayers[domain] = {
+          total: allRoutes.length + allNodes.length + result.fixtures.length,
+          shown: routes.length + nodes.length + fixtures.length,
+          routes: routes.length, nodes: nodes.length, fixtures: fixtures.length,
+          segments: 0, gaps: 0, solids: 0, points: 0, missing: 0,
+          foreignRoutes: options.activeOnly ? routes.filter(e => [e.floorId, e.from?.floorId, e.to?.floorId]
+            .some(id => id && id !== project.activeFloorId)).length : 0,
+          foreignNodes: options.activeOnly ? nodes.filter(e => e.floorId !== project.activeFloorId).length : 0,
+          findings: result.findings, objects: [], schedule: []
+        };
+        const attach = (object, e, kind) => {
+          const key = JSON.stringify([e.floorId, kind, e.id]);
+          if (sharedObjects.has(key)) {
+            disposeObject(object);
+            const existing = sharedObjects.get(key);
+            existing.userData[`${domain}Id`] = e.id;
+            plumbing.objects.push(existing);
+            return;
+          }
+          object.name = e.label || e.kind || e.id;
+          object.userData = { [`${domain}Id`]: e.id, floorId: e.floorId, plumbingKind: kind, system: e.system ?? null,
+            circuit: e.circuit ?? null, role: e.role ?? null, diameterMm: e.diameterMm ?? null };
+          object.castShadow = object.receiveShadow = false;
+          object.raycast = () => {};
+          group.add(object);
+          sharedObjects.set(key, object);
+          plumbing.objects.push(object);
+        };
+        const metadata = e => isDrainage ? Object.fromEntries([
+          'system', 'circuit', 'role', 'invertM', 'groundM', 'finishedFloorM', 'levelSource',
+          'levelReference', 'accessRadiusM', 'discharge', 'invertBelowGroundM', 'finishedFloorAboveGroundM',
+          'viaInvertsM', 'slope', 'slopeSource', 'slopeReference', 'clearanceM', 'gravityStatus'
+        ].filter(key => Object.hasOwn(e, key)).map(key => [key, e[key]])) : {};
+        for (const route of routes) {
+          const scene = sceneById.get(route.floorId), vertices = [], points = route.points || [];
+          plumbing.schedule.push({ kind: 'route', id: route.id, floorId: route.floorId, diameterMm: route.diameterMm ?? null, ...metadata(route) });
+          for (let i = 1; i < points.length; i++) {
+            if (!hasPoint(points[i - 1]) || !hasPoint(points[i])) { plumbing.gaps++; continue; }
+            if (scene) vertices.push(vector(points[i - 1], scene), vector(points[i], scene));
+          }
+          if (!vertices.length) { plumbing.missing++; continue; }
+          plumbing.segments += vertices.length / 2;
+          attach(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(vertices),
+            new THREE.LineBasicMaterial({ color: color(route), linewidth: 1, toneMapped: false })), route, 'route');
+        }
+        for (const node of nodes) {
+          const scene = sceneById.get(node.floorId);
+          plumbing.schedule.push({ kind: 'node', id: node.id, floorId: node.floorId, diameterMm: node.diameterMm ?? null, ...metadata(node) });
+          if (!scene || !hasPoint(node.anchor)) { plumbing.missing++; continue; }
+          attach(new THREE.Points(new THREE.BufferGeometry().setFromPoints([vector(node.anchor, scene)]),
+            new THREE.PointsMaterial({ color: color(node), size: 7, sizeAttenuation: false, toneMapped: false })), node, 'node');
+          plumbing.points++;
+        }
+        for (const fixture of fixtures) {
+          const scene = sceneById.get(fixture.floorId);
+          plumbing.schedule.push({ kind: 'fixture', id: fixture.id, floorId: fixture.floorId,
+            widthM: fixture.widthM ?? null, depthM: fixture.depthM ?? null, heightM: fixture.heightM ?? null });
+          if (!scene || !hasPoint(fixture.anchor) ||
+            !['widthM', 'depthM', 'heightM'].every(k => Number.isFinite(fixture[k]) && fixture[k] > 0)) {
+            plumbing.missing++; continue;
+          }
+          const object = new THREE.Mesh(new THREE.BoxGeometry(fixture.widthM, fixture.heightM, fixture.depthM),
+            new THREE.MeshBasicMaterial({ color: 0x87b6b0, transparent: true, opacity: 0.35, depthWrite: false }));
+          const p = toThree(fixture.anchor, scene, fixture.anchor.z + fixture.heightM / 2);
+          object.position.set(p.x, p.y, p.z);
+          object.rotation.y = -scene.headingDeg * Math.PI / 180;
+          attach(object, fixture, 'fixture');
+          plumbing.solids++;
+        }
+      }
       group.updateMatrixWorld(true);
       const bounds = new THREE.Box3().setFromObject(group);
-      return { group, refs, pickables, roofs, bounds, floors, warnings: [...new Set(warnings)], obstacleCount: seenObstacles.size };
+      if (options.lightStudy) {
+        intentLayers.lightStudy = buildLight(THREE, scenes, project, options.lightData, options.activeOnly);
+        intentLayers.lightStudy.objects.forEach(object => group.add(object));
+        group.updateMatrixWorld(true);
+      }
+      return { group, refs, pickables, roofs, bounds, floors, warnings: [...new Set(warnings)], obstacleCount: seenObstacles.size,
+        ...(structural ? { structural } : {}), ...intentLayers };
     } catch (error) {
       disposeObject(group);
       throw error;
@@ -403,10 +710,22 @@
         <div class="hp3d-actions"><button type="button" data-hp3d="open" aria-expanded="false">Open 3D</button>
           <button type="button" data-hp3d="close" hidden>Close 3D</button></div>
       </div>
-      <p class="hp3d-status" data-hp3d="status" role="status" aria-live="polite">3D is off. No graphics library or GPU context is loaded until you choose Open 3D.</p>
+      <p class="hp3d-status" data-hp3d="status" role="status" aria-live="polite">3D is off. No graphics library or GPU context is loaded until you choose Open 3D. Plumbing engineering is not assessed.</p>
+      <p class="hp3d-diagnostics" data-hp3d="structure-note" role="status" aria-live="polite" hidden></p>
+      <button type="button" data-hp3d="structure-off" hidden>Turn off structural intent</button>
+      <p class="hp3d-diagnostics" data-hp3d="services-note" role="status" aria-live="polite" hidden></p>
+      <button type="button" data-hp3d="services-off" hidden>Turn off plumbing intent</button>
+      <p class="hp3d-diagnostics" data-hp3d="drainage-note" role="status" aria-live="polite" hidden></p>
+      <button type="button" data-hp3d="drainage-off" hidden>Turn off drainage intent</button>
+      <p class="hp3d-diagnostics" data-hp3d="lightStudy-note" role="status" aria-live="polite" hidden></p>
+      <button type="button" data-hp3d="lightStudy-off" hidden>Turn off light study</button>
       <div data-hp3d="workspace" hidden>
         <div class="hp3d-toolbar" data-hp3d="toolbar">
           <label><input type="checkbox" data-hp3d="active"> Active floor only</label>
+          <label><input type="checkbox" data-hp3d="structure"> Structural intent</label>
+          <label><input type="checkbox" data-hp3d="services"> Plumbing intent</label>
+          <label><input type="checkbox" data-hp3d="drainage"> Drainage intent</label>
+          <label><input type="checkbox" data-hp3d="lightStudy"> Light study (computed 2D result)</label>
           <label><input type="checkbox" data-hp3d="cutaway" checked> Cutaway: hide roof / ceiling caps</label>
           <div class="hp3d-actions"><button type="button" data-hp3d="in" aria-label="Zoom in">Zoom +</button>
             <button type="button" data-hp3d="out" aria-label="Zoom out">Zoom −</button>
@@ -417,6 +736,35 @@
             <span class="hp3d-needle" data-hp3d="north" aria-hidden="true">N<br>↑</span><small>True north</small>
           </div>
         </div>
+          <details class="hp3d-assumptions" data-hp3d="services-details" hidden>
+            <summary>Supplied plumbing dimensions &amp; identifiers</summary>
+            <p class="hp3d-dimension-schedule" data-hp3d="services-schedule" tabindex="0"
+              role="region" aria-label="Supplied plumbing dimension schedule"></p>
+          </details>
+        <details class="hp3d-assumptions hp3d-light-study" data-hp3d="lightStudy-details" hidden>
+          <summary>Light study: sensor values, coordinates &amp; electrical intent</summary>
+          <p>${LIGHT_CAVEAT} Known zero is blue; positive values are amber with metric-scaled alpha.
+            Numerical cells use the exact room/grid extent at the supplied project-relative workplane z.
+            Numerical area-weighted midpoint averages require every cell value and area; unknowns are never omitted.
+            Electrical intent is a separate purple point inventory only when enabled in 2D; missing xyz stays schedule-only.
+            No ceiling heights, emitters or electrical illumination are inferred.</p>
+          <p class="hp3d-dimension-schedule" data-hp3d="lightStudy-schedule" tabindex="0"
+            role="region" aria-label="Exact light sensor and electrical inventory schedule"></p>
+        </details>
+        <details class="hp3d-assumptions" data-hp3d="drainage-details" hidden>
+          <summary>Drainage intent: supplied levels, discharge &amp; review metadata</summary>
+          <p>${DRAINAGE_CAVEAT} Levels are project-relative metres, independently supplied; diameter is nominal mm.
+            Access radius and clearance are supplied review distances in metres, not safe zones.
+            Empty records do not establish a complete design. Cutaway retains centerlines; active-floor scope includes
+            owned or endpoint-touching routes in full and foreign endpoint nodes, not a clipped network.</p>
+          <p class="hp3d-dimension-schedule" data-hp3d="drainage-schedule" tabindex="0"
+            role="region" aria-label="Exact supplied drainage metadata schedule"></p>
+        </details>
+        <details class="hp3d-assumptions" data-hp3d="intent-findings">
+          <summary>Model warnings &amp; enabled intent coordination findings — engineering not assessed</summary>
+          <p class="hp3d-dimension-schedule" data-hp3d="intent-findings-list" tabindex="0"
+            role="region" aria-label="Model and intent coordination findings"></p>
+        </details>
         <p class="hp3d-help">Drag to orbit · right-drag or Shift-drag to pan · wheel to zoom. Touch: one finger orbits; two pan/zoom.
           Focus the canvas: arrows pan, + / − zoom, R resets, Escape closes. Click an object to share its 2D selection.</p>
         <p class="hp3d-selection" data-hp3d="selection" role="status" aria-live="polite"></p>
@@ -425,8 +773,21 @@
       </div>
       <details class="hp3d-assumptions"><summary>Preview assumptions &amp; limitations</summary>
         <p>Wall heights, storey elevations and roof thickness use project inputs, which may be defaults rather than surveyed values.
-          Slabs are assumed 0.14 m thick; furniture heights, door leaves, frames and glazing thickness are schematic.
+          Presentation slabs are assumed 0.14 m thick; furniture heights, door leaves, frames and glazing thickness are schematic.
           No stairs, structural members, terrain or construction assemblies are inferred.</p>
+        <p>Structural intent is off by default. When enabled, only complete authored coordination geometry is shown;
+          unknown extents are counted without invented volumes. Structural solids are not selectable here and do not cast
+          or receive shadows; grids are nonphysical lines. Authored slabs are not roof caps and remain in cutaway.
+          Structural engineering is not assessed; even engineer-provided provenance is an unverified claim.
+          Review full findings and edit in Design → Structure (2D).</p>
+        <p>Plumbing intent is off by default and independent of Structural intent. ${PLUMBING_CAVEAT}
+          Unknown fixture dimensions or anchors are count-only missing-geometry markers; inspect them in 2D.
+          Active floor only includes routes owned by or ending on that floor, their entire known spans (including foreign
+          floors), and their endpoint nodes; fixtures are limited to the active floor. It is not a clipped network or a
+          complete network assessment. Cutaway does not hide plumbing.</p>
+        <p>Drainage intent is off by default and independent of plumbing and structure.
+          Shared waste nodes and routes render once when both service layers are enabled.
+          ${DRAINAGE_CAVEAT}</p>
         <p>Cutaway hides only presentation caps; real walls, openings and operating inputs are unchanged. Lower floors may be
           obscured by upper slabs: choose Active floor only to inspect them. Glass remains a barrier; window and sliding-pane
           motion is unspecified, not an unobstructed airflow aperture.</p>
@@ -435,7 +796,7 @@
       </details>`;
     const ui = {};
     host.querySelectorAll('[data-hp3d]').forEach(el => { ui[el.dataset.hp3d] = el; });
-    let runtime = null, ticket = 0, phase = 'closed', savedCamera = null, destroyed = false;
+    let runtime = null, ticket = 0, phase = 'closed', savedCamera = null, destroyed = false, lightInvalidated = false;
     const bridge = () => suppliedBridge || root.HomePlanner;
     const model = () => suppliedModel || root.HomePlannerModel;
     const permanentListeners = [];
@@ -444,17 +805,73 @@
       cleanup.push(() => target.removeEventListener(event, fn, settings));
     };
     const message = (text, error = false) => {
-      ui.status.textContent = text;
+      ui.status.textContent = `${text} Plumbing engineering is not assessed. Drainage engineering is not assessed.`;
       ui.status.classList.toggle('hp3d-error', error);
     };
+    function lightSnapshot(drawing, project) {
+      const state = document.getElementById?.('workspaceLightStudy')?.homePlannerLight?.getState?.();
+      return currentLight(drawing, project, lightInvalidated ? { ...state, result: null } : state,
+        options.lightModel || root.HomePlannerLight);
+    }
+    function lightDetails(layer) {
+      ui['lightStudy-note'].hidden = !ui.lightStudy.checked;
+      ui['lightStudy-note'].textContent = layer?.label || '';
+      ui['lightStudy-details'].hidden = !layer;
+      ui['lightStudy-schedule'].textContent = layer ?
+        [...layer.schedule, ...layer.averages].map(record => JSON.stringify(record)).join('\n') || 'No current sensor values available. Compute a study in 2D; 3D never runs analysis.' : '';
+    }
+    function refreshLight() {
+      const r = runtime;
+      if (!r?.content || !ui.lightStudy.checked || destroyed) return;
+      const previous = r.content.lightStudy;
+      previous?.objects.forEach(object => {
+        r.content.group.remove(object);
+        disposeObject(object);
+      });
+      delete r.content.lightStudy;
+      lightDetails(null);
+      try {
+        const project = bridge().getProject(), drawing = bridge().getDrawingScene();
+        const data = lightSnapshot(drawing, project);
+        const layer = buildLight(r.THREE, drawing.scenes, project, data, ui.active.checked);
+        layer.objects.forEach(object => r.content.group.add(object));
+        r.content.lightStudy = layer;
+        r.content.group.updateMatrixWorld(true);
+        lightDetails(layer);
+        requestRender();
+      } catch (error) { fail(`3D light inspection could not update: ${error.message} 2D is still available.`); }
+    }
     function snapshot() {
       const api = bridge();
       if (!api || !['getProject', 'getScene', 'getScenes', 'getSelection', 'select', 'subscribe'].every(k => typeof api[k] === 'function')) {
         throw new Error('The shared planner bridge is unavailable or lacks getScenes(). Keep planner-model.js and planner-bridge.js before planner-3d.js. The existing 2D planner remains available.');
       }
-      const scenes = api.getScenes();
+      const project = api.getProject();
+      let scenes, structure, services, drainage, lightData;
+      if (ui.structure.checked || ui.services.checked || ui.drainage.checked || ui.lightStudy.checked) {
+        if (typeof api.getDrawingScene !== 'function') throw new Error('3D intent needs getDrawingScene() and registered site geometry. Continue in 2D.');
+        const drawing = api.getDrawingScene();
+        requireSiteScenes(drawing?.scenes, project);
+        if (ui.structure.checked) {
+          const structuralModel = options.structureModel || root.HomePlannerStructure;
+          if (typeof structuralModel?.build !== 'function') throw new Error('Load planner-structure.js to inspect structural intent. Continue in 2D.');
+          structure = structuralModel.build(drawing);
+        }
+        if (ui.services.checked) {
+          const servicesModel = options.servicesModel || root.HomePlannerServices;
+          if (typeof servicesModel?.build !== 'function') throw new Error('Load planner-services.js to inspect plumbing intent. Continue in 2D.');
+          services = servicesModel.build(drawing, { systems: ['water', 'waste'] });
+        }
+        if (ui.drainage.checked) {
+          const drainageModel = options.drainageModel || root.HomePlannerDrainage;
+          if (typeof drainageModel?.build !== 'function') throw new Error('Load planner-drainage.js to inspect drainage intent. Continue in 2D.');
+          drainage = drainageModel.build(drawing, { systems: ['waste', 'rain'] });
+        }
+        if (ui.lightStudy.checked) lightData = lightSnapshot(drawing, project);
+        scenes = drawing.scenes;
+      } else scenes = api.getScenes();
       if (!Array.isArray(scenes)) throw new Error('The shared planner did not provide its storey scenes.');
-      return { project: api.getProject(), active: api.getScene(), scenes, selection: api.getSelection() };
+      return { project, active: api.getScene(), scenes, structure, services, drainage, lightData, selection: api.getSelection() };
     }
     function requestRender() {
       const r = runtime;
@@ -519,7 +936,11 @@
       try {
         const data = snapshot();
         const content = buildContent(r.THREE, data.scenes, data.project, model(), {
-          activeOnly: ui.active.checked, cutaway: ui.cutaway.checked
+          activeOnly: ui.active.checked, cutaway: ui.cutaway.checked,
+          structuralIntent: ui.structure.checked, structure: data.structure,
+          plumbingIntent: ui.services.checked, services: data.services,
+          drainageIntent: ui.drainage.checked, drainage: data.drainage,
+          lightStudy: ui.lightStudy.checked, lightData: data.lightData
         });
         if (r.content) {
           r.world.remove(r.content.group);
@@ -527,6 +948,7 @@
           r.renderer.renderLists.dispose();
         }
         r.content = content;
+        lightDetails(content.lightStudy);
         r.world.add(content.group);
         const radius = content.bounds.getSize(new r.THREE.Vector3()).length();
         r.camera.far = Math.max(100, radius * 25, r.camera.position.distanceTo(r.controls.target) * 5);
@@ -537,6 +959,35 @@
         const activeName = content.floors.find(f => f.id === data.active?.floorId)?.name ||
           data.project.floors?.find(f => f.id === data.project.activeFloorId)?.name || 'none';
         message(`Showing ${content.floors.length} storey${content.floors.length === 1 ? '' : 's'} · active floor: ${activeName}. Camera is retained after edits; Reset view fits the displayed geometry.`);
+        if (content.structural) {
+          const s = content.structural;
+          ui['structure-note'].textContent = `Structural intent: ${s.shown} of ${s.total} records in displayed floors; ${s.solids} solids, ${s.grids} nonphysical grid lines, ${s.missing} missing-geometry markers (count only; no volume guessed). ${s.findings.length} coordination findings across all floors (including the engineering caveat). ${STRUCTURE_CAVEAT}`;
+        }
+        if (content.plumbing) {
+          const p = content.plumbing;
+          const schedule = p.schedule.map(e => e.kind === 'fixture' ?
+            `${e.floorId}/${e.id}: width ${e.widthM ?? 'unknown'}, depth ${e.depthM ?? 'unknown'}, height ${e.heightM ?? 'unknown'} m` :
+            `${e.floorId}/${e.id}: diameter ${e.diameterMm ?? 'unknown'} mm`).join('\n');
+          ui['services-schedule'].textContent = schedule || 'No supplied plumbing records.';
+          ui['services-note'].textContent = `Plumbing intent: ${p.shown} of ${p.total} records; ${p.routes} routes, ${p.segments} known consecutive centerline segments, ${p.gaps} unknown segment gaps, ${p.points} node points, ${p.solids} explicit fixture boxes, ${p.missing} missing-geometry markers (count only; inspect in 2D). ${
+            ui.active.checked ? `Active-floor scope includes owned or endpoint-touching routes in full, including ${p.foreignRoutes} foreign-floor spans/routes and ${p.foreignNodes} foreign endpoint nodes; fixtures are active-floor only. Other routes and nodes are omitted, not absent.` :
+              'All registered floors included.'} ${p.findings.length} findings across all floors (not just this subset). ${PLUMBING_CAVEAT} Supplied dimensions and identifiers are available below the preview.`;
+        }
+        ui['services-details'].hidden = !content.plumbing;
+        ui['drainage-details'].hidden = !content.drainage;
+        if (content.drainage) {
+          const d = content.drainage;
+          ui['drainage-note'].textContent = `Drainage intent: ${d.shown} of ${d.total} records; ${d.segments} known consecutive centerline segments, ${d.gaps} unknown segment gaps, ${d.points} node points, ${d.missing} missing-geometry records. ${
+            ui.active.checked ? `${d.foreignRoutes} foreign-floor routes and ${d.foreignNodes} foreign endpoint nodes included in full; unrelated networks omitted. ` : ''}${
+            content.plumbing ? 'Shared sanitary geometry is drawn once with plumbing. ' : ''}Drainage engineering is not assessed. Exact metadata and coordination findings are collapsed below the canvas.`;
+          ui['drainage-schedule'].textContent = d.schedule.map(e => JSON.stringify(e)).join('\n') ||
+            'No drainage records in this scope. This does not establish a complete or assessed design.';
+        } else ui['drainage-schedule'].textContent = '';
+        ui['intent-findings-list'].textContent = [
+          ...content.warnings.map(text => `Model: ${text}`),
+          ...['structural', 'plumbing', 'drainage'].flatMap(domain =>
+            (content[domain]?.findings || []).map(f => `${domain}: ${JSON.stringify(f)}`))
+        ].join('\n') || 'No listed findings; engineering remains not assessed.';
         const warnings = content.warnings.slice(0, 3).join(' ');
         ui.diagnostics.textContent = [
           content.floors.map(f => `${f.name}: elevation ${f.elevationM.toFixed(2)} m`).join(' · '),
@@ -596,6 +1047,18 @@
       ui.open.textContent = 'Open 3D';
       ui.open.setAttribute('aria-expanded', 'false');
       host.removeAttribute('aria-busy');
+      ui['structure-off'].hidden = !ui.structure.checked;
+      if (ui.structure.checked) ui['structure-note'].textContent = `Structural intent is not displayed. ${STRUCTURE_CAVEAT}`;
+      ui['services-off'].hidden = !ui.services.checked;
+      if (ui.services.checked) ui['services-note'].textContent = `Plumbing intent is not displayed. ${PLUMBING_CAVEAT}`;
+      ui['drainage-off'].hidden = !ui.drainage.checked;
+      if (ui.drainage.checked) ui['drainage-note'].textContent = 'Drainage intent is not displayed. Drainage engineering is not assessed.';
+      ui['drainage-schedule'].textContent = '';
+      ui['drainage-details'].hidden = true;
+      ui['lightStudy-off'].hidden = !ui.lightStudy.checked;
+      lightDetails(null);
+      if (ui.lightStudy.checked) ui['lightStudy-note'].textContent = 'Light study is not displayed. NOT LUX; no analysis runs in 3D.';
+      ui['intent-findings-list'].textContent = '';
       if (!preserveMessage) message('3D is closed. Its GPU resources and view listeners have been released; the 2D plan is unchanged.');
       if (focus) ui.open.focus({ preventScroll: true });
     }
@@ -626,6 +1089,10 @@
       if (destroyed || phase !== 'closed') return;
       const current = ++ticket;
       phase = 'loading';
+      ui['structure-off'].hidden = true;
+      ui['services-off'].hidden = true;
+      ui['drainage-off'].hidden = true;
+      ui['lightStudy-off'].hidden = true;
       ui.open.disabled = true;
       ui.open.textContent = 'Loading 3D…';
       ui.close.hidden = false;
@@ -755,6 +1222,55 @@
     listen(ui.open, 'click', open);
     listen(ui.close, 'click', () => close());
     listen(ui.active, 'change', rebuild);
+    listen(document, 'homeplanner:light-result', event => {
+      if (destroyed) return;
+      // Events are notifications, never a replacement for the current 2D controller.
+      lightInvalidated = event.detail?.stale === true || event.detail?.result == null;
+      refreshLight();
+    });
+    listen(ui.lightStudy, 'change', () => {
+      lightDetails(null);
+      rebuild();
+    });
+    listen(ui['lightStudy-off'], 'click', () => {
+      ui.lightStudy.checked = false;
+      ui['lightStudy-off'].hidden = true;
+      lightDetails(null);
+      message('Light study is off. Open 3D to inspect remaining layers. 2D is unchanged.');
+    });
+    listen(ui.structure, 'change', () => {
+      ui['structure-note'].hidden = !ui.structure.checked;
+      ui['structure-note'].textContent = ui.structure.checked ? STRUCTURE_CAVEAT : '';
+      rebuild();
+    });
+    listen(ui['structure-off'], 'click', () => {
+      ui.structure.checked = false;
+      ui['structure-off'].hidden = ui['structure-note'].hidden = true;
+      ui['structure-note'].textContent = '';
+      message('Structural intent is off. Open 3D to inspect the remaining enabled layers; with all intent layers off the legacy schematic preview is used. 2D is unchanged.');
+    });
+    listen(ui.services, 'change', () => {
+      ui['services-note'].hidden = !ui.services.checked;
+      ui['services-note'].textContent = ui.services.checked ? PLUMBING_CAVEAT : '';
+      rebuild();
+    });
+    listen(ui['services-off'], 'click', () => {
+      ui.services.checked = false;
+      ui['services-off'].hidden = ui['services-note'].hidden = true;
+      ui['services-note'].textContent = '';
+      message('Plumbing intent is off. Open 3D to inspect the remaining enabled layers; with all intent layers off the legacy schematic preview is used. 2D is unchanged.');
+    });
+    listen(ui.drainage, 'change', () => {
+      ui['drainage-note'].hidden = !ui.drainage.checked;
+      ui['drainage-note'].textContent = ui.drainage.checked ? 'Drainage engineering is not assessed. Refreshing intent…' : '';
+      rebuild();
+    });
+    listen(ui['drainage-off'], 'click', () => {
+      ui.drainage.checked = false;
+      ui['drainage-off'].hidden = ui['drainage-note'].hidden = true;
+      ui['drainage-note'].textContent = '';
+      message('Drainage intent is off. Open 3D to inspect remaining enabled layers. 2D is unchanged.');
+    });
     listen(ui.cutaway, 'change', () => {
       runtime?.content?.roofs.forEach(roof => { roof.visible = !ui.cutaway.checked; });
       requestRender();
@@ -778,5 +1294,5 @@
   }
 
   return { THREE_VERSION, PREVIEW, toThree, wallGrid, wallSurfaceData, bedPillows, doorLeaf,
-    buildContent, disposeObject, resolveSun, mount };
+    buildContent, buildLight, currentLight, disposeObject, resolveSun, mount };
 });

@@ -35,6 +35,18 @@ links and original summaries; no source-book pages, scans or tables are bundled.
    The floor slices, project JSON and the separately controlled IndexedDB
    persistence feature retain the records. This panel is not a second store.
 
+**Delete selected point** names the point and floor in a native confirmation.
+Cancel preserves the record and fields; deletion focuses the persistent Point
+fields heading rather than the document body. No global Delete/Backspace handler
+is introduced.
+
+Load `planner-drafts.js` before this feature. Unapplied point fields are retained
+in this session by project/floor/point, including selection/floor round-trips and
+unrelated edits. A changed or deleted saved point, or stale host geometry, blocks
+submission while retaining the draft. **Reload fields** asks before discarding
+pending fields; unavailable point drafts remain reachable from the named list.
+Project Save/JSON include only applied points, not pending input fields.
+
 The non-colour legend distinguishes S/socket, W/switch, L/light, A/appliance and
 D/data. `?` means review is needed; `!` means a conflict/warning needs review.
 **Unsupported drafts are listed but have no floating point marker.**
@@ -83,6 +95,11 @@ building-local frame; elevations are metres, positive upward.
   origin: { kind: "manual" }
 }
 ```
+
+Where the room supplies reservation-aware `usableRegions`, a surface point must
+lie in one of those regions, not inside a lift/stair reservation. A conflicting
+existing point stays a reviewable draft and is not silently moved or deleted.
+The electrical plan uses the same usable regions for its room outlines.
 
 A light surface anchor is `{kind:"ceiling"|"floor", x, y}`, with no invented
 `wallId`; its elevation datum is `mounting-point`. A floor mounting point

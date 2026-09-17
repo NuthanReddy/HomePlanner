@@ -1,13 +1,13 @@
 (function(root,factory){
   'use strict';
-  const api=factory(root);
+  const api=factory(root,typeof module==='object'&&module.exports?require('./planner-drafts.js'):root.HomePlannerDrafts);
   if(typeof module==='object'&&module.exports)module.exports=api;
   else{
     root.EnvironmentUI=api;
     if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',()=>api.mount(),{once:true});
     else api.mount();
   }
-})(globalThis,function(root){
+})(globalThis,function(root,Drafts){
   'use strict';
   const HOUR=3600000,DAY=24*HOUR;
   const DIRECTIONS=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
@@ -194,7 +194,9 @@
       id:o.id,from:o.exterior?'outside':o.roomId,to:o.exterior?o.roomId:o.targetRoomId,
       freeAreaM2:nominalArea(o),cd:null,pressurePa:null
     }));
-    return {zones:scene.rooms.map(r=>({id:r.id,volumeM3:r.rect.w*r.rect.h*scene.wallHeightM})),
+    return {zones:scene.rooms.map(r=>({id:r.id,
+      volumeM3:positive(r.usableAreaM2===undefined?r.rect.w*r.rect.h:r.usableAreaM2,
+        `${r.label||r.id} usable floor area`)*scene.wallHeightM})),
       links,outsideId:'outside',densityKgM3:null};
   }
   function buildThermalTemplate(scene){
@@ -387,6 +389,7 @@
         </section>
       </div></div>
       <section id="env-wind-section" class="env-panel" aria-labelledby="env-wind-heading"><h3 id="env-wind-heading">Wind rose &amp; window placement</h3>
+        <details class="env-details" id="env-wind-tools"><summary>Wind observations &amp; window proposals — separate from pressure-network results</summary>
         <p>Weather wind is FROM true north at its source reference height. Schematic paths use actual exterior walls and operating openings; glazing is not an open aperture. No mean vector hides opposing seasonal winds.</p>
         <form id="env-wind-form"><div class="env-fields env-fields-wide">
           <div><label for="env-wind-source">Wind scenario</label><select id="env-wind-source"><option value="weather">Imported records</option><option value="manual">Hypothetical wind</option></select></div>
@@ -402,8 +405,10 @@
         </div></details><button class="env-primary" type="submit">Build rose &amp; explain proposals</button></form>
         <p id="env-wind-error" class="env-error" role="alert" hidden></p><p id="env-wind-status" class="env-status" role="status"></p>
         <div class="env-wind-layout"><div id="env-wind-rose"></div><div id="env-window-proposals"></div></div><div id="env-window-preview"></div>
+        </details>
       </section>
       <section id="env-models-section" class="env-panel" aria-labelledby="env-models-heading"><h3 id="env-models-heading">Reduced analytical experiments</h3>
+        <p><a href="?workspace=environment&amp;section=airflow" data-workspace="environment" data-section="airflow">Open the room/opening airflow visualizer</a>. The expert JSON experiments below remain independent inputs, not automatically synchronized scenarios.</p>
         <p class="env-warning">Not evaluated until every required input is supplied and the experimental assumptions are acknowledged. These are not actual site temperatures, CFD, occupant airspeed, health guidance or compliance results.</p>
         <div class="env-model-layout">
           <details class="env-details"><summary>Pressure network · opening flow estimates</summary><p>Build from the active scene, then supply density, Cd and signed imposed from→to pressure for every link. The template's rectangle × operating fraction is only a maximum free area; enter frame/screen losses explicitly. No Cp/Cd or wind-height correction is inferred.</p>
@@ -437,7 +442,48 @@
     if(!planner){element.textContent='Environment needs the HomePlanner coordinator. Keep planner-bridge.js before environment-ui.js.';return null;}
     element.dataset.envMounted='true';element.classList.add('env-workspace');element.innerHTML=markup();
     const by=id=>element.querySelector(`#${id}`),Data=root.EnvironmentData,Sun=root.HomeSun;
-    let previousProjectId=null,previousSiteKey=null,previousGeometryKey=null,previousWeatherId=null;
+    let previousProjectId=null,previousFloorId=null,previousSiteKey=null,previousGeometryKey=null,previousWeatherId=null,previousAssemblyKey=null;
+    const drafts=Drafts.createStore(planner,'Site / environment inputs'),formOwners=new Map(),formBases=new Map();
+    const floorForms=new Set(['env-building-form','env-storey-form','env-obstacle-form']);
+    const formScope=(id,project=planner.getProject())=>({projectId:project.id,floorId:floorForms.has(id)?project.activeFloorId:'',entityId:id});
+    const formBase=(id,project=planner.getProject())=>{
+      const values={
+        'env-site-form':project.site,
+        'env-building-form':project.building,
+        'env-storey-form':project.floors.find(f=>f.id===project.activeFloorId)?.heightM,
+        'env-obstacle-form':project.obstacles.find(o=>o.id===by('env-obstacle-id').value)||null,
+        'env-material-form':project.environment?.materials,
+        'env-glazing-form':project.environment?.glazing
+      };
+      return JSON.stringify(values[id]??null);
+    };
+    function rememberForm(form){
+      if(!form?.id||form.dataset.dirty!=='true')return;
+      const fields=[...form.querySelectorAll('input[id],select[id],textarea[id]')].filter(input=>input.type!=='file')
+        .map(input=>({id:input.id,value:input.value,...(input.type==='checkbox'?{checked:input.checked}:{})}));
+      const layers=form.id==='env-material-form'?[...by('env-material-layers').querySelectorAll('[data-env-layer]')]
+        .map(row=>Object.fromEntries([...row.querySelectorAll('[data-layer-field]')].map(input=>[input.dataset.layerField,input.value]))):null;
+      drafts.put(formOwners.get(form.id)||formScope(form.id),{fields,layers,base:formBases.get(form.id)??formBase(form.id)});
+    }
+    function assertFormOwner(id){
+      const scope=formOwners.get(id);
+      if(scope&&Drafts.key(scope)!==Drafts.key(formScope(id)))
+        throw new Error('Project or floor changed. This draft belongs to its original owner; return there before applying it.');
+      const pending=scope&&drafts.get(scope);
+      if(pending&&pending.base!==formBase(id))
+        throw new Error('Saved inputs changed while this draft was being edited. Your draft is retained; copy needed values, then discard/reload inputs before applying.');
+    }
+    function discardForm(id){
+      const obstacle=id==='env-obstacle-form'?planner.getProject().obstacles.find(o=>o.id===by('env-obstacle-id').value):null;
+      drafts.remove(formOwners.get(id)||formScope(id));
+      by(id).dataset.dirty='';by(id).reset();
+      by(id).dataset.reload='true';formBases.delete(id);
+      render();
+      if(obstacle)syncForm(id,obstacleFields(obstacle),true);
+    }
+    const obstacleFields=o=>({'env-obstacle-id':o.id,'env-obstacle-label':o.label,'env-obstacle-type':o.type,
+      'env-obstacle-x':o.x,'env-obstacle-y':o.y,'env-obstacle-w':o.w,'env-obstacle-h':o.h,
+      'env-obstacle-height':o.heightM,'env-obstacle-base':o.baseM,'env-obstacle-trans':o.transmittance});
     let requestController=null,weatherOperation=0,locationOperation=0,monthlyOperation=0;
     let proposals=[],preview=null,proposalGeometryKey=null,solarResult=null,windResult=null;
     let pressureTemplateKey=null,thermalTemplateKey=null,lastMaterialLayers=[],destroyed=false;
@@ -458,7 +504,17 @@
     function bindClick(id,errorId,work){by(id).addEventListener('click',()=>action(errorId,work));}
     function bindForm(id,errorId,work){
       by(id).addEventListener('submit',event=>{
-        event.preventDefault();action(errorId,async()=>{await work();by(id).dataset.dirty='';});
+        event.preventDefault();action(errorId,async()=>{
+          assertFormOwner(id);
+          const scope=formOwners.get(id)||formScope(id),pending=JSON.stringify(drafts.get(scope));
+          await work();
+          if(JSON.stringify(drafts.get(scope))===pending){
+            drafts.remove(scope);
+            if(Drafts.key(formOwners.get(id)||formScope(id))===Drafts.key(scope)){
+              by(id).dataset.dirty='';formBases.set(id,formBase(id));
+            }
+          }
+        });
       });
     }
     function saveEnvironment(patch){planner.execute({type:'set-environment',patch:{schemaVersion:1,...patch}});}
@@ -536,11 +592,14 @@
       if(form?.id==='env-material-form')by('env-material-results').innerHTML='<p class="env-help">Layers changed; evaluate again.</p>';
       if(form?.id==='env-pressure-form')by('env-pressure-result').innerHTML='';
       if(form?.id==='env-thermal-form')by('env-thermal-result').innerHTML='';
+      rememberForm(form);
     };
     element.addEventListener('input',onInput);
+    element.addEventListener('change',onInput);
 
     function syncForm(id,values,force=false){
       const form=by(id);
+      force=force||form.dataset.reload==='true';
       if(!force&&(form.dataset.dirty||form.contains(root.document.activeElement)))return;
       for(const [key,val] of Object.entries(values)){
         const field=by(key);
@@ -548,9 +607,10 @@
         else field.value=val??'';
       }
       if(force)form.dataset.dirty='';
+      formBases.set(id,formBase(id));
     }
     function renderObstacles(project){
-      const obstacles=project.obstacles||[];
+      const obstacles=(project.obstacles||[]).filter(o=>!o.facade);
       by('env-obstacle-list').innerHTML=obstacles.length?`<ul class="env-item-list">${obstacles.map(o=>
         `<li><div><strong>${esc(o.label)}</strong><span>${esc(o.type)} · ${nice(o.w)} × ${nice(o.h)} m · height ${nice(o.heightM)} m</span></div>
         <div class="env-actions"><button type="button" data-env-obstacle-edit="${esc(o.id)}" aria-label="Edit ${esc(o.label)}">Edit</button><button type="button" data-env-obstacle-remove="${esc(o.id)}" aria-label="Remove ${esc(o.label)}">Remove</button></div></li>`).join('')}</ul>`:
@@ -598,10 +658,32 @@
         ['densityKgM3','ρ (kg/m³)'],['specificHeatJ_KgK','c (J/kg K)'],['source','Source / condition']];
       by('env-material-layers').innerHTML=`<div class="env-table-wrap" role="region" aria-label="Editable construction layers" tabindex="0"><table class="env-table env-layer-table"><caption>Explicit opaque layers · outside to inside; no glazing substitution</caption><thead><tr>${fields.map(([,label])=>`<th scope="col">${esc(label)}</th>`).join('')}<th scope="col">Edit</th></tr></thead><tbody>${layers.map((layer,index)=>`<tr data-env-layer="${index}">${fields.map(([key,label])=>`<td><input aria-label="Layer ${index+1} ${esc(label)}" data-layer-field="${key}" type="${['label','source'].includes(key)?'text':'number'}" ${['label','source'].includes(key)?'':'step="any" min="0"'} value="${esc(layer[key])}" ${key==='label'?'maxlength="120"':''}></td>`).join('')}<td><button type="button" data-env-layer-remove="${index}" aria-label="Remove layer ${index+1}">Remove</button></td></tr>`).join('')}</tbody></table></div>`;
     }
+    function renderAssemblies(entry){
+      const selected=entry?.output?.selected,comparisons=entry?.output?.comparisons;
+      if(!selected||!Array.isArray(comparisons)){
+        by('env-material-results').innerHTML='<p class="env-help">No current assembly result. Evaluate the stated inputs explicitly.</p>';return;
+      }
+      const thickness=entry.input.comparisonThicknessM;
+      by('env-material-results').innerHTML=table(['Assembly','R (m² K/W)','U (W/m² K)','Capacity (J/m² K)'],
+        [['Your explicit layers',nice(selected.resistanceM2K_W,3),nice(selected.uValueW_M2K,3),nice(selected.arealHeatCapacityJ_M2K,0)],
+          ...comparisons.map(p=>[`${esc(p.label)}<br><span class="env-help">Same assumed thickness ${nice(thickness,3)} m</span>`,
+            p.result?nice(p.result.resistanceM2K_W,3):'Properties required',p.result?nice(p.result.uValueW_M2K,3):'Not evaluated',
+            p.result?nice(p.result.arealHeatCapacityJ_M2K,0):'Not evaluated'])],
+        'Steady resistance & total areal capacity · not dynamic heat retention or Celsius');
+      by('env-material-results').innerHTML+=warnList(['Example properties are source-specific. Moisture, density, mortar, plaster, bridges and layer order matter; films are stated assumptions.',
+        '“Mud” has no universal conductivity/capacity. The Lyon rammed-earth record remains unevaluated until the applicable measured properties are supplied.']);
+    }
     function render(event){
       if(event?.type==='selection')return;
       const project=planner.getProject(),all=scenes(),active=scene(),environment=project.environment||{};
       const changedProject=previousProjectId!==project.id,key=siteKey(project),shapeKey=geometryKey(project,all);
+      const changedFloor=previousFloorId!==project.activeFloorId,restoring=[];
+      for(const form of element.querySelectorAll('form[id]')){
+        if(changedProject||(changedFloor&&floorForms.has(form.id))){
+          form.dataset.dirty='';form.reset();restoring.push(form);
+        }
+        formOwners.set(form.id,formScope(form.id,project));
+      }
       if(previousSiteKey!==null&&previousSiteKey!==key){
         locationOperation++;by('env-detect').disabled=false;
         cancelWeather('Site/project changed; request cancelled. Existing imported weather was not silently replaced.');
@@ -643,8 +725,8 @@
       const dimensionsReviewed=assumed?.acknowledged&&assumed.floorId===project.activeFloorId&&
         ['wallHeightM','floorElevationM','roofThicknessM'].every(key=>assumed[key]===project.building[key]);
       syncForm('env-building-form',{'env-wall-height':project.building.wallHeightM,'env-base':project.building.floorElevationM,
-        'env-roof':project.building.roofThicknessM,'env-geometry-ack':dimensionsReviewed},changedProject);
-      syncForm('env-storey-form',{'env-storey':project.floors.find(f=>f.id===project.activeFloorId)?.heightM},changedProject);
+        'env-roof':project.building.roofThicknessM,'env-geometry-ack':dimensionsReviewed},changedProject||changedFloor);
+      syncForm('env-storey-form',{'env-storey':project.floors.find(f=>f.id===project.activeFloorId)?.heightM},changedProject||changedFloor);
       const solar=environment.solar||{};
       const today=Sun?Sun.dateAt(new Date(),project.site.timeZone):new Date().toISOString().slice(0,10);
       if(changedProject)syncForm('env-solar-form',{'env-solar-date':solar.date||today,'env-solar-time':solar.time||'12:00',
@@ -658,12 +740,21 @@
       const material=environment.materials;
       const layers=material?.layers||[{...MATERIAL_PRESETS[0]}];
       if((changedProject||JSON.stringify(lastMaterialLayers)!==JSON.stringify(layers))&&!by('env-material-form').dataset.dirty&&
-         !by('env-material-form').contains(root.document.activeElement))renderLayers(layers);
+         (!by('env-material-form').contains(root.document.activeElement)||by('env-material-form').dataset.reload==='true'))renderLayers(layers);
       syncForm('env-material-form',{'env-film-in':material?.films?.inside??.13,'env-film-out':material?.films?.outside??.04,
         'env-compare-thickness':material?.comparisonThicknessM??.2},changedProject);
       const glazing=environment.glazing;
       syncForm('env-glazing-form',{'env-glazing-u':glazing?.uValueW_M2K,'env-glazing-shgc':glazing?.shgc,
         'env-glazing-vlt':glazing?.vlt,'env-glazing-source':glazing?.source},changedProject);
+      const assembly=environment.results?.assemblies,assemblyKey=JSON.stringify([material??null,assembly??null]);
+      if(changedProject||assemblyKey!==previousAssemblyKey){
+        const inputs={layers:material?.layers,films:material?.films,comparisonThicknessM:material?.comparisonThicknessM};
+        if(by('env-material-form').dataset.dirty)
+          by('env-material-results').innerHTML='<p class="env-help">Pending layer draft has not been evaluated. Evaluate again for these fields.</p>';
+        else if(assembly&&JSON.stringify(assembly.input)===JSON.stringify(inputs))renderAssemblies(assembly);
+        else by('env-material-results').innerHTML='<p class="env-help">Assembly result unavailable or stale for the saved inputs. Evaluate again.</p>';
+        previousAssemblyKey=assemblyKey;
+      }
       setStatus('env-glazing-status',glazing?`Stored explicit window inputs: U ${nice(glazing.uValueW_M2K)} W/m² K; SHGC ${nice(glazing.shgc)}; VLT ${nice(glazing.vlt)}.`:'No whole-window product specified.');
       if(changedProject){
         const wind=environment.wind||{};
@@ -688,7 +779,20 @@
       if(!root.BuildingPhysics)diagnostics.push('Missing local BuildingPhysics module; only inputs and schematic geometry are available.');
       diagnostics.push('All-floor solar mode evaluates scenes separately; mutual storey shading is not inferred. Add explicit external context where applicable.');
       by('env-diagnostics').innerHTML=`<p>Geometry signature: <code>${esc(shapeKey)}</code>. ${all.length} floor scene(s), ${all.reduce((n,s)=>n+s.walls.length,0)} walls, ${all.reduce((n,s)=>n+s.openings.length,0)} openings. Results are explicit snapshots, not live solver runs.</p>${warnList(diagnostics)}`;
-      previousProjectId=project.id;previousSiteKey=key;previousGeometryKey=shapeKey;previousWeatherId=weatherId;
+      for(const form of restoring){
+        const pending=drafts.get(formOwners.get(form.id));
+        if(!pending){formBases.set(form.id,formBase(form.id));continue;}
+        if(pending.layers)renderLayers(pending.layers);
+        for(const field of pending.fields){
+          const input=by(field.id);if(!input)continue;
+          input.value=field.value;if(typeof field.checked==='boolean')input.checked=field.checked;
+        }
+        form.dataset.dirty='true';formBases.set(form.id,pending.base);
+        if(form.id==='env-material-form')by('env-material-results').innerHTML='<p class="env-help">Restored pending layer draft; evaluate explicitly.</p>';
+      }
+      if(changedFloor&&!changedProject)setStatus('env-global-status','Active floor changed. Each floor keeps its own pending dimension/obstacle drafts; no draft was applied to another floor.');
+      for(const form of element.querySelectorAll('form[id]'))delete form.dataset.reload;
+      previousProjectId=project.id;previousFloorId=project.activeFloorId;previousSiteKey=key;previousGeometryKey=shapeKey;previousWeatherId=weatherId;
       updateAvailability();
     }
 
@@ -781,6 +885,17 @@
     return install();
 
     function install(){
+      for(const [id,errorId] of [['env-site-form','env-site-error'],['env-building-form','env-site-error'],
+        ['env-storey-form','env-site-error'],['env-obstacle-form','env-obstacle-error'],
+        ['env-material-form','env-material-error'],['env-glazing-form','env-glazing-error']]){
+        const reload=root.document.createElement('button');reload.type='button';reload.id=`${id}-reload`;
+        reload.textContent='Discard draft / reload project inputs';
+        reload.addEventListener('click',()=>action(errorId,()=>{
+          if(by(id).dataset.dirty&&!root.confirm('Discard the pending input draft and reload current project inputs?'))return;
+          discardForm(id);
+        }));
+        by(id).append(reload);
+      }
       bindForm('env-site-form','env-site-error',()=>{
         const patch={latitude:number('env-lat','Latitude',-90,90),longitude:number('env-lon','Longitude',-180,180),timeZone:value('env-zone').trim()};
         try{new Intl.DateTimeFormat('en-GB',{timeZone:patch.timeZone}).format(new Date());}
@@ -789,13 +904,14 @@
           throw new Error('Use a valid IANA time zone such as Asia/Kolkata. It is not inferred from coordinates.');
         }
         const confirmed=by('env-site-verified').checked;
-        planner.execute({type:'update-site',patch});
-        saveEnvironment({siteProvenance:{method:'manual',latitude:patch.latitude,longitude:patch.longitude,
-          buildingSiteConfirmed:confirmed,recordedAt:new Date().toISOString()}});
-        setStatus('env-global-status','Site saved locally. Weather was not fetched.');
+        planner.execute({type:'update-site',patch,environmentPatch:{schemaVersion:1,siteProvenance:{
+          method:'manual',latitude:patch.latitude,longitude:patch.longitude,
+          buildingSiteConfirmed:confirmed,recordedAt:new Date().toISOString()}}});
+        setStatus('env-global-status','Site applied to the project in one Undo step. Use Save now for browser storage. Weather was not fetched.');
       });
       bindClick('env-detect','env-site-error',async()=>{
         if(typeof root.HomePlannerLocation?.detect!=='function')throw new Error('Current-location detection is unavailable. Enter coordinates manually.');
+        if(by('env-site-form').dataset.dirty&&!root.confirm('Replace the pending site-input draft only if location detection succeeds? Failed or cancelled detection keeps the draft.'))return;
         const token=++locationOperation,key=siteKey(planner.getProject());
         by('env-detect').disabled=true;setStatus('env-site-status','Requesting device position only after your click…');
         try{
@@ -803,12 +919,12 @@
           if(token!==locationOperation||siteKey(planner.getProject())!==key)return;
           requireNumber(found.latitude,'Detected latitude',-90,90);requireNumber(found.longitude,'Detected longitude',-180,180);
           requireNumber(found.accuracyM,'Reported accuracy',0);
-          by('env-site-form').dataset.dirty='';
-          planner.execute({type:'update-site',patch:{latitude:found.latitude,longitude:found.longitude}});
-          saveEnvironment({siteProvenance:{method:'device',latitude:found.latitude,longitude:found.longitude,
-            accuracyM:found.accuracyM,timestamp:found.timestamp,buildingSiteConfirmed:false,recordedAt:new Date().toISOString()}});
+          planner.execute({type:'update-site',patch:{latitude:found.latitude,longitude:found.longitude},environmentPatch:{
+            schemaVersion:1,siteProvenance:{method:'device',latitude:found.latitude,longitude:found.longitude,
+              accuracyM:found.accuracyM,timestamp:found.timestamp,buildingSiteConfirmed:false,recordedAt:new Date().toISOString()}}});
+          drafts.remove(formScope('env-site-form'));
           syncForm('env-site-form',{'env-lat':found.latitude,'env-lon':found.longitude,'env-zone':planner.getProject().site.timeZone,'env-site-verified':false},true);
-          setStatus('env-global-status',`Device position saved; reported accuracy ±${nice(found.accuracyM)} m. Verify it is the building site. Time zone was not changed.`);
+          setStatus('env-global-status',`Device position applied to the project; reported accuracy ±${nice(found.accuracyM)} m. Use Save now for browser storage. Verify it is the building site. Time zone was not changed.`);
         }finally{
           if(!destroyed&&token===locationOperation){by('env-detect').disabled=false;render();}
         }
@@ -817,14 +933,14 @@
         const patch={wallHeightM:positive(value('env-wall-height'),'Wall height'),
           floorElevationM:number('env-base','Building base elevation'),roofThicknessM:number('env-roof','Roof thickness',0)};
         const acknowledged=by('env-geometry-ack').checked;
-        planner.execute({type:'update-building',patch});
-        saveEnvironment({buildingAssumptions:{...patch,floorId:planner.getProject().activeFloorId,acknowledged,
-          recordedAt:new Date().toISOString(),basis:'User-reviewed preview dimensions, not a survey'}});
-        setStatus('env-global-status','Building preview dimensions saved. Numerical models still require their own complete inputs.');
+        planner.execute({type:'update-building',patch,environmentPatch:{schemaVersion:1,buildingAssumptions:{
+          ...patch,floorId:planner.getProject().activeFloorId,acknowledged,
+          recordedAt:new Date().toISOString(),basis:'User-reviewed preview dimensions, not a survey'}}});
+        setStatus('env-global-status','Building preview dimensions applied in one Undo step. Use Save now for browser storage. Numerical models still require their own complete inputs.');
       });
       bindForm('env-storey-form','env-site-error',()=>{
         planner.execute({type:'update-floor',id:planner.getProject().activeFloorId,patch:{heightM:positive(value('env-storey'),'Storey height')}});
-        setStatus('env-global-status','Active storey height saved; stacked elevations updated.');
+        setStatus('env-global-status','Active storey height applied; stacked elevations updated. Use Save now for browser storage.');
       });
       bindForm('env-obstacle-form','env-obstacle-error',()=>{
         const project=planner.getProject(),id=value('env-obstacle-id')||`obstacle-${root.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
@@ -836,12 +952,16 @@
           transmittance:number('env-obstacle-trans','Beam transmittance',0,1)};
         const list=copy(project.obstacles),index=list.findIndex(o=>o.id===id);
         if(value('env-obstacle-id')&&index<0)throw new Error('The edited obstacle no longer exists on this floor. Start a new rectangle.');
-        if(index<0)list.push(obstacle);else list[index]=obstacle;
+        if(index>=0&&list[index].facade)throw new Error('Edit physical facade projections in Design / Elevations & sections, not the nearby-obstacle editor.');
+        if(index<0)list.push(obstacle);else list[index]={...list[index],...obstacle};
         planner.execute({type:'set-obstacles',value:list});by('env-obstacle-id').value=id;
         setStatus('env-global-status',`${label} saved as an assumed local obstruction. No fixed cooling effect was assigned.`);
       });
       bindClick('env-obstacle-new','env-obstacle-error',()=>{
+        if(by('env-obstacle-form').dataset.dirty&& !root.confirm('Discard the pending obstacle draft before starting a new rectangle?'))return;
+        drafts.remove(formOwners.get('env-obstacle-form')||formScope('env-obstacle-form'));
         by('env-obstacle-id').value='';by('env-obstacle-label').value='Nearby building';by('env-obstacle-form').dataset.dirty='true';
+        formBases.set('env-obstacle-form',formBase('env-obstacle-form'));rememberForm(by('env-obstacle-form'));
         by('env-obstacle-label').focus();
       });
       by('env-weather-file').addEventListener('change',()=>action('env-weather-error',async()=>{
@@ -984,12 +1104,15 @@
       bindClick('env-material-use','env-material-error',()=>{
         const preset=MATERIAL_PRESETS.find(p=>p.id===value('env-material-preset'));
         if(!preset)throw new Error('Choose an available sourced example.');
+        if(by('env-material-form').dataset.dirty&&!root.confirm('Replace the pending construction-layer draft with this sourced example?'))return;
         renderLayers([preset]);by('env-material-form').dataset.dirty='true';by('env-material-results').innerHTML='';
+        rememberForm(by('env-material-form'));
         by('env-material-source').innerHTML=`${esc(preset.source)} <a href="${preset.url}" target="_blank" rel="noopener noreferrer">Read source</a>`;
       });
       bindClick('env-material-add','env-material-error',()=>{
         renderLayers([...layerDraft(false),{label:'New specified layer',thicknessM:null,conductivityW_MK:null,densityKgM3:null,specificHeatJ_KgK:null,source:''}]);
         by('env-material-form').dataset.dirty='true';by('env-material-results').innerHTML='';
+        rememberForm(by('env-material-form'));
       });
       bindForm('env-material-form','env-material-error',()=>{
         by('env-material-results').innerHTML='';
@@ -1006,15 +1129,7 @@
               conductivityW_MK:p.conductivityW_MK,densityKgM3:p.densityKgM3,specificHeatJ_KgK:p.specificHeatJ_KgK}],films):null};
         });
         saveEnvironment({materials:{layers,films,comparisonThicknessM:thickness,basis:'Explicit layers / sourced examples; not assigned thermal zones'}});
-        storeResult('assemblies',{layers,films,comparisonThicknessM:thickness},{selected,comparisons});
-        by('env-material-results').innerHTML=table(['Assembly','R (m² K/W)','U (W/m² K)','Capacity (J/m² K)'],
-          [['Your explicit layers',nice(selected.resistanceM2K_W,3),nice(selected.uValueW_M2K,3),nice(selected.arealHeatCapacityJ_M2K,0)],
-            ...comparisons.map(p=>[`${esc(p.label)}<br><span class="env-help">Same assumed thickness ${nice(thickness,3)} m</span>`,
-              p.result?nice(p.result.resistanceM2K_W,3):'Properties required',p.result?nice(p.result.uValueW_M2K,3):'Not evaluated',
-              p.result?nice(p.result.arealHeatCapacityJ_M2K,0):'Not evaluated'])],
-          'Steady resistance & total areal capacity · not dynamic heat retention or Celsius');
-        by('env-material-results').innerHTML+=warnList(['Example properties are source-specific. Moisture, density, mortar, plaster, bridges and layer order matter; films are stated assumptions.',
-          '“Mud” has no universal conductivity/capacity. The Lyon rammed-earth record remains unevaluated until the applicable measured properties are supplied.']);
+        renderAssemblies(storeResult('assemblies',{layers,films,comparisonThicknessM:thickness},{selected,comparisons}));
       });
       bindForm('env-glazing-form','env-glazing-error',()=>{
         const glazing={uValueW_M2K:positive(value('env-glazing-u'),'Whole-window U'),
@@ -1023,7 +1138,7 @@
         saveEnvironment({glazing});invalidateSolar('Glazing inputs changed; recalculate constant-SHGC solar-gain screening.');
       });
       bindForm('env-wind-form','env-wind-error',()=>{
-        needData();invalidateWind('Building the wind distribution and actual opening paths…');
+        needData();invalidateWind('Wind results cleared. Complete a valid scenario to calculate.');
         by('env-wind-rose').innerHTML='';
         const manual=value('env-wind-source')==='manual';
         const config={source:value('env-wind-source'),months:manual?[]:value('env-wind-month').split(',').filter(Boolean).map(Number),
@@ -1156,19 +1271,35 @@
         if(edit)action('env-obstacle-error',()=>{
           const o=planner.getProject().obstacles.find(o=>o.id===edit.dataset.envObstacleEdit);
           if(!o)throw new Error('This obstacle is no longer available on the active floor.');
-          syncForm('env-obstacle-form',{'env-obstacle-id':o.id,'env-obstacle-label':o.label,'env-obstacle-type':o.type,
-            'env-obstacle-x':o.x,'env-obstacle-y':o.y,'env-obstacle-w':o.w,'env-obstacle-h':o.h,
-            'env-obstacle-height':o.heightM,'env-obstacle-base':o.baseM,'env-obstacle-trans':o.transmittance},true);
+          if(o.facade)throw new Error('Edit physical facade projections in Design / Elevations & sections.');
+          if(by('env-obstacle-form').dataset.dirty&&!root.confirm('Discard the pending obstacle draft before editing another saved obstacle?'))return;
+          drafts.remove(formOwners.get('env-obstacle-form')||formScope('env-obstacle-form'));
+          syncForm('env-obstacle-form',obstacleFields(o),true);
           by('env-obstacle-editor').open=true;by('env-obstacle-label').focus();
         });
         if(remove)action('env-obstacle-error',()=>{
-          planner.execute({type:'set-obstacles',value:planner.getProject().obstacles.filter(o=>o.id!==remove.dataset.envObstacleRemove)});
-          if(value('env-obstacle-id')===remove.dataset.envObstacleRemove)by('env-obstacle-id').value='';
+          const project=planner.getProject(),current=project.obstacles.find(o=>o.id===remove.dataset.envObstacleRemove);
+          if(!current)throw new Error('This obstacle is no longer available on the active floor.');
+          if(current.facade)throw new Error('Remove physical facade projections in Design / Elevations & sections.');
+          const floor=project.floors.find(f=>f.id===project.activeFloorId);
+          if(!root.confirm(`Delete obstacle “${current.label||current.id}” from ${floor?.name||project.activeFloorId}? Other obstacles are retained. Undo restores this saved obstacle.`))return;
+          const latest=planner.getProject();
+          if(latest.id!==project.id||latest.activeFloorId!==project.activeFloorId||
+            JSON.stringify(latest.obstacles.find(o=>o.id===current.id))!==JSON.stringify(current))
+            throw new Error('The selected obstacle or floor changed. Review it before deleting.');
+          planner.execute({type:'set-obstacles',value:latest.obstacles.filter(o=>o.id!==current.id)});
+          if(value('env-obstacle-id')===current.id){
+            drafts.remove(formOwners.get('env-obstacle-form')||formScope('env-obstacle-form'));
+            by('env-obstacle-form').reset();by('env-obstacle-form').dataset.dirty='';
+            formBases.set('env-obstacle-form',formBase('env-obstacle-form'));
+          }
           setStatus('env-global-status','Obstacle removed from the active floor; use planner Undo to restore it.');
+          const heading=by('env-obstacle-heading');heading.tabIndex=-1;heading.focus();
         });
         if(layer)action('env-material-error',()=>{
           renderLayers(layerDraft(false).filter((_,i)=>i!==Number(layer.dataset.envLayerRemove)));
           by('env-material-form').dataset.dirty='true';by('env-material-results').innerHTML='';
+          rememberForm(by('env-material-form'));
         });
         if(proposal)action('env-wind-error',()=>{
           if(proposalGeometryKey!==currentGeometryKey())throw new Error('Geometry changed; rebuild proposals before previewing.');
@@ -1189,7 +1320,8 @@
       render();
       return {render,destroy(){
         unsubscribe();cancelWeather();locationOperation++;monthlyOperation++;destroyed=true;
-        element.removeEventListener('input',onInput);element.removeEventListener('click',onClick);
+        drafts.dispose();
+        element.removeEventListener('input',onInput);element.removeEventListener('change',onInput);element.removeEventListener('click',onClick);
         element.replaceChildren();delete element.dataset.envMounted;
       }};
     }

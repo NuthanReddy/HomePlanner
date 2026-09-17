@@ -7,16 +7,61 @@ Organized from the supplied conversation:
 
 This is an external-tool research and learning guide, not a description of
 implemented HomePlanner integrations. The shared page has not been independently
-reviewed; the supplied text is the basis of these notes. Current installers,
+reviewed; the supplied text, including the Python/Blender follow-up pasted on
+17 September 2026, is the basis of these notes. Current installers,
 supported versions, licensing and analysis workflows need confirmation against
 each tool's documentation.
+
+**HomePlanner-specific review:** use
+[the implementation gap plan](../building-performance-gap-review.md) for current
+code and priorities. Keep the existing SVG editor, Three.js and structured
+project authoritative. The supplied 70-90% / 100% feature-coverage estimates
+are not verified acceptance evidence. This research is not authorization to
+install packages, replace the frontend or activate a hosted service.
 
 The core simulation tools include open-source software, but the proposed
 Rhino/Grasshopper workflow is **not an entirely open-source or free stack**.
 Rhino is commercial; evaluation and educational licenses have their own terms.
 Optional plugins and hosted services can have separate licensing restrictions.
 
-## Recommended option: OpenStudio + EnergyPlus + Ladybug Tools
+## Python/headless and browser responsibilities
+
+The underlying model/analysis libraries can support headless workflows without
+Rhino/Grasshopper. That does not mean `pip install` supplies every compatible
+engine, weather file, construction, schedule or validated translator.
+
+| Role | Candidate | Required distinction |
+| --- | --- | --- |
+| Live 2D/3D editing | Current HomePlanner SVG / Three.js | Use shared commands and stable project IDs, not mesh coordinates as a second project store. React is optional. |
+| Weather and solar reference work | Ladybug Core / pvlib | EPW parsing and solar position do not automatically calculate arbitrary-building shade, PV yield or savings. |
+| Building model and energy | Honeybee Core/Energy with compatible OpenStudio/EnergyPlus, or the roadmap's scoped direct epJSON compiler | Choose one tested production translation path. Creating a room box does not provide complete constructions, operations, zone boundaries or HVAC. |
+| Daylight/glare | Honeybee Radiance and an appropriate recipe with Radiance | Engine binaries, optical inputs, sensors/views, weather/sky and metric definitions are separate requirements. |
+| Comfort | A selected pythermalcomfort model | Required air/radiant temperatures, airspeed, humidity and occupant inputs; method applicability, not climate-specific or automatic compliance. Verify the current model-specific API before using an old `pmv_ppd` snippet. |
+| Psychrometric properties | PsychroLib | Explicit SI/IP selection and RH units; dew point is not surface temperature, moisture transport or a dynamic mold model. |
+| Optional visual authoring/rendering | Blender Geometry Nodes / Cycles / glTF export | Desktop or managed offline tooling, not a replacement browser renderer. GLB preserves supported visual assets, not complete thermal-zone semantics. |
+| IFC semantics | A deliberately supported IfcOpenShell/Bonsai workflow | Not built-in arbitrary Blender/Three.js thermal conversion; preserve placements, units, relationships and unsupported records for review. |
+| Detailed airflow | A separately specified OpenFOAM or other CFD workflow | An ambiguous package name such as “PyFlow” is insufficient to select a solver/wrapper. Require exact distribution, license, boundary/mesh and convergence evidence. |
+
+Bare `geomeppy.IDF()` and a rectangle snippet are not a complete energy-model
+example: a chosen release's IDD/model initialization and all simulation-critical
+objects need verification. Likewise a malformed/repeated-point polygon must
+fail geometric validation, not be passed to an engine because it renders.
+No package snippets in the supplied chat were executed as application
+integrations by this review.
+
+For a Blender path, prefer explicit visual assets or export first. A proposed
+headless converter must use fixed reviewed scripts, bounded resources and staged
+outputs; file names and imported scripts are not executable user commands.
+Do not automatically heal geometry or discard small faces without a deviation/
+loss report and explicit acceptance. Normal users should not need Blender.
+
+The longer [roadmap](../building-performance-roadmap.md) describes hosted
+FastAPI/database/queue options, but a bounded local runner can establish the
+engine contract without requiring cloud storage. Annual simulation, model
+translation and validation remain substantial work even when the engines are
+available without a commercial GUI.
+
+## Optional visual workflow: OpenStudio + EnergyPlus + Ladybug Tools
 
 ### Step 1: Install a compatible EnergyPlus release
 
@@ -250,6 +295,26 @@ For detailed studies, investigate dedicated hygrothermal tools:
 | WUFI | Vapor diffusion, moisture transport, condensation and drying | Commercial software; mold assessment depends on the selected module or post-processing workflow. |
 | DELPHIN | Coupled heat/moisture transport and drying behavior | Check current licensing and the supported mold-risk assessment method. |
 
+For a **dynamic mold assessment**, distinguish the two model families:
+
+- The [Finnish mould growth model](https://research.tuni.fi/buildingphysics/finnish-mould-growth-model/)
+  from VTT/Tampere predicts an index M from 0 to 6 using hourly temperature/RH
+  at the assessed surface, material sensitivity and decline under unfavorable
+  conditions. Choose an implementation/version, review licensing and reproduce
+  reference trajectories before integrating it. The index does not identify
+  mold types or their hazard.
+- [WUFI Bio](https://wufi.de/en/wufi-bio/) uses a biohygrothermal
+  germination/growth-risk model. Fraunhofer explicitly describes conservative
+  over-prediction and an interior-surface scope; it does not claim exact actual
+  infestation growth. It is a separate workflow, not a drop-in PsychroLib
+  replacement or an established open-source Python dependency.
+
+These primary model descriptions were checked on 17 September 2026. The
+[Simulations4All humidity review](building-humidity-mold-risk.md) already warns
+against equating a compact approximate growth expression with the selected
+published VTT/ASHRAE procedure. HomePlanner's current sensible RC model supplies
+neither surface-moisture histories nor mold growth.
+
 Neither a temperature result nor a condensation flag proves the presence or
 absence of mold. Serious moisture problems need material-specific modeling
 and on-site investigation.
@@ -297,6 +362,13 @@ These tools are candidates for external analysis, not installed dependencies
 or implemented simulation backends in HomePlanner. No automatic export,
 integration, CFD, Radiance simulation or mold-growth model is implied by this
 guide.
+
+Keep the current editable project as the source for future analysis. Three.js
+can display [GLB/glTF assets](https://threejs.org/docs/pages/GLTFLoader.html)
+from [Blender](https://docs.blender.org/manual/en/4.5/addons/import_export/scene_gltf2.html),
+but visual round-trip success is separate from preserving room/zone IDs,
+surface adjacency, openings, materials, schedules and Undo. The current app
+does not yet implement that asset/import workflow.
 
 See [Environment analysis](../environment-analysis.md),
 [Building physics](../building-physics.md) and

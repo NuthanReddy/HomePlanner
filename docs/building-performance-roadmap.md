@@ -1,6 +1,16 @@
 # HomePlanner building-performance architecture and implementation roadmap
 
-**Status:** proposed architecture, not implemented functionality.
+**Status:** mixed delivery: existing local capabilities plus proposed extensions.
+
+**Current implementation review (17 September 2026):**
+[implementation gaps and next-delivery plan](building-performance-gap-review.md)
+records the current code evidence, integration defects and R0-R7 acceptance
+gates. Read it before treating an item below as absent, delivered or required.
+Keep the SVG/Three.js editor and one structured project authority; Blender is
+optional authoring/conversion/render tooling. React and the hosted
+FastAPI/database/broker topology are choices, not prerequisites for the local
+editor or the first bounded external-engine fixture. The earlier AI-generation
+product goal and explicitly approved map-planning scope remain unchanged.
 
 **Scoped delivery amendment:** the local workbench now includes conceptual
 architectural/structural sheets, elevations/sections, plumbing/drainage drawings,
@@ -24,7 +34,8 @@ this decision does not authorize application implementation or Google service
 activation. The shared limiter's per-SKU accounting, safety headroom and
 fail-closed behavior are specified below.
 
-**Evidence date:** 10 September 2026. Repository baseline: `3f909d2`.
+**Historical baseline evidence date:** 10 September 2026, repository `3f909d2`.
+Current dirty-checkout observations are in the 17 September review above.
 
 **Primary product outcome:** a user asks **“Create a 3-bedroom 1800 sq ft house
 for Hyderabad climate”** and receives ranked, constrained, editable design
@@ -43,11 +54,13 @@ This is a separate brief from the 1800 sq ft example unless the user combines th
 modeling workflows associated with DesignBuilder are enabling capabilities, not
 the initial product or a promise of parity. This document changes no application code.
 
-Repository references below are relative to this document; line ranges refer to
-the inspected baseline, not future revisions. External sources are listed in
-Section 8.6. **Observed** means verified in source/tests; **proposed** means a
-decision or deliverable requiring implementation and validation. Test source was
-read, but no tests or builds were run for this documentation-only change.
+Repository references below are relative to this document; historical line
+ranges refer to the inspected baseline, not the current checkout. External
+sources are listed in Section 8.6. **Observed** means verified in the stated
+source/review scope; **proposed** requires implementation and validation. The
+original 10 September document inspected test sources without running them.
+The newer review lists its own narrower checks and observed failures; neither
+is a full-suite or scientific-validation claim.
 
 ## 1. Overview
 
@@ -70,11 +83,14 @@ not an invented site-feasible house.
 Recommended choices:
 
 1. Keep the vanilla editor, bridge, local persistence, SunCalc, and Three.js
-   preview working. Add React islands for new analysis workflows before moving
-   existing editing surfaces. Do not begin with a frontend rewrite.
-2. Introduce a versioned semantic document independent of DOM controls, rendered
-   meshes, Honeybee, and any one simulation engine. Existing schema-1 projects
-   remain recoverable; migration is explicit and produces a new document.
+   working. Finish current integration and action parity first. React islands
+   are an optional implementation choice for new complex workflows, not a
+   required rewrite or simulation dependency.
+2. Reuse the existing project and registered snapshot/projection APIs. Add
+   versioned study semantics and immutable engine-independent analysis bundles;
+   no second writable project is needed for the first supported analysis.
+   A new semantic authoring format is a later capability decision for geometry
+   the existing editor cannot represent, with explicit migration and recovery.
 3. Deliver constrained AI-generated editable floor plans first, using a reviewed
    brief and the existing rectangular model/editor. Progress from inexpensive
    climate screening to optional engineering-grade workflows as they pass tests.
@@ -82,11 +98,13 @@ Recommended choices:
    Time-box a Honeybee/OpenStudio compatibility spike before finalizing the
    supported engine bundle. Do not maintain two production energy exporters.
    Honeybee/Radiance recipes remain a strong Phase-3 workflow choice.
-5. FastAPI is the control plane, not the simulation process. Use durable queued
-   jobs, isolated Linux engine containers, PostgreSQL metadata, and file/object
-   artifact storage. Local development should use the same interfaces.
-   The first local generation release needs only a bounded intent gateway and
-   local candidate persistence; the complete simulation stack is introduced later.
+5. Separate control from engine execution. First prove a bounded local runner,
+   immutable input/output artifacts and the adapter contract; select a
+   compatible OS/runtime rather than automatically installing containers.
+   For hosted multi-user execution, the proposed FastAPI/durable queue/
+   PostgreSQL/object-storage profile below adds ownership, concurrency and
+   operational controls. Keep the same logical contracts without requiring
+   that full topology for every local user.
 6. AI-assisted generation is a first-release capability. Later autonomous
    optimization adds depth and budgets; it is not the first appearance of AI.
 7. Distinguish **engine-computed**, **derived**, **heuristic**, **assumed**,
@@ -353,7 +371,13 @@ or indoor comfort.
 
 ## 3. Component Architecture
 
-### 3.1 Evidence-based existing inventory
+### 3.1 Historical baseline inventory
+
+This table describes the 10 September baseline. The
+[current capability matrix](building-performance-gap-review.md#1-current-implementation-versus-proposed-capability)
+supersedes its absent-feature statements: native airflow/light studies,
+registered drawing snapshots, coordinated sheets and reservation-aware geometry
+have since been added, while some cross-page/3D wiring remains incomplete.
 
 | Component / evidence | Observed responsibility and contract | Reuse / limitation |
 |---|---|---|
@@ -415,6 +439,11 @@ These are inspected examples, not a claim that all tests pass at this snapshot:
 
 ### 3.3 Target components and dataflow
 
+The diagram below is the **optional hosted target**, not the prerequisite
+topology for a local first engine run. The current review separates existing
+browser capabilities, a bounded local execution profile and later hosted
+operations. Blender remains outside the mandatory compiler path.
+
 ```mermaid
 flowchart TD
     Brief["Natural-language brief / clarification"]
@@ -422,7 +451,7 @@ flowchart TD
     Generate["Bounded constraint-based candidate generator"]
     Check["Deterministic geometry / program / site checks"]
     Rank["Climate screening + explainable ranking"]
-    UI["Vanilla editor + incremental React analysis UI"]
+    UI["Existing SVG / Three.js editor + optional UI islands"]
     Bridge["Editor facade: snapshots, commands, selection"]
     Draft["Local draft / legacy migration"]
     API["FastAPI control plane"]
@@ -473,15 +502,17 @@ Begin as a **modular monolith plus worker**, not many microservices:
 | Results service | Units, metrics, quality, comparison contracts and provenance | Treating missing outputs as zero |
 | Optimization service | Candidate budgets, constraints, objective records and proposals | Bypassing project/run approval policy |
 
-### 3.4 Incremental frontend migration
+### 3.4 Optional incremental frontend adoption
 
-React officially supports adoption within an existing page [S1]. Apply this to
-the actual bridge API rather than importing mutable DOM state into React:
+React officially supports adoption within an existing page [S1]. Use the
+following sequence only if a concrete new workflow justifies React; existing
+vanilla controls can use the same contracts without it. Apply it to the actual
+bridge API rather than importing mutable DOM state into a second project store:
 
 1. Establish a small `PlannerFacade` around `getProject`, `getScenes`, `execute`,
    `select`, and `subscribe`. Retain current commands and rollback behavior.
-2. Add an isolated React root for brief clarification, candidate comparison and
-   acceptance first; extend it to study setup, validation, runs and results.
+2. If selected, add an isolated React root for brief clarification, candidate
+   comparison and acceptance; extend it to study setup, validation and results.
    Use a subscription adapter such as `useSyncExternalStore`; ensure stable
    snapshot identity and unsubscribe on unmount.
 3. React owns only its root. Existing `planner-editor.js` owns its own DOM.
@@ -581,10 +612,17 @@ fixtures show its value; selecting/installing one is not required for this slice
 
 ### 4.1 Canonical document and identity
 
-Propose a separate format identifier, `homeplanner.performance-project`, schema
-version `2`. The version deliberately cannot be read by current schema-1 readers.
-Keep schema version distinct from project revision, adapter version, engine
-version, library version and result schema version.
+For later authoring beyond the current supported geometry, the original
+proposal is a separate `homeplanner.performance-project`, schema version `2`.
+This is **not required for the first engine adapter** and must not introduce
+a second writable copy of a schema-1 house. First extend compatible authored
+study assignments and generate immutable analysis snapshots through the
+existing coordinator. If richer authoring requires migration, explicitly hand
+over authority and retain the original recovery document.
+
+Schema 2 deliberately cannot be read by current schema-1 readers. Keep schema
+version distinct from project revision, adapter version, engine version,
+library version and result schema version.
 
 ```text
 PerformanceProject
@@ -1234,6 +1272,11 @@ same restricted import sandbox, never embedded `.blend` scripts.
 
 ### 4.6 Revisions, persistence and migration
 
+The relational model below applies to the proposed hosted profile. Local
+editing continues to use existing IndexedDB/JSON, with separate content-addressed
+run artifacts if a local runner is introduced. The migration procedure is for
+an explicitly accepted richer authoring format, not an automatic action on Run.
+
 ```mermaid
 erDiagram
     PROJECT ||--o{ PROJECT_REVISION : contains
@@ -1698,8 +1741,12 @@ stale. The optional simulation branch creates studies from accepted revisions.
 ### 7.1 Durable execution and state management
 
 FastAPI's own guidance recommends a separate task system for heavy background
-computation [S2]. Propose Celery with RabbitMQ durable queues initially; PostgreSQL
-remains authoritative for jobs/results, not Celery's result backend.
+computation [S2]. For the **hosted profile**, Celery with RabbitMQ and PostgreSQL
+is a proposed deployment option, not an installed component or settled
+requirement for the first local adapter. Select it against concurrency and
+recovery needs; do not substitute FastAPI `BackgroundTasks` for managed heavy
+engine work. A local runner must still implement bounded process ownership,
+cancel/failure states and immutable artifacts.
 
 ```mermaid
 stateDiagram-v2
@@ -1748,7 +1795,7 @@ The diagram is the normal path; infrastructure retries are separate
   engine errors, warmup/sizing status and expected interval coverage are checked.
   Engine warnings remain visible and are classified by reviewed policy.
 
-Local developer topology: static UI/analysis bundle, FastAPI, PostgreSQL,
+Optional hosted-development topology: static UI/analysis bundle, FastAPI, PostgreSQL,
 RabbitMQ and one Linux worker through a future Compose setup; bind services to
 localhost and use a managed project-data folder for artifacts. Windows can use
 a supported Linux-container environment; this is a deployment prerequisite to
@@ -1931,8 +1978,18 @@ Dependencies follow the primary product journey: **generate a constrained,
 editable house first; deepen the performance evidence later**. Every release
 should improve that journey, not defer it until an engine platform is complete.
 Gate labels distinguish generation (GA) from analysis (G1–G5).
+The [17 September next-delivery stages](building-performance-gap-review.md#3-dependency-ordered-delivery-plan)
+add an immediate R0 integration gate and permit independent discipline slices
+once their actual input/readiness prerequisites exist. Do not wait for complete
+multi-room HVAC to validate a self-contained Radiance or PV adapter.
 
 #### Phase 0 — brief/generator/editor foundations (G0)
+
+Begin with the current review's R0 stabilization: fresh startup and draft
+ownership, generated/custom opening actions, balcony site projection, direct
+2D/3D action parity, layout/Undo/JSON preservation and complete specialist
+calculation references. Existing kernels and model commands do not establish
+that all these user-facing integrations are complete.
 
 Deliver:
 
@@ -2026,7 +2083,10 @@ controls in GA; do not treat these supplied-site requirements as optional scener
 
 #### Phase 2 — optional energy-backed candidate evaluation (G1 then G2)
 
-Depends on accepted candidate identities, briefs and editable geometry from GA.
+Consumes accepted, explicitly reviewed project geometry, whether a manually
+authored schema-1 house or an accepted GA candidate. The product's GA delivery
+is not replaced by a simulation fixture, but a read-only engine adapter does
+not require an AI-generated candidate as its only input.
 Before implementing the energy slice, complete the direct-vs-Honeybee spike,
 pin the engine bundle, review thermal-reference-plane/weather-calendar policies
 and validate independent reference models. These tasks are pre-G1, not GA blockers.
@@ -2124,10 +2184,16 @@ multi-objective studies.
   components, leakage/opening schedules, wind-pressure coefficient provenance
   and stack effects. Validate conservation and coupling; do not add separate
   scheduled infiltration to the same physical path inadvertently. No CFD label.
-- **4B surface risk:** derive condensation hours from surface temperatures and
-  psychrometric states. Add mold exposure only with a documented model and
-  material/time calibration; otherwise report environmental exposure indicators,
-  not mold probability or health guidance. PsychroLib alone is insufficient [S14].
+- **4B surface risk:** derive condensation indicators from reviewed surface
+  temperatures and psychrometric states. A separate dynamic mold stage should
+  evaluate a specified Finnish/VTT implementation [S34] using hourly surface
+  temperature/RH, material sensitivity/decline classes and history/reference
+  cases, with license/applicability review. WUFI Bio [S35] is a distinct,
+  conservative interior-surface biohygrothermal risk workflow, not an
+  interchangeable library. Until those prerequisites pass, report exposure
+  indicators, not mold index/probability or health guidance. PsychroLib alone
+  is insufficient [S14]; the current sensible RC solver supplies neither
+  moisture transport nor those surface histories.
 - **4C economics:** dated tariffs, capex/maintenance/replacement, discount rate,
   escalation, analysis period, residual value and uncertainty; transparent NPV/
   payback and sensitivity. No positive-payback claim when savings are absent.
@@ -2182,17 +2248,18 @@ their owning slice is implemented:
 
 ```text
 performance/schema/             canonical JSON Schemas and compatibility manifests
-performance/frontend/          React study/results islands and PlannerFacade
+performance/frontend/          study/results UI and PlannerFacade; optional React
 performance/domain/            geometry semantics, transformations and diagnostics
 performance/generation/        brief schema, bounded packer, hard checks and ranker
 performance/frontend/design/   clarification, candidate cards and adoption adapter
-performance/backend/api/       FastAPI routes and authorization
+performance/backend/api/       hosted control plane/auth; FastAPI if selected
 performance/backend/intent/    bounded LLM gateway, consent and intent validation
 performance/backend/weather/   geocoders, provider adapters, normalization, EPW QA
 performance/backend/budgets/   durable monthly SKU ledger, admission and reconciliation
 performance/backend/projects/  revisions, migration coordination and assumptions
 performance/backend/studies/   validation, compilation and run lifecycle
 performance/backend/adapters/  energyplus, radiance, pvlib, comfort
+performance/local-runner/      bounded optional local engine process/artifact adapter
 performance/backend/workers/   queue consumers, leases and engine process ownership
 performance/backend/results/   normalization, metrics and comparisons
 performance/backend/storage/   metadata transactions and artifact interfaces
@@ -2377,6 +2444,9 @@ Live documentation is not a version lock or evidence of tested interoperability.
 | S30 | [Maps JavaScript usage and billing](https://developers.google.com/maps/documentation/javascript/usage-and-billing) | API key/billing requirements, billable usage and quota considerations |
 | S31 | [Google Maps pricing overview](https://developers.google.com/maps/billing-and-pricing/overview) | Monthly free-event reset at midnight Pacific US time on the first; billing-account aggregation across projects |
 | S32 | [Google Maps cost management](https://developers.google.com/maps/billing-and-pricing/manage-costs) | Provider quotas, alerts, lazy loading/map reuse and distinction between quota/request behavior and billing control |
+| S33 | [Blender glTF export](https://docs.blender.org/manual/en/4.5/addons/import_export/scene_gltf2.html) and [Cycles](https://docs.blender.org/manual/en/4.5/render/cycles/introduction.html) | Checked 17 September: optional visual asset/material exchange and production rendering; not a browser editor or thermal/daylight input model |
+| S34 | [Finnish mould growth model, Tampere/VTT](https://research.tuni.fi/buildingphysics/finnish-mould-growth-model/) | Checked 17 September: hourly surface conditions, material sensitivity/decline classes and index 0-6; does not identify mold types or hazard |
+| S35 | [Fraunhofer WUFI Bio](https://wufi.de/en/wufi-bio/) | Checked 17 September: transient spore-moisture/germination assessment, conservative over-prediction and interior-surface scope; not diagnosis or a verified open-source Python dependency |
 
 Context7 was discovered before use. Its Honeybee search returned unrelated
 libraries, so official Ladybug documentation was fetched directly instead. The

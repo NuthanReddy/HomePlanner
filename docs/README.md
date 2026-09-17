@@ -7,6 +7,12 @@ layouts in the GHMC/HMDA context.
 
 ## Document map
 
+- [Current implementation review and gap plan](building-performance-gap-review.md):
+  verified delivery/integration gaps, Three.js-first architecture, optional
+  Blender/Python-engine boundaries and dependency-ordered acceptance gates.
+- [Building-performance roadmap](building-performance-roadmap.md):
+  the existing design-generation goal and longer-term analysis requirements,
+  with current-review amendments distinguished from the historical baseline.
 - [Workspace navigation](workspace-navigation.md): six task destinations,
   grouped Sun Path/property tools, shared project controls and deep-link contracts.
 - [Drawing foundation](drawing-foundation.md): authored records, coordinate frames

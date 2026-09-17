@@ -386,6 +386,47 @@ test('conflicting duplicate opening source IDs are rejected rather than resolved
   assert.throws(() => data.scene(), /Duplicate opening source id/);
 });
 
+for (const [kind, field] of [['hinged', 'doorEdits'], ['window', 'windowEdits']]) {
+  test(`${kind} suppression preserves sources and prior edit metadata through JSON restoration`, () => {
+    const data = fixture(), opening = data.scene().openings.find(item => item.kind === kind);
+    const source = clone(data.context);
+    data.project[field][opening.id] = { widthM: .8, suppressed: true, sourceNote: 'Retain the authored opening' };
+    data.project.legacy.context = clone(data.context);
+    const before = clone(data.project), scene = data.scene();
+    assert.ok(!scene.openings.some(item => item.id === opening.id));
+    assert.ok(!scene.unresolvedOpenings.some(item => item.id === opening.id));
+    assert.ok(!scene.diagnostics.some(item => item.ids.includes(opening.id) && /no current source/.test(item.message)));
+    assert.deepEqual(data.context, source);
+    assert.deepEqual(data.project, before);
+    const restored = Model.parseProject(JSON.stringify(data.project));
+    assert.ok(!Model.buildScene(restored.legacy.context, restored).openings.some(item => item.id === opening.id));
+    restored[field][opening.id].suppressed = false;
+    const shown = Model.buildScene(restored.legacy.context, restored).openings.find(item => item.id === opening.id);
+    assert.ok(shown); close(shown.widthM, .8);
+    assert.equal(restored[field][opening.id].sourceNote, 'Retain the authored opening');
+    for (const value of [null, 0, 1, 'true']) {
+      restored[field][opening.id].suppressed = value;
+      assert.throws(() => Model.validateProject(restored), /suppressed.*true or false/);
+    }
+  });
+}
+
+test('suppressed sources still retain duplicate-identity validation and all merged sources can be suppressed', () => {
+  const data = fixture();
+  data.context.plan.openings.doors.push({
+    ...clone(data.context.plan.openings.doors[0]), id: 'door-living-1-E',
+    roomId: 'living-1', targetRoomId: 'kitchen-1', edge: 'E'
+  });
+  const opening = data.scene().openings.find(item => item.kind === 'hinged');
+  assert.equal(opening.sourceIds.length, 2);
+  assert.deepEqual(new Set(opening.sourceIds), new Set(['door-kitchen-1-W', 'door-living-1-E']));
+  for (const sourceId of opening.sourceIds)
+    data.project.doorEdits[`${data.project.activeFloorId}:${sourceId}`] = { suppressed: true };
+  assert.ok(!data.scene().openings.some(item => item.kind === 'hinged'));
+  data.context.plan.customOpenings.push({ ...clone(data.context.plan.openings.doors[0]), width: 1.5 });
+  assert.throws(() => data.scene(), /Duplicate opening source id/);
+});
+
 test('legacy reprojected glyph handing is not promoted to a confirmed design decision', () => {
   const data = fixture();
   const source = data.context.plan.openings.doors[0];

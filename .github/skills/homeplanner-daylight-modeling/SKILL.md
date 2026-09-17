@@ -111,6 +111,12 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
 
 ## Validation
 
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-daylight-modeling\scripts\example.py --check
+```
+
 Run applicable groups from the repository root:
 
 ```powershell
@@ -136,3 +142,7 @@ and the professional daylighting review needed for stronger engineering claims.
 ## References
 
 Use the verified [primary sources and method caveats](references/sources.md).
+
+- [Geometric access equations and worked calculations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).

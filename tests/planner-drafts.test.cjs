@@ -5,6 +5,22 @@ const Model = require('../planner-model.js');
 const { createFixture, controllerFor } = require('./fixtures/drawing-fixtures.cjs');
 const copy = value => JSON.parse(JSON.stringify(value));
 
+test('a failed draft observer is reported without hiding pending inputs from later persistence observers', () => {
+  const reports = [], sandbox = { module: { exports: {} }, console: { error: (...args) => reports.push(args) } };
+  require('node:vm').runInNewContext(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'planner-drafts.js'), 'utf8'), sandbox);
+  const registry = sandbox.module.exports, planner = {}, seen = [];
+  registry.subscribe(planner, () => { throw new Error('Broken draft observer'); });
+  registry.subscribe(planner, () => seen.push(registry.pending(planner).length));
+  const store = registry.createStore(planner, 'Inspector'), scope = { projectId: 'p', floorId: 'ground', collection: 'rooms', entityId: 'ground:r' };
+  assert.doesNotThrow(() => store.put(scope, { raw: '-', base: null }));
+  assert.equal(registry.hasPending(planner, 'p'), true);
+  assert.doesNotThrow(() => store.remove(scope));
+  assert.deepEqual(seen, [1, 0]);
+  assert.equal(reports.length, 2);
+  assert.match(reports[0][0], /draft observer failed.*other observers/);
+  assert.equal(reports[0][1].message, 'Broken draft observer');
+});
+
 test('draft registry is detached, session-only, owner-qualified and independently disposable', () => {
   const planner = {}, otherPlanner = {}, a = Drafts.createStore(planner, 'One'), b = Drafts.createStore(planner, 'Two');
   const scope = { projectId: 'p', floorId: 'ground', entityId: 'x' }, value = { text: 'pending', missing: null };

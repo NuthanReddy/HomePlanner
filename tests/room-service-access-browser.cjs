@@ -72,7 +72,9 @@ module.exports=async function serviceAccessSmoke(browser,url,{width=1440}={}){
     await page.locator('#hp-editor-room-y').fill(String(originalPassage.rect.y+0.15));
     await page.locator('#hp-editor-room-y').press('Enter');
     assert.deepEqual(await snapshot(),stable,'A passage-blocking numeric move changed the project');
-    assert.match(await page.locator('#roomEditHint').innerText(),/block a staircase passage/);
+    const errorsShown=await page.locator('#plannerInspector [role="alert"]:visible').allTextContents();
+    assert.match(errorsShown.join('\n'),/block a staircase passage/,
+      'A rejected numeric edit must expose its reason in the active inspector');
     await page.evaluate(()=>{
       const saved=HomePlanner.exportProject();
       HomePlanner.newProject();HomePlanner.importProject(saved);

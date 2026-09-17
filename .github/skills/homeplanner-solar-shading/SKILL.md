@@ -113,6 +113,12 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
 
 ## Validation
 
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-solar-shading\scripts\example.py --check
+```
+
 Run relevant groups from the repository root:
 
 ```powershell
@@ -137,3 +143,7 @@ Report tests, unresolved inputs and professional survey/solar-design review need
 ## References
 
 Use the verified [primary sources and method caveats](references/sources.md).
+
+- [Equations, time/angle units and worked calculations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).

@@ -60,6 +60,12 @@ Read [circulation/components](../../../docs/circulation-and-components.md), [Roo
 - Do not hide unknowns with bounding-box passes, infer clear opening from nominal leaf size, erase service reservations or hijack text-field Delete/Backspace.
 
 ## Validation
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-ergonomics\scripts\example.py --check
+```
+
 Select the smallest affected boundary from the repository root:
 - Numeric controls, text-safe history and tile semantics: `node --test tests\planner-editor.test.cjs tests\room-palette.test.cjs`
 - Physical openings and reservation deductions: `node --test tests\planner-model.test.cjs tests\planner-reservations.test.cjs`
@@ -76,4 +82,7 @@ Use `doorGeometry` to screen its handed sweep against a cupboard and the host's 
 
 ## References
 - [Verified W3C/WAI and government guidance, with applicability limits](references/sources.md).
+- [Supplied clearance equations and worked calculations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).
 - [Design guidance](../../../docs/design-guidance.md), [workspace navigation](../../../docs/workspace-navigation.md), [validation limitations](../../../docs/validation-and-limitations.md).

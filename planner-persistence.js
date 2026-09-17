@@ -13,7 +13,10 @@
       return;
     }
     try { api.instance = api.mount(host, root.HomePlanner); }
-    catch (error) { host.textContent = api.errorText(error); }
+    catch (error) {
+      host.textContent = api.errorText(error);
+      host.setAttribute('role', 'alert');
+    }
   }
   if (root.document) {
     if (root.HomePlanner || root.document.readyState !== 'loading') start();
@@ -55,6 +58,14 @@
 
   function createController(planner, options = {}) {
     const storage = options.storage || Storage;
+    if (!storage) throw new Error('Load planner-storage.js before planner-persistence.js, then reload the page.');
+    if (!Drafts || ['createStore', 'pending', 'hasPending', 'token', 'subscribe'].some(key => typeof Drafts[key] !== 'function'))
+      throw new storage.StorageError('MissingDraftsError',
+        'Load planner-drafts.js before planner-persistence.js and all workbench scripts, then reload. Pending-input protection is unavailable; no local project controls were attached.');
+    if (!planner || ['getProject', 'subscribe', 'execute', 'replaceProject', 'newProject', 'exportProject']
+      .some(key => typeof planner[key] !== 'function'))
+      throw new storage.StorageError('MissingPlannerError',
+        'Load planner-model.js and planner-bridge.js before local project controls, then reload. No persistence listeners were attached.');
     const model = options.model;
     const delay = options.autosaveDelay === undefined ? 600 : options.autosaveDelay;
     const schedule = options.setTimeout || root.setTimeout.bind(root);
@@ -67,7 +78,7 @@
     const initialKey = currentKey;
     const state = { available: false, connecting: true, initialized: false, autosave: false, paused: false,
       saving: false, savingRevision: null, projects: [], selectedId: '', pendingRestoreId: null,
-      lastSavedAt: null, error: null, notice: '' };
+      lastSavedAt: null, error: null, observerError: null, notice: '' };
 
     function getState() {
       const dirty = savedKey !== currentKey;
@@ -76,19 +87,32 @@
         dirty, draftCount: Drafts.pending(planner, current.id).length,
         projects: state.projects.map(record => ({ ...record, error: record.error && { ...record.error } })),
         error: state.error && { ...state.error },
+        observerError: state.observerError && { ...state.observerError },
         status: state.error ? 'error' : state.saving ? 'saving' :
           state.connecting || actionBusy || preferenceBusy ? 'busy' : dirty ? 'unsaved' : 'saved' };
     }
 
     function emit() {
       if (destroyed) return;
-      const snapshot = getState();
-      listeners.forEach(listener => {
-        try { listener(snapshot); }
-        catch (_) {
-          if (root.console) root.console.warn('A local project status view could not update.');
-        }
+      const showObserverError = () => {
+        if (destroyed) return;
+        const status = root.document?.getElementById('hp-storage-status');
+        if (state.observerError && status && !status.textContent.includes(state.observerError.message))
+          status.textContent += ` ${state.observerError.code}: ${state.observerError.message}`;
+      };
+      const reportObserverError = () => {
+        state.observerError = { code: 'PersistenceObserverError',
+          message: 'A local project status view could not update. This did not undo the project or database operation; inspect the current save state and reload before relying on that view.' };
+        root.console?.error(`${state.observerError.code}: ${state.observerError.message}`);
+      };
+      [...listeners].forEach(listener => {
+        try {
+          const completion = listener(getState());
+          if (completion && typeof completion.then === 'function')
+            Promise.resolve(completion).catch(() => { reportObserverError(); showObserverError(); });
+        } catch (error) { reportObserverError(); }
       });
+      showObserverError();
     }
 
     function reportError(error, scope = 'action', prefix = '') {
@@ -202,7 +226,7 @@
       timer = schedule(() => { timer = null; saveNow(true, intent).catch(() => {}); }, delay);
     }
 
-    const unsubscribe = planner.subscribe(event => {
+    const onProject = event => {
       if (destroyed || suppressEvents || (event && event.type === 'selection')) return;
       try {
         if (syncCurrent()) {
@@ -211,8 +235,17 @@
           emit();
         }
       } catch (error) { reportError(error, 'action'); }
-    });
-    const unsubscribeDrafts = Drafts.subscribe(planner, emit);
+    };
+    let unsubscribe, unsubscribeDrafts;
+    try {
+      unsubscribeDrafts = Drafts.subscribe(planner, emit);
+      unsubscribe = planner.subscribe(onProject);
+    } catch (error) {
+      unsubscribe?.();
+      unsubscribeDrafts?.();
+      queue.close();
+      throw error;
+    }
 
     function applyProject(work) {
       suppressEvents = true;
@@ -229,6 +262,7 @@
     }
 
     async function connect(startup) {
+      if (destroyed) return;
       state.connecting = true;
       state.available = false;
       emit();
@@ -426,8 +460,8 @@
           const record = await db.load(id);
           if (!record) throw ownError('MissingProjectError', 'This browser project no longer exists. Refresh the list.');
           checkUnchanged(expected.activity, expected.key, expected.drafts);
-          queue.forget(id);
           applyProject(() => planner.replaceProject(storage.cloneJSON(record.document)));
+          queue.forget(id);
           clearError('save');
           savedKey = storage.fingerprint(record.document);
           state.lastSavedAt = record.updatedAt;
@@ -524,13 +558,39 @@
   }
 
   function mount(host, planner, options = {}) {
+    if (!host || !host.ownerDocument) throw ownError('MissingMountError', 'Choose the local-project controls host before mounting persistence.');
+    if (host.homePlannerPersistence) throw ownError('AlreadyMountedError', 'Local project controls are already mounted in this host.');
+    const previous = Array.from(host.childNodes || host.children || []);
+    const cleanup = [];
+    try { return mountControls(host, planner, options, cleanup); }
+    catch (error) {
+      for (const dispose of cleanup.reverse()) {
+        try { dispose(); }
+        catch (cleanupError) {
+          root.console?.error(`PersistenceCleanupError: ${errorText(cleanupError)}`);
+        }
+      }
+      host.replaceChildren(...previous);
+      throw error;
+    }
+  }
+
+  function mountControls(host, planner, options, cleanup) {
     const document = host.ownerDocument, view = document.defaultView || root;
     const controller = createController(planner, options);
+    cleanup.push(() => controller.destroy());
+    controller.ready.catch(() => {});
     const nameDrafts = Drafts.createStore(planner, 'Project name');
+    cleanup.push(() => nameDrafts.dispose());
     const nameScope = () => ({ projectId: controller.getState().current.id, entityId: 'project-name' });
     let nameProjectId = null;
     const downloads = new Map();
     let confirmation = null, importReading = false, destroyed = false, lastListKey = '';
+    cleanup.push(() => { destroyed = true; });
+    cleanup.push(() => {
+      for (const [url, timeout] of downloads) { view.clearTimeout(timeout); view.URL.revokeObjectURL(url); }
+      downloads.clear();
+    });
     function node(tag, className, text) {
       const element = document.createElement(tag);
       if (className) element.className = className;
@@ -570,6 +630,7 @@
     const rename = button('Rename');
     const projectMeta = node('p', 'hp-storage-meta');
     const status = node('p', 'hp-storage-status');
+    status.id = 'hp-storage-status';
     status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); status.setAttribute('aria-atomic', 'true');
     const notice = node('p', 'hp-storage-notice');
     notice.setAttribute('aria-live', 'polite');
@@ -600,6 +661,9 @@
       row(list, open, remove, refresh), details, retry, confirmBox);
     host.replaceChildren(panel);
     host.homePlannerPersistence = controller;
+    cleanup.push(() => {
+      if (host.homePlannerPersistence === controller) delete host.homePlannerPersistence;
+    });
 
     function hideConfirmation() {
       confirmation = null;
@@ -688,6 +752,7 @@
         ' · autosave on' : ' · autosave off'}.`;
       if (state.paused) status.textContent += ' Autosave is paused; use Save now to retry or turn it off.';
       if (state.draftCount) status.textContent += ` ${state.draftCount} pending input draft(s) are not included in this project copy; apply them in their workbenches first.`;
+      if (state.observerError) status.textContent += ` ${state.observerError.code}: ${state.observerError.message}`;
       notice.textContent = state.notice;
       notice.hidden = !state.notice;
     }
@@ -811,7 +876,9 @@
       }
     };
     view.addEventListener('beforeunload', beforeUnload);
+    cleanup.push(() => view.removeEventListener('beforeunload', beforeUnload));
     const unsubscribe = controller.subscribe(render);
+    cleanup.push(unsubscribe);
     render(controller.getState());
     controller.ready.catch(() => {});
     return {

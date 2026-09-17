@@ -1,11 +1,54 @@
 # Implementation review and next-delivery plan
 
 **Review date:** 17 September 2026.  
-**Scope:** current dirty checkout, the [existing roadmap](building-performance-roadmap.md),
+**Scope:** the reviewed checkout, the [existing roadmap](building-performance-roadmap.md),
 the [persisted research](research/building-performance.md) and the supplied
-Three.js / Blender / Python-engine proposals. This is a review and plan, not
-implementation of the missing capabilities. Source-line references describe
-this reviewed snapshot and can move as development continues.
+Three.js / Blender / Python-engine proposals. The user subsequently approved
+the R0 fixes, which are now implemented below. R1 and later engine/interop
+capabilities remain planned. Original source-line references describe the
+pre-fix review snapshot; current API contracts are in the linked feature docs.
+
+## R0 remediation completed
+
+The following fixes are in the working tree. Three.js, the shared project,
+local-first storage and the existing native study meanings are retained.
+No external simulation engines or optional Python libraries were installed.
+
+| Original issue | Implemented correction |
+| --- | --- |
+| Missing draft dependency / partial startup | Drafts loads before every consumer, including Electrical. Missing prerequisites fail before subscriptions; partial persistence initialization cleans up. |
+| Observer failures after commit | Each observer is isolated; failures are reported through bridge/persistence diagnostics without throwing a committed edit back as failure or starving other views. Authored no-ops preserve history and snapshot identity. |
+| Lost provenance / double history | Site/building input and provenance are atomic. Solar, wind, assembly, pressure and thermal evaluation calculate before storing their inputs/results together in one command; failed evaluation preserves the pending draft. |
+| Lost inspector drafts | Numeric and staged opening/partition drafts are owner-qualified, parked across selection/floor/project changes, conflict-checked and discarded only explicitly or after successful application. Persistence sees current and parked drafts. |
+| Replacement / New Project | Imported/replaced snapshots undergo exact preservation checks and rollback, including metadata/nulls/inactive floors. New Project has a private initialize-then-verify path for starter defaults; it does not weaken public import guards. |
+| Missing direct actions | Production hosted-opening hooks and shared 2D/3D inspector requests are wired. Both toolbars provide supported selection actions and shared history; no private renderer mutation/history path was added. |
+| Generated/custom opening parity | Both retain source records and prior edits while suppressing effective apertures. Merged raw source aliases are floor-namespaced correctly. Existing full-wall apertures remain editable/deletable when only their masonry is absent. Canonical hosted windows retain internal/exterior support; the older room-edge palette stays exterior-only. |
+| Balcony IDs / frame / 3D | Generation uses stable identities; middle deletion preserves siblings. Balcony rectangles translate into the site frame exactly once and render/pick in 3D with the original model IDs. |
+| Layout JSON actions | Room Planner Import/Export JSON buttons reuse the complete-project persistence picker, confirmation and download flow, including inactive floors and dimensions. |
+| Missing calculation references | All 12 skills now include equations, worked calculations, Python-tool guidance and deterministic standard-library examples with labelled SVG output. |
+
+**Verification:** the integrated Node selectors finished with 1,427 passes,
+zero failures and one existing optional supplied-artifact skip
+(`HOMEPLANNER_PHASE10_FIXTURE` was not provided). The reference validator
+completed all 12 packages, 390 checks and 12 labelled SVG renders. Optional
+library snippets are syntax-checked guidance, not executed engine evidence.
+
+Production browser cases passed against unchanged application bytes on
+disposable local origins: startup/New Project, cross-page drafts and source
+navigation, one-step input/result Undo, actual Room Planner JSON buttons,
+generated-opening suppression and JSON restoration, exact wall-end controls,
+real 3D ray picking/actions/history, middle-balcony deletion, all four starter
+frontages, layout/furniture preservation, mouse/touch cancellation and
+desktop/mobile staircase-passage protection. No test-only page hooks or
+2D-history fallback were used by the direct-action test.
+
+See [editor contracts](editor-workspace.md),
+[persistence/replacement behavior](local-persistence.md),
+[3D actions](three-dimensional.md) and
+[environment history](environment-analysis.md) for the implemented behavior.
+The original findings below remain an audit trail, not a list of still-open
+R0 defects. This completion is not an external-engine, engineering, regulatory
+or scientific-validation claim.
 
 ## Architecture recommendation
 
@@ -13,9 +56,9 @@ this reviewed snapshot and can move as development continues.
 The authoritative object is the existing structured HomePlanner project, not
 a Three.js scene, Blender mesh, rendered image or external engine input.
 
-The important missing work is not another renderer: it is finishing shared
-editing/integration contracts and translating reviewed physical semantics into
-reproducible analysis inputs.
+The next missing work is not another renderer: it is translating reviewed
+physical semantics into reproducible analysis inputs after the R0 integration
+fixes, with the explicit capability gates below.
 
 ```mermaid
 flowchart TD
@@ -59,11 +102,11 @@ geometry for a user's active house.
 | --- | --- | --- |
 | Structured project and identity | `planner-model.js:209-247,702-759,1229-1264` validates schema 1, floor/source IDs, effective walls/openings and reserved usable regions | **Existing foundation.** Not a complete general-purpose BIM or thermal-zone schema. Preserve it rather than introduce a second editable store. |
 | Registered snapshots | `planner-projection.js:19-32,78-98,209-222` supplies site transforms, `DrawingScene` and purpose/engine/input provenance | **Existing foundation.** Reuse this capture boundary; add study-specific validation and immutable engine bundles. Do not rebuild coordinate handling in every adapter. |
-| Browser 3D | `planner-3d.js:20-25,44-52,365-441,685-717,1084-1085` uses local Three.js, effective geometry, usable floor fragments and shared selection | **Existing inspection renderer.** Full direct 3D editing/history parity and balcony integration are incomplete; no renderer replacement is needed. |
-| Room layout/editing | Current rectangular generator, manual snapshots and shared commands are present | **Existing, with integration work remaining.** Required-room/area guarantees, diverse AI candidates and arbitrary polygons are not implied by a successful packing attempt. |
-| Drafts, history and local JSON | `planner-drafts.js`, `planner-bridge.js`, `planner-storage.js`, `planner-persistence.js` provide substantial module-level contracts | **Partial production integration.** The main page omits the new draft dependency; compound provenance/history and replacement/draft preservation have specific gaps below. |
+| Browser 3D | `planner-3d.js` uses local Three.js, effective geometry, usable floor fragments, balcony picking and shared inspector requests | **Supported actions integrated.** Shared edit/add-opening/delete/wall-end/history controls are present; arbitrary wall topology or freeform 3D authoring is not added. |
+| Room layout/editing | Rectangular generator, preserved manual snapshots, stable identities and shared commands | **Existing supported editing stabilized.** Required-room/area guarantees, diverse AI candidates and arbitrary polygons are not implied by a successful packing attempt. |
+| Drafts, history and local JSON | `planner-drafts.js`, `planner-bridge.js`, `planner-storage.js`, `planner-persistence.js` and production loader | **R0 corrections integrated.** Owner-qualified drafts, atomic provenance/history, exact replacements, private New initialization and reusable complete-project JSON actions are present. |
 | Sun and shading | `sun-model.js`, `sun-exposure.js` and `building-physics.js` provide civil-time/solar geometry, pole shadows and current-house surface exposure | **Native supported methods.** Not a PV system, annual energy model or complete surveyed context. Existing whole-house shading must not be listed as wholly absent. |
-| Room airflow | `planner-airflow.js` invokes `engine.run(result,draft.planField)` only when enabled; the airflow worker imports the field engine, and runner/display/UI modules handle `result.planField` | **Implemented kernel and module wiring.** Pressure-network flow and optional depth-averaged potential-flow velocity are distinct outputs. Neither is validated three-dimensional CFD or occupant-height airspeed. Production-page readiness remains subject to R0. |
+| Room airflow | `planner-airflow.js` invokes `engine.run(result,draft.planField)` only when enabled; the airflow worker imports the field engine, and runner/display/UI modules handle `result.planField` | **Implemented kernel and module wiring.** Pressure-network flow and optional depth-averaged potential-flow velocity are distinct outputs. Neither is validated three-dimensional CFD or occupant-height airspeed. Explicit physical/scenario inputs remain required. |
 | Room light | `planner-light.js` and local runner/display modules | **Geometric access study.** Dimensionless sky/path access and sun-duration quantities are not lux, daylight factor, sDA/ASE or glare. Radiance is a new adapter. |
 | Materials and thermal scenarios | `building-physics.js`, `environment-ui.js` | **Assembly descriptors and sensible RC scenarios.** No automatic whole-building weather/HVAC/moisture coupling, annual equipment consumption or equipment recommendation. |
 | Weather | `environment-data.js` parses EPW/JSON/provider data with units, interval and missing-value metadata | **Existing normalized inputs.** Engine runs additionally need original weather bytes, complete release-specific weather QA and explicit calendar/site policy. |
@@ -71,7 +114,7 @@ geometry for a user's active house.
 | Python runtime | `app.py:1-22,121-194`; `requirements.txt:1-10` | **Optional Flask property-report/OCR service.** No EnergyPlus, Radiance, pvlib, comfort, Blender or generic simulation job integration is present. Existing report jobs are not a simulation worker platform. |
 | Blender / GLB / IFC | No such application adapters or `performance` implementation directory were found | **Proposed.** Start with optional visual assets/export; semantic IFC conversion and arbitrary mesh recovery are separate, later capabilities. |
 | Mold and moisture | Current sensible-only thermal scope and the [persisted humidity review](research/building-humidity-mold-risk.md) | **Not implemented.** Psychrometric properties, surface condensation and dynamic mold-index prediction require separate input/model gates. |
-| Specialist calculation references | Only project-integrity and site-regulations currently contain `calculations.md`, `python-tools.md` and runnable reference scripts | **Partial enrichment, not complete.** Finish the other ten packages and repair cross-links before relying on the full catalogue. |
+| Specialist calculation references | All 12 packages contain `calculations.md`, `python-tools.md` and executable reference scripts | **Completed reference enrichment.** Equations/examples and local checks do not install or validate the documented optional engine stack. |
 
 Existence of a module or test does not establish successful browser integration,
 empirical accuracy or a completed external-engine workflow. Native kernel
@@ -86,7 +129,11 @@ This belongs to `planner-airflow-field.js`, not `planner-light.js`. Preserve
 and qualify this existing implementation rather than planning a room field
 as though none exists. Its source wiring is not empirical CFD validation.
 
-## 2. Verified integration gaps before external engines
+## 2. Original integration findings and separate engine-readiness gap
+
+The P0/P1 findings in this section were repaired under R0, as recorded above.
+Their old file/line references and reproduction details are retained for the
+audit trail. The final R1 engine-geometry subsection remains future work.
 
 ### Startup dependency and notification failure (P0)
 
@@ -251,7 +298,7 @@ larger roadmap remain useful; the stages below identify the next concrete work.
 
 | Stage | Deliverable | Acceptance / dependency |
 | --- | --- | --- |
-| **R0 - stabilize and reconcile** | Fix the missing draft dependency and partial mounts/observer failures; apply provenance atomically; repair history, draft and import guarantees; finish direct actions, balcony frames/3D parity and calculation references | No fresh-start exception or committed-edit failure illusion; real-bridge input/provenance round trips; one-action history; unstaged production action tests; edits/JSON preserve current/inactive floors and metadata; no incremental repack; all skill references resolve. Must precede engine-facing publication. |
+| **R0 - completed scoped fixes** | Dependency/observer handling, atomic provenance/history, draft/import preservation, supported direct actions, balcony frames/3D and calculation references | Verified with real-bridge and unstaged production browser cases, desktop/touch layouts and the complete reference catalogue. This does not add the R1-R7 capabilities. |
 | **R1 - structured readiness contract** | Reuse `DrawingScene`/snapshot APIs; define study capability profiles, source-ID maps, explicit physical assignments and validation diagnostics | One-zone and adjacent-zone fixtures close and preserve volume/area/adjacency; holes and reservations are exact; unknown boundary/material/operation blocks the affected study; no live-project mutation. |
 | **R2 - local auditable engine slice** | Compare direct epJSON against Honeybee/OpenStudio on the same fixtures; select one production compiler; add a bounded local runner and artifact manifest | Pin compatible Python/engine/library versions; original EPW bytes and declared calendar; explicit Run/cancel; owned process stops; errors/logs preserved; outputs mapped to the captured inputs and entities; ideal loads labelled demand, not electricity. Depends on R1. |
 | **R3 - usable multi-room energy** | Reviewed zone/construction/schedule assignments, partial/shared/inter-storey contacts, gains and a limited HVAC profile | Independent reference comparison, warmup/sizing/output coverage review, no double-counted partitions/ventilation/solar gains, baseline comparison preserves assumptions. Real equipment consumption requires its own profile. Depends on R2. |
@@ -261,10 +308,11 @@ larger roadmap remain useful; the stages below identify the next concrete work.
 | **R7 - hosted execution when required** | API/auth, durable jobs/attempts, artifact storage, quotas, cancellation/restart recovery and tenancy | Select PostgreSQL/broker/container deployment from measured concurrency/privacy needs; duplicate jobs cannot publish twice; no automatic uploads. Local editing/export stays available. |
 | **GA - retain the design product track** | Brief clarification, required-room/area constraints, bounded candidate generation/ranking and reversible adoption | Preserve the earlier confirmed house brief and area basis; no missing rooms hidden by ranking; manual edits survive acceptance. GA need not wait for EnergyPlus, Blender, React or hosted infrastructure. R0 is its immediate prerequisite. |
 
-**First actionable batch is R0**, not a renderer/frontend rewrite or installing
-all packages from the supplied chat. After R0, pursue R1 plus the existing
-generation/adoption track; use a small R2 compatibility experiment to establish
-the actual engine cost and supported scope before committing to a larger stack.
+**Next planned batch is R1 plus the existing generation/adoption track** now
+that the scoped R0 fixes are complete. Use a small R2 compatibility experiment
+to establish actual engine cost and supported scope before committing to a
+larger stack. These later batches still require implementation; this fix did
+not start a renderer/frontend rewrite or install the packages from the chat.
 
 ## 4. Decisions to make explicit
 
@@ -320,17 +368,18 @@ or a predicted index cannot diagnose an infestation or health hazard.
 
 ## 6. Evidence and scope of verification
 
-This review inspected implementation and contract/test sources, ran the skill
+The original review inspected implementation and contract/test sources, ran the skill
 reference checks and a detached balcony projection probe, and used separate
 read-only numerical and workflow reviews. The workflow review ran its focused
 direct-action/draft/storage/environment-state selectors and in-memory
 browser-branch/controller/handler probes; the numerical review inspected
 source/test contracts but did not execute its numerical tests.
 
-The local server refused connections during the workflow review, so no new
-full-browser verification is claimed. It was not restarted or used to alter a
-live project for this task. Full-page startup and unstaged browser acceptance
-remain part of R0. This is not a full application,
+The existing local server refused connections during that original review.
+For the subsequent approved fixes, disposable ephemeral servers served the
+unmodified production files, and isolated browser acceptance passed as listed
+in the remediation section. No live browser project was used as a fixture.
+This is not a full application,
 security, visual-accessibility or scientific-validation certification.
 
 For implementation, add the smallest relevant regressions and then exercise

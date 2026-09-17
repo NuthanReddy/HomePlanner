@@ -124,12 +124,58 @@ including undo. `subscribe` events with type `selection` are ignored.
 The shared model's `validateProject` and `parseProject` are used when present;
 false/null/error validation results are failures, not truthy success.
 
-Restoration is never merged into a previous project. The bridge should retain
-the saved document's content/revision on restore, including inactive-floor
-slices and captured legacy context. If reconstruction changes content
-without increasing the revision, the UI reports
-`RestoredSnapshotChangedError`, keeps the saved copy intact and pauses
-autosave rather than silently overwriting that revision.
+Missing or incomplete draft support fails with `MissingDraftsError` before
+attaching project/draft listeners or opening the database. This is not an
+empty-draft fallback. Load `planner-drafts.js` before its consumers and reload.
+A failed DOM mount releases its subscriptions, draft store, unload handler and
+pending resources, restores the host's previous nodes and leaves the planner
+usable. A second mount cannot replace an already mounted controller.
+
+Planner observers are isolated individually, including asynchronous rejection.
+A failing view does not undo an accepted edit, throw a false transaction failure
+to its caller, or prevent later views receiving the event. The existing bridge
+status displays `ObserverNotificationError`; `HomePlanner.getObserverErrors()`
+returns up to 40 frozen, session-only diagnostic records with project, revision
+and event identity. Persistence has the separate
+`controller.getState().observerError` diagnostic (`PersistenceObserverError`).
+These are view-notification errors, not evidence that a confirmed database
+transaction failed. They are also logged without raw exception messages.
+
+Restoration is never merged into the previous project. The bridge stages the
+validated candidate, restores and recaptures the adapter under its transaction
+guard, verifies floor geometry and compares the complete document before
+publishing a replacement. A mismatch rejects with
+`RestoredSnapshotChangedError` rather than adopting a reconstructed project.
+The current project, selection, Undo/Redo history and browser records are kept.
+Undo/Redo also verifies full-document recapture before recording its new revision.
+An adapter must not silently drop unknown same-schema fields or nulls.
+
+New project creation is intentionally different from importing a saved snapshot.
+Only `newProject()` can initialize the private startup seed through the layout
+adapter. It captures and validates the generated defaults/context, then verifies
+an exact restore/recapture of that initialized candidate before publishing one
+project event at revision zero. Generation or verification failure keeps the
+previous project, selection and history. Imports, Open and public
+`replaceProject()` cannot request this initialization path or bypass exact
+snapshot preservation.
+
+Schema-1 normalization is deliberately limited: the current top-level `legacy`,
+wall/door/window/furniture edits, obstacles, electrical points and
+`building.wallHeightM` overwrite their **active floor's compatibility mirrors**.
+Those mirrors are not independent authored copies. Other floor records,
+floor order, optional fields and metadata remain unchanged. A valid missing
+project name is not filled in during raw import. Browser capture preserves
+unowned legacy/control/context metadata and metadata on stable-ID records;
+removed room/component keys are not revived. No newer schema is guessed or
+migrated. The raw bridge `importProject(text)` retains the supplied project ID;
+only the persistence import flow allocates a new ID.
+
+Authored no-ops retain the current immutable snapshot, revision, timestamp,
+selection and Undo/Redo stacks and do not emit another edit. Site/building
+commands may carry an optional plain-JSON `environmentPatch`; inputs and that
+provenance are validated and applied in the same transaction. The existing
+`set-environment` command accepts one combined patch for inputs and result
+records, so an explicit Evaluate need not create two history entries.
 
 The bridge captures the dynamically generated road widths/units and split-axis
 checkbox separately from ID-bearing controls. It rebuilds dependent plot-target
@@ -153,6 +199,31 @@ notice. Import opens the same file picker, validates before replacement, allocat
 a new project ID and uses the same in-app confirmation. A confirmation requested
 outside Projects & backups opens that menu so it is visible. These methods do
 not enable autosave, truncate to the active floor or replace old saved IDs.
+
+### Opening removal in saved projects
+
+`delete-opening` uses the shared opening identity for both generated and custom
+doors/windows. It retains source records and existing edit metadata and records
+`suppressed: true` in the owning floor's `doorEdits` or `windowEdits` entry.
+The matching model must implement that suppression; if the physical aperture
+survives compilation, the bridge rejects and rolls back the deletion.
+Undo restores the source aperture and its previous edits; Redo and JSON/browser
+copies retain the suppression. Unrelated openings, rooms and furniture must
+stay unchanged. Suppressed sources remain in the captured project even though
+the legacy view's active door/window lists exclude them. No renderer-only
+deletion or reused opening ID is involved.
+
+Closing an opening is schematic design intent, not evidence of safe construction
+or preserved escape/ventilation. Protected or unclassified hosts remain guarded.
+`wall.removed` reports the absence of masonry: a canonical full-span,
+full-height door/window may still occupy that host. Such surviving apertures
+remain editable and deletable; suppression closes the aperture and restores
+the corresponding schematic wall material. New aperture placement still
+requires remaining wall material. A true partition-removal passage excludes
+conflicting ordinary apertures from the canonical scene, so this exception
+does not enable editing/deleting unresolved attachments through a stale ID.
+Internal full-height passage/partition restoration retains its separate guarded
+wall semantics; this does not introduce arbitrary wall creation or movement.
 
 ## Storage API and format
 
@@ -218,7 +289,7 @@ restoration that discards cancelled, never-written queued revisions.
 Run the existing Node built-in runner:
 
 ```powershell
-node --test tests\planner-storage.test.cjs
+node --test tests\planner-bridge.test.cjs tests\planner-core-integrity-r0.test.cjs tests\planner-new-project-r0.test.cjs tests\planner-storage.test.cjs
 ```
 
 Tests cover JSON/envelope validation, immutable weather/floor snapshots,
@@ -226,6 +297,15 @@ same-revision conflicts, unknown schema, transaction settlement/abort/quota
 errors with scripted request events, blocked/version changes, coalescing,
 initial opt-in, startup/open races, remembered restoration, read-only failure
 fallback, import preservation, opt-out and explicit deletion.
+R0 regressions additionally use the real command controller and the browser
+module branch for observer ordering/diagnostics, no-op identity, compound
+provenance, damaged recapture rollback, active-mirror normalization and failed
+initialization cleanup. Synthetic adapter/store cases are labelled; a record
+round-trip alone does not prove a native browser transaction committed.
+`tests\planner-new-project-r0.test.cjs` also exports `browserSmoke(page)` for an
+isolated production page. It replaces an edited, multi-floor disposable project,
+checks actual starter controls/context and fresh IDs, and verifies that the
+initialized document succeeds through the unchanged exact JSON import path.
 Scripted request events test error/settlement logic; they are **not** a
 substitute for native IndexedDB.
 

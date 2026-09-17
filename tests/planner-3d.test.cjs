@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const View = require('../planner-3d.js');
 const Model = require('../planner-model.js');
 const Regions = require('../planner-regions.js');
+const Projection = require('../planner-projection.js');
 
 const close = (actual, expected) =>
   assert.ok(Math.abs(actual - expected) < 1e-7, `Expected ${actual} ≈ ${expected}`);
@@ -153,6 +154,36 @@ test('local-to-Three coordinates agree with model ENU at every cardinal heading'
       const world = Model.localToWorld({ ...point, z: 7 }, frame);
       close(actual.x, world.east); close(actual.y, world.up); close(actual.z, -world.north);
     }
+  }
+});
+
+test('balconies use supplied footprints and shared IDs for real picking in local and registered rotated frames', async () => {
+  const THREE = await import('../vendor/three/three.module.min.js');
+  const { scene } = fixture();
+  const project = freeze({ activeFloorId: 'ground', building: { roofThicknessM: .15 },
+    floors: [{ id: 'ground', name: 'Ground' }, { id: 'upper', name: 'Upper' }] });
+  for (const headingDeg of [0, 37, 90, 180, 270]) for (const registered of [false, true]) {
+    const source = { ...scene, headingDeg, floorElevationM: 2.45, plot: { x: -2, y: -3, w: 14, h: 15 },
+      balconies: [{ id: 'ground:balcony-3', sourceId: 'balcony-3', label: 'Balcony 3',
+        rect: { x: -.75, y: 2.13755, w: 1.12375, h: .91725 }, roomId: null, oldMetadata: { note: 'kept' } }],
+      unresolvedOpenings: [], electrical: [] };
+    const floor = freeze(registered ? Projection.projectScene(source) : source);
+    const before = JSON.stringify([floor, project]);
+    const content = View.buildContent(THREE, [floor], project, Model, { cutaway: true });
+    try {
+      const entry = content.refs.get('balcony\0ground:balcony-3'), rect = floor.balconies[0].rect, mesh = entry.objects[0];
+      assert.equal(entry.floorId, 'ground'); assert.equal(entry.objects.length, 1);
+      assert.deepEqual(mesh.userData.entityRef, { kind: 'balcony', id: 'ground:balcony-3' });
+      assert.match(entry.note, /0\.14 m.*schematic/);
+      close(mesh.geometry.parameters.width, rect.w); close(mesh.geometry.parameters.depth, rect.h);
+      close(mesh.geometry.parameters.height, View.PREVIEW.slabM);
+      close(mesh.position.y, floor.floorElevationM - View.PREVIEW.slabM / 2);
+      const point = View.toThree({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, floor, floor.floorElevationM + 2);
+      const ray = new THREE.Raycaster(new THREE.Vector3(point.x, point.y, point.z), new THREE.Vector3(0, -1, 0));
+      const hit = ray.intersectObjects(content.pickables.filter(object => object.visible), false)[0];
+      assert.equal(hit.object, mesh, `Balcony picking at ${headingDeg}°, registered=${registered}`);
+      assert.equal(JSON.stringify([floor, project]), before, 'Rendering and picking never author balcony geometry.');
+    } finally { View.disposeObject(content.group); }
   }
 });
 

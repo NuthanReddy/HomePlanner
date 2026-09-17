@@ -127,6 +127,12 @@ geometry becomes null rather than borrowing a storey height.
 
 ## Validation
 
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-structural-engineering\scripts\example.py --check
+```
+
 Run the smallest real existing `node --test` selector(s) covering the touched
 contract, from the repository root; do not run every presentation suite by default.
 
@@ -156,3 +162,7 @@ Keep modelled quantities separate from professional certification, preserve
 
 [Verified primary-source notes, S1–S2](references/sources.md), checked
 **17 Sep 2026**. These inform mechanics and model credibility, not local approval.
+
+- [Equilibrium/beam equations and worked calculations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).

@@ -144,6 +144,12 @@ test inputs, not a prescribed gradient or a real plan change.
 
 ## Validation
 
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-plumbing-drainage\scripts\example.py --check
+```
+
 Run the smallest real existing `node --test` selector(s) for the affected contract,
 from the repository root. Combine related selectors, not every suite by default.
 
@@ -173,3 +179,7 @@ until a solver actually exists, and disclose standard/access/adoption uncertaint
 
 [Verified primary-source notes, P1–P3](references/sources.md), checked
 **17 Sep 2026**. EPA reference solvers are not HomePlanner runtime dependencies.
+
+- [Continuity, invert and separate hydraulic equations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).

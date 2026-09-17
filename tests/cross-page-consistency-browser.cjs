@@ -84,7 +84,7 @@ module.exports = async function crossPageConsistency(page, { atomic = true } = {
     assert.match(first, /3\.025/);
     await thickness.fill('0.4'); await page.locator('#env-material-form button[type="submit"]').click();
     assert.match(await page.locator('#env-material-results').innerText(), /2\.036/);
-    await undo(); await undo();
+    await undo();
     assert.equal(await thickness.inputValue(), '0.2');
     assert.equal(await page.locator('#env-material-results').innerText(), first);
     record('F3 Undo restores the matching assembly result');
@@ -190,11 +190,12 @@ module.exports = async function crossPageConsistency(page, { atomic = true } = {
     await page.waitForFunction(() => document.querySelector('.hp-storage-status').dataset.state === 'saved');
     const original = await page.evaluate(() => HomePlanner.getProject());
     await page.locator('#hp-structure-label').fill('Pending before JSON import');
+    await route('design/layout');
     const download = page.waitForEvent('download');
-    await page.evaluate(() => document.getElementById('plannerPersistence').homePlannerPersistence.requestExportJSON());
+    await page.locator('#roomExportJSON').click();
     const file = await download; assert.match(file.suggestedFilename(), /\.homeplanner\.json$/); await file.cancel();
     const chooser = page.waitForEvent('filechooser');
-    await page.evaluate(() => document.getElementById('plannerPersistence').homePlannerPersistence.requestImportJSON());
+    await page.locator('#roomImportJSON').click();
     await (await chooser).setFiles({ name: 'complete-project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(original)) });
     await page.waitForFunction(() => !document.querySelector('.hp-storage-confirm').hidden);
     assert.equal(await page.locator('#workspaceProjectMenu').evaluate(node => node.open), true);

@@ -57,6 +57,8 @@
     scene.walls=scene.walls.map(wall=>({...wall,start:shift(wall.start),end:shift(wall.end),
       openings:wall.openings.map(item=>openings.get(item.id)||opening(item))}));
     scene.furniture=scene.furniture.map(item=>({...item,rect:shift(item.rect)}));
+    if(Array.isArray(scene.balconies))
+      scene.balconies=scene.balconies.map(item=>({...item,rect:shift(item.rect)}));
     scene.obstacles=scene.obstacles.map(shift);
     scene.electrical=(source.electrical||[]).map(record=>{
       const resolver=getElectrical();

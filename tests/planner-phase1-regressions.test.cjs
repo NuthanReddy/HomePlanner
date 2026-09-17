@@ -9,6 +9,31 @@ const {createFixture,controllerFor}=require('./fixtures/drawing-fixtures.cjs');
 const copy=value=>JSON.parse(JSON.stringify(value));
 const point=()=>({kind:'point',floorId:'ground',point:{x:1,y:2,z:0}});
 const entity=(entityId,entityKind='structural',floorId='ground')=>({kind:'entity',floorId,entityKind,entityId});
+
+test('balcony rectangles share the exact nonzero-origin shift and inverse bounds without losing metadata',()=>{
+  const project=createFixture('setback-plot').project,scene=Model.buildScene(project.legacy.context,project);
+  const balcony={id:'ground:balcony-3',sourceId:'balcony-3',type:'balcony',label:'Retained balcony',
+    rect:{x:1,y:2,w:1.23755,h:.91725},roomId:'ground:living',oldMetadata:{note:'kept',heightM:null,sequence:3}};
+  for(const headingDeg of [0,90,180,270]){
+    const source={...copy(scene),headingDeg,plot:{x:-2,y:-3,w:14,h:15},balconies:[copy(balcony)]};
+    const before=JSON.stringify(source),projected=Projection.projectScene(source),actual=projected.balconies[0];
+    assert.deepEqual(actual,{...balcony,rect:{...balcony.rect,x:3,y:5}});
+    assert.deepEqual(projected.sourcePlotOrigin,{x:-2,y:-3});
+    assert.equal(Object.isFrozen(actual.rect),true);
+    assert.notEqual(actual.oldMetadata,source.balconies[0].oldMetadata);
+    const inverse={...actual.rect,x:actual.rect.x+projected.sourcePlotOrigin.x,y:actual.rect.y+projected.sourcePlotOrigin.y};
+    assert.deepEqual(inverse,balcony.rect);
+    for(const [dx,dy] of [[0,0],[balcony.rect.w,0],[0,balcony.rect.h],[balcony.rect.w,balcony.rect.h]]){
+      assert.equal((actual.rect.x+dx)+projected.sourcePlotOrigin.x,balcony.rect.x+dx);
+      assert.equal((actual.rect.y+dy)+projected.sourcePlotOrigin.y,balcony.rect.y+dy);
+    }
+    assert.deepEqual(Projection.projectScene(projected).balconies,projected.balconies,'Already site-local geometry is not translated again.');
+    assert.equal(JSON.stringify(source),before);
+  }
+  const legacy={...copy(scene)};delete legacy.balconies;
+  assert.equal(Object.hasOwn(Projection.projectScene(legacy),'balconies'),false,'Older scenes do not acquire a fabricated collection.');
+});
+
 const beamId=i=>`ground:authored:beam-${i}`;
 function branching(count,cyclic=false){
   const doc=createFixture('setback-plot').project,a=Model.emptyAuthored();

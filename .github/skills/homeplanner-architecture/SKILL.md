@@ -52,6 +52,8 @@ Read [Room Planner](../../../docs/room-planner.md), [project model](../../../doc
    - Keep stable source IDs and floor namespaces; surviving rooms are not renumbered and deleted identities are not reused. Use commands/Undo for accepted edits.
    - Rebuild through `buildScene` and existing topology/host resolution. Missing/split wall hosts remain repairable and unresolved, not rebound to the nearest wall. Retain furniture covered by reservations for relocation; do not silently delete it.
 7. **Check downstream and persistence boundaries.** Reconcile net schedules, derived wall/opening geometry and current analysis input fingerprints. Keep saved edits on untouched floors. Saving is explicit/opt-in; browser storage is not a backup and navigation does not save or run analyses.
+   - Distinguish legacy room-edge palette rules from canonical wall-hosted commands. The latter supports eligible internal or exterior windows; do not silently restrict the shared 2D/3D inspector to the older palette's exterior-only rule.
+   - Generated and added openings use shared source-preserving suppression for deletion. Merged `sourceIds` are raw input IDs; namespace them by floor rather than treating a rendered fragment ID as the source authority.
 
 ## Do not do
 - Do not introduce a second wall graph or topology engine to repair a renderer. Arbitrary wall-graph editing, nonrectangular authored rooms, general polygon/CSG and engineered stair/shaft geometry are **new capabilities**, not current editor features.
@@ -60,6 +62,12 @@ Read [Room Planner](../../../docs/room-planner.md), [project model](../../../doc
 - Do not copy another product's designs/source, or send project snapshots, coordinates or user data to public research tools.
 
 ## Validation
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-architecture\scripts\example.py --check
+```
+
 Run from the repository root; select only the affected slice:
 - Movement/placement: `node --test tests\room-movement.test.cjs`
 - Reservation geometry/area/hosts: `node --test tests\planner-regions.test.cjs tests\planner-reservations.test.cjs`
@@ -88,4 +96,7 @@ Expect a 1.74 × 1.74 m reservation and approximately 26.9724 m² net host area,
 
 ## References
 - [Verified public primary sources and limits](references/sources.md).
+- [Equations, frames and worked calculations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).
 - [Circulation and components](../../../docs/circulation-and-components.md), [local persistence](../../../docs/local-persistence.md), [architectural drawings](../../../docs/architectural-drawings.md).

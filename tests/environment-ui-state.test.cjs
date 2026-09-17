@@ -142,6 +142,116 @@ test('form submit ownership guard rejects an unrendered floor change and a chang
   assert.throws(() => assertOwner('env-storey-form'), /Saved inputs changed.*draft is retained/);
 });
 
+test('a calculation stores its inputs and result in one environment patch without changing other results', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
+  const start = source.indexOf('    function storeResult('), end = source.indexOf('    function prepareExperiment(', start);
+  assert.ok(start >= 0 && end > start);
+  const prior = { input: { preserved: null }, output: { measured: false } };
+  const project = { revision: 8, site: { latitude: 0 }, building: { wallHeightM: 3 }, environment: { results: { prior } } };
+  const commands = []; let store;
+  vm.runInNewContext(source.slice(start, end) + '\ncapture(storeResult);', {
+    planner: { getProject: () => project },
+    currentGeometryKey: () => 'geometry-8', scenes: () => [],
+    copy: value => JSON.parse(JSON.stringify(value)), Date,
+    saveEnvironment: patch => commands.push(JSON.parse(JSON.stringify(patch))),
+    capture: fn => { store = fn; }
+  });
+  const input = { capacityJ_K: 1000 }, output = { energyResidualJ: 0 };
+  const entry = store('thermal', input, output, { notes: 'Synthetic reference' },
+    { thermal: { input, notes: 'Synthetic reference', acknowledged: true } });
+  assert.equal(commands.length, 1);
+  assert.deepEqual(commands[0].thermal.input, input);
+  assert.deepEqual(commands[0].results.thermal.output, output);
+  assert.equal(commands[0].results.thermal.projectRevision, 8, 'The entry retains the captured source revision');
+  assert.deepEqual(commands[0].results.prior, prior);
+  input.capacityJ_K = 2000; output.energyResidualJ = 1;
+  assert.equal(entry.input.capacityJ_K, 1000);
+  assert.equal(entry.output.energyResidualJ, 0);
+  assert.equal(project.environment.thermal, undefined);
+});
+
+for (const name of ['pressure', 'thermal']) {
+  test(`${name} evaluation publishes once after calculation, and publishes nothing on a solver error`, () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
+    const start = source.indexOf(`      bindForm('env-${name}-form'`);
+    const end = source.indexOf(name === 'pressure' ? "      bindForm('env-thermal-form'" : "      bindClick('env-export-weather'", start);
+    assert.ok(start >= 0 && end > start);
+    const input = { fixture: name }, output = { exampleResult: true }, calls = [];
+    let submit, fail = false;
+    vm.runInNewContext(source.slice(start, end), {
+      bindForm(form, error, handler) { submit = handler; },
+      by: () => ({ innerHTML: '' }), requireAcknowledgement() {},
+      pressureTemplateKey: 'geometry', thermalTemplateKey: 'geometry', currentGeometryKey: () => 'geometry',
+      parseInput: () => input, validatePressureInput: value => value, validateThermalInput: value => value,
+      scene: () => ({}), value: () => 'Explicit synthetic inputs',
+      needPhysics: method => ({ [method]() {
+        calls.push('calculate');
+        if (fail) throw new Error('Synthetic numerical failure');
+        return output;
+      } }),
+      saveEnvironment() { assert.fail('Inputs must not be applied separately before calculation'); },
+      storeResult(resultName, actualInput, actualOutput, metadata, patch) {
+        calls.push('store');
+        assert.equal(resultName, name);
+        assert.equal(actualInput, input); assert.equal(actualOutput, output);
+        assert.equal(patch[name].input, input);
+        assert.equal(patch[name].acknowledged, true);
+        assert.equal(metadata.notes, patch[name].notes);
+        return { input: actualInput, output: actualOutput };
+      },
+      renderPressure() { calls.push('render'); }, renderThermal() { calls.push('render'); }
+    });
+    submit();
+    assert.deepEqual(calls, ['calculate', 'store', 'render']);
+    calls.length = 0; fail = true;
+    assert.throws(submit, /Synthetic numerical failure/);
+    assert.deepEqual(calls, ['calculate']);
+  });
+}
+
+test('clean focused environment fields follow restored values while pending fields are retained', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
+  const start = source.indexOf('    function syncForm('), end = source.indexOf('    function renderObstacles(', start);
+  const field = { value: '0.4', type: 'number' }, form = { dataset: {}, contains: () => true };
+  const bases = new Map(); let sync;
+  vm.runInNewContext(source.slice(start, end) + '\ncapture(syncForm);', {
+    by: id => id === 'form' ? form : field, formBases: bases, formBase: () => 'saved-base',
+    root: { document: { activeElement: field } }, capture: fn => { sync = fn; }
+  });
+  sync('form', { field: 0.2 });
+  assert.equal(field.value, 0.2);
+  form.dataset.dirty = 'true'; field.value = 'incomplete';
+  sync('form', { field: 0.3 });
+  assert.equal(field.value, 'incomplete');
+  form.dataset.reload = 'true';
+  sync('form', { field: 0.3 });
+  assert.equal(field.value, 0.3);
+  assert.equal(form.dataset.dirty, '');
+});
+
+test('successful form application clears only its unchanged owned draft; failure retains it', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
+  const start = source.indexOf('    async function applyForm('), end = source.indexOf('    function bindForm(', start);
+  const Drafts = require('../planner-drafts.js');
+  const scope = { projectId: 'project', floorId: 'ground', entityId: 'form' };
+  const form = { dataset: { dirty: 'true' } }, pending = new Map([[Drafts.key(scope), { value: 'pending' }]]);
+  let apply, renders = 0;
+  vm.runInNewContext(source.slice(start, end) + '\ncapture(applyForm);', {
+    assertFormOwner() {}, formOwners: new Map([['form', scope]]), formScope: () => scope, Drafts,
+    formBases: new Map(), formBase: () => 'new-base', by: () => form,
+    drafts: { get: owner => pending.get(Drafts.key(owner)), remove: owner => pending.delete(Drafts.key(owner)) },
+    render() { renders++; }, capture: fn => { apply = fn; }
+  });
+  await assert.rejects(apply('form', () => { throw new Error('Rejected transaction'); }), /Rejected transaction/);
+  assert.equal(pending.size, 1); assert.equal(form.dataset.dirty, 'true'); assert.equal(renders, 0);
+  await apply('form', () => {});
+  assert.equal(pending.size, 0); assert.equal(form.dataset.dirty, ''); assert.equal(renders, 1);
+  pending.set(Drafts.key(scope), { value: 'before' }); form.dataset.dirty = 'true';
+  await apply('form', () => { pending.set(Drafts.key(scope), { value: 'typed during apply' }); });
+  assert.equal(pending.get(Drafts.key(scope)).value, 'typed during apply');
+  assert.equal(form.dataset.dirty, 'true');
+});
+
 for (const reject of [false, true]) test(`device location uses one compound command and retains draft on failure (${reject})`, async () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
   const start = source.indexOf("      bindClick('env-detect'"), end = source.indexOf("      bindForm('env-building-form'", start);

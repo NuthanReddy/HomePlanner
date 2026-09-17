@@ -59,6 +59,14 @@ returns keyboard focus to the persistent obstacle heading.
 Restored/undone assembly inputs re-render only a matching saved assembly result.
 Mismatched or absent results are explicitly stale/unavailable; an unevaluated
 layer draft never inherits a previous U/R/capacity table.
+Solar, wind, assembly, pressure and thermal evaluation calculate first, then
+apply the reviewed inputs and the result together through one `set-environment`
+command. A calculation or validation failure preserves the prior saved inputs
+and the pending draft. One Undo restores the earlier input/result pair.
+Pressure and thermal displays also restore only results matching their saved
+input, notes and geometry; no analysis runs on Undo, replacement or rendering.
+Their unapplied drafts retain a project/floor owner, and replacing a pending
+scenario with a newly prepared template requires explicit confirmation.
 
 ### State owned inside `project.environment`
 

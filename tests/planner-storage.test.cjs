@@ -2,6 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Storage = require('../planner-storage.js');
 const Persistence = require('../planner-persistence.js');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 
 const time = '2026-09-08T10:00:00.000Z';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -1082,4 +1085,127 @@ test('disposing a mounted importer prevents a late file read from replacing the 
   gate.resolve(JSON.stringify(project('late-import')));
   await reading; await tick();
   assert.equal(planner.replacements, 0);
+});
+
+function realLifecyclePlanner() {
+  const Model = require('../planner-model.js'), Bridge = require('../planner-bridge.js');
+  let live = { controls: {}, manualLayouts: [], context: null }, listenerCount = 0;
+  const adapter = { capture: () => copy(live), restore(value) { live = copy(value); }, render() {} };
+  const planner = Bridge.createController(adapter, Model), subscribe = planner.subscribe;
+  planner.subscribe = listener => {
+    listenerCount++;
+    const unsubscribe = subscribe(listener);
+    let active = true;
+    return () => { if (active) { active = false; listenerCount--; unsubscribe(); } };
+  };
+  return { planner, adapter, listeners: () => listenerCount };
+}
+
+for (const drafts of [undefined, {}]) test(`browser startup rejects ${drafts ? 'incomplete' : 'missing'} Drafts before installing persistence listeners`, () => {
+  const dom = domHarness(), { planner, listeners } = realLifecyclePlanner();
+  dom.document.getElementById = id => id === 'plannerPersistence' ? dom.host : dom.byId(id);
+  dom.document.readyState = 'complete';
+  const context = vm.createContext({ HomePlanner: planner, HomePlannerStorage: Storage,
+    HomePlannerDrafts: drafts, document: dom.document, console, setTimeout, clearTimeout });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'planner-persistence.js'), 'utf8'), context,
+    { filename: 'planner-persistence.js' });
+  assert.equal(listeners(), 0);
+  assert.equal(dom.host.homePlannerPersistence, undefined);
+  assert.equal(context.HomePlannerPersistence.instance, undefined);
+  assert.match(dom.host.textContent, /MissingDraftsError.*planner-drafts\.js.*before/);
+  assert.equal(dom.host.attributes.role, 'alert');
+  let events = 0;
+  planner.subscribe(() => events++);
+  assert.doesNotThrow(() => planner.execute({ type: 'rename-project', name: 'Core still works' }));
+  assert.equal(events, 1);
+  assert.equal(planner.getProject().name, 'Core still works');
+  assert.deepEqual(planner.getObserverErrors(), []);
+});
+
+test('partial persistence mount cleans project/draft/unload listeners and does not open a database', async t => {
+  const Drafts = require('../planner-drafts.js'), dom = domHarness(), { planner, listeners } = realLifecyclePlanner();
+  const original = dom.document.createElement('p');
+  original.textContent = 'Original host content';
+  dom.host.append(original);
+  const createElement = dom.document.createElement;
+  dom.document.createElement = tag => {
+    const element = createElement(tag);
+    if (tag === 'select') Object.defineProperty(element, 'value', {
+      get() { return ''; },
+      set() { throw new Error('Synthetic final-render failure'); }
+    });
+    return element;
+  };
+  let draftSubscriptions = 0, draftStores = 0, opens = 0;
+  const subscribe = Drafts.subscribe, createStore = Drafts.createStore;
+  t.mock.method(Drafts, 'subscribe', (...args) => {
+    const unsubscribe = subscribe(...args); draftSubscriptions++;
+    return () => { draftSubscriptions--; unsubscribe(); };
+  });
+  t.mock.method(Drafts, 'createStore', (...args) => {
+    const store = createStore(...args); draftStores++;
+    return { ...store, dispose() { draftStores--; store.dispose(); } };
+  });
+  assert.throws(() => Persistence.mount(dom.host, planner, { openStore: async () => {
+    opens++; return memoryStore();
+  } }), /Synthetic final-render failure/);
+  await tick();
+  assert.equal(listeners(), 0);
+  assert.equal(draftSubscriptions, 0);
+  assert.equal(draftStores, 0);
+  assert.equal(opens, 0);
+  assert.equal(dom.view.listeners.has('beforeunload'), false);
+  assert.equal(dom.host.homePlannerPersistence, undefined);
+  assert.equal(dom.host.children[0], original);
+  assert.equal(dom.host.textContent, 'Original host content');
+  assert.doesNotThrow(() => planner.execute({ type: 'rename-project', name: 'No leaked status listener' }));
+});
+
+test('persistence observer errors are explicit diagnostics, not failed save acknowledgements', async t => {
+  const planner = fakePlanner(), store = memoryStore(), { controller } = controllerFor(t, planner, store);
+  await controller.ready;
+  const log = t.mock.method(console, 'error', () => {}), observed = [];
+  controller.subscribe(() => { throw new Error('Private view exception'); });
+  controller.subscribe(state => observed.push(state));
+  const saved = await controller.saveNow();
+  assert.equal(saved.id, planner.getProject().id);
+  assert.equal(controller.getState().status, 'saved');
+  assert.equal(controller.getState().dirty, false);
+  assert.equal(controller.getState().error, null);
+  assert.equal(controller.getState().observerError.code, 'PersistenceObserverError');
+  assert.equal(observed.at(-1).status, 'saved');
+  assert.equal(observed.at(-1).observerError.code, 'PersistenceObserverError');
+  assert.ok(log.mock.callCount() > 0);
+  assert.ok(log.mock.calls.every(call => !String(call.arguments[0]).includes('Private view exception')));
+});
+
+test('real-controller import recapture failure keeps saved memory, pending drafts and the original database record', async t => {
+  const Drafts = require('../planner-drafts.js'), { planner, adapter } = realLifecyclePlanner();
+  const store = memoryStore(), { controller } = controllerFor(t, planner, store);
+  await controller.ready; await controller.saveNow();
+  planner.execute({ type: 'rename-project', name: 'Keep the current edit' });
+  const before = planner.getProject(), stored = copy(store.records.get(before.id));
+  const drafts = Drafts.createStore(planner, 'Keep owner draft');
+  t.after(() => drafts.dispose());
+  drafts.put({ projectId: before.id, floorId: before.activeFloorId, entityId: 'pending' }, { unknown: null });
+  const incoming = copy(before);
+  incoming.legacy.extension = { keep: null };
+  const prepared = controller.prepareImport(JSON.stringify(incoming)), capture = adapter.capture;
+  let corrupt = true;
+  adapter.capture = () => {
+    const value = capture();
+    if (corrupt) { corrupt = false; delete value.extension; }
+    return value;
+  };
+  await assert.rejects(controller.importPrepared(prepared), code('RestoredSnapshotChangedError'));
+  assert.equal(planner.getProject(), before);
+  assert.equal(planner.canUndo(), true);
+  assert.equal(controller.getState().current.id, before.id);
+  assert.equal(controller.getState().error.code, 'RestoredSnapshotChangedError');
+  assert.equal(controller.getState().draftCount, 1);
+  assert.equal(Drafts.hasPending(planner, before.id), true);
+  assert.deepEqual(store.records.get(before.id), stored);
+  assert.equal(store.records.has(prepared.id), false);
+  planner.undo();
+  assert.equal(planner.getProject().name, stored.document.name);
 });

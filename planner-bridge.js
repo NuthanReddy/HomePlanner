@@ -2,6 +2,7 @@
   'use strict';
   const clone=value=>JSON.parse(JSON.stringify(value));
   const FLOOR_FIELDS=['wallEdits','doorEdits','windowEdits','furnitureEdits','obstacles','electrical'];
+  const SharedModel=typeof module==='object'&&module.exports?require('./planner-model.js'):root.HomePlannerModel;
   const Projection=typeof module==='object'&&module.exports?require('./planner-projection.js'):root.HomePlannerProjection;
   const freshId=prefix=>`${prefix}-${root.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
   function freeze(value){
@@ -13,6 +14,65 @@
   function finite(value,label,positive=false){
     if(!Number.isFinite(value)||(positive&&value<=0))throw new Error(`${label} must be ${positive?'positive and ':''}finite.`);
     return value;
+  }
+  function preserveLegacyMetadata(previous,captured){
+    const merge=(before,after)=>({...clone(before||{}),...clone(after)});
+    const mergeRecord=(before,after)=>{
+      const result=merge(before,after);
+      for(const [key,value] of Object.entries(after)){
+        if(value&&typeof value==='object'&&!Array.isArray(value)&&before?.[key]&&
+          typeof before[key]==='object'&&!Array.isArray(before[key]))result[key]=mergeRecord(before[key],value);
+      }
+      return result;
+    };
+    const records=(before,after,id)=>after.map(item=>{
+      const key=id(item),prior=typeof key==='string'?(before||[]).find(value=>id(value)===key):null;
+      return prior?mergeRecord(prior,item):clone(item);
+    });
+    const result=merge(previous,captured);
+    result.controls=merge(previous?.controls,captured.controls);
+    for(const [id,value] of Object.entries(captured.controls))
+      result.controls[id]=mergeRecord(previous?.controls?.[id],value);
+    if(captured.roads){
+      result.roads=merge(previous?.roads,captured.roads);
+      for(const edge of ['N','E','S','W'])if(!Object.prototype.hasOwnProperty.call(captured.roads,edge))delete result.roads[edge];
+      for(const [id,value] of Object.entries(captured.roads))
+        result.roads[id]=mergeRecord(previous?.roads?.[id],value);
+    }
+    if(captured.roomIdentities){
+      result.roomIdentities=clone(captured.roomIdentities);
+      for(const [id,value] of Object.entries(captured.roomIdentities))
+        result.roomIdentities[id]=mergeRecord(previous?.roomIdentities?.[id],value);
+    }
+    result.manualLayouts=captured.manualLayouts.map(([signature,layout])=>{
+      const prior=previous?.manualLayouts?.find(([key])=>key===signature)?.[1];
+      const merged=merge(prior,layout);
+      for(const key of ['rooms','furniture','balconies'])if(layout[key]&&!Array.isArray(layout[key])&&typeof layout[key]==='object')
+        merged[key]=Object.fromEntries(Object.entries(layout[key]).map(([id,value])=>[id,mergeRecord(prior?.[key]?.[id],value)]));
+      for(const key of ['openings','wallOpenings'])if(Array.isArray(layout[key]))
+        merged[key]=records(prior?.[key],layout[key],item=>item.id);
+      return [signature,merged];
+    });
+    if(captured.context){
+      const before=previous?.context,after=captured.context;
+      result.context=merge(before,after);
+      for(const key of ['plate','g','cfg'])result.context[key]=mergeRecord(before?.[key],after[key]);
+      result.context.plan=merge(before?.plan,after.plan);
+      for(const key of ['placed','furniture','customOpenings','wallOpenings']){
+        if(!Array.isArray(after.plan[key]))continue;
+        const id=record=>record.req?.id||record.id;
+        result.context.plan[key]=records(before?.plan?.[key],after.plan[key],id);
+      }
+      if(after.plan.openings){
+        result.context.plan.openings=merge(before?.plan?.openings,after.plan.openings);
+        if(!Object.prototype.hasOwnProperty.call(after.plan.openings,'entrance'))delete result.context.plan.openings.entrance;
+        for(const key of ['doors','windows'])if(Array.isArray(after.plan.openings[key]))
+          result.context.plan.openings[key]=records(before?.plan?.openings?.[key],after.plan.openings[key],record=>record.id);
+      }
+      if(Array.isArray(after.g.balconies))
+        result.context.g.balconies=records(before?.g?.balconies,after.g.balconies,record=>record.id);
+    }
+    return result;
   }
   function remapFloor(value,oldId,newId){
     const scoped=text=>text===oldId||text.startsWith(oldId+':')||text.startsWith(oldId+'/');
@@ -48,7 +108,16 @@
   function createController(adapter,Model){
     let project=Model.createProject(),selection=null,busy=false,gesture=null;
     let history=[],future=[],listeners=new Set(),cachedProject=null,cachedScenes=null;
-    const initialLegacy=clone(adapter.capture());
+    const observerErrors=[];
+    const jsonKey=Model.stableStringify||SharedModel.stableStringify;
+    const assertJSON=Model.assertJSON||SharedModel.assertJSON;
+    const authoredKey=doc=>jsonKey((Model.canonicalDocument||SharedModel.canonicalDocument)(doc));
+    const captureLegacy=()=>{
+      const legacy=adapter.capture();
+      assertJSON(legacy);
+      return clone(legacy);
+    };
+    const initialLegacy=captureLegacy();
     function normalize(doc){
       doc.name=doc.name||'HomePlanner project';
       doc.revision=Number.isInteger(doc.revision)?doc.revision:0;
@@ -126,36 +195,73 @@
           ['offsetM','widthM','sillM','heightM','openFraction'].some(field=>!sameNumber(item[field],restored[field]));
       }))throw new Error('History could not restore the exact opening layout. Its saved attachments were not replaced.');
     }
+    function assertRestoredDocument(expected,actual){
+      if(jsonKey(expected)===jsonKey(actual))return;
+      const error=new Error('The layout adapter changed the replacement snapshot. The previous project, selection and history were kept; use a compatible backup instead of accepting a reconstructed layout.');
+      error.code='RestoredSnapshotChangedError';
+      throw error;
+    }
+    function showObserverErrors(){
+      if(observerErrors.length){
+        const diagnostic=observerErrors[observerErrors.length-1];
+        const status=root.document?.getElementById('plannerBridgeStatus');
+        if(status&&!status.textContent.includes(diagnostic.message))
+          status.textContent+=`${status.textContent?' ':''}${diagnostic.code}: ${diagnostic.message}`;
+      }
+    }
     function emit(type){
-      const event={type,project:getProject(),scene:getScene(),selection};
-      listeners.forEach(listener=>listener(event));
+      const event=Object.freeze({type,project:getProject(),scene:getScene(),selection});
+      const report=(error,index)=>{
+        const diagnostic=Object.freeze({code:'ObserverNotificationError',eventType:type,
+          projectId:event.project.id,revision:event.project.revision,observer:index+1,
+          errorName:typeof error?.name==='string'&&/^[A-Za-z]+Error$/.test(error.name)?error.name:'Error',
+          message:'A planner view could not update. The project action remains applied; other views were notified. Export the current project and reload before relying on the affected view.'});
+        observerErrors.push(diagnostic);
+        if(observerErrors.length>40)observerErrors.shift();
+        root.console?.error(`${diagnostic.code}: ${diagnostic.message}`);
+      };
+      [...listeners].forEach((listener,index)=>{
+        try{
+          const completion=listener(event);
+          if(completion&&typeof completion.then==='function')
+            Promise.resolve(completion).catch(error=>{report(error,index);showObserverErrors();});
+        }catch(error){report(error,index);}
+      });
+      showObserverErrors();
     }
     function capture(){
-      project.legacy=clone(adapter.capture());
+      project.legacy=captureLegacy();
       if(project.legacy.context?.cfg?.ceilingHeight)
         project.building.wallHeightM=project.legacy.context.cfg.ceilingHeight;
       syncActive(project);invalidate();
     }
     function commit(label,work,{restore=false,render=true,remember=true,verify=null}={}){
       if(busy)throw new Error('A project edit is already in progress.');
-      const before=clone(project),beforeSelection=selection;
+      const before=project,beforeSelection=selection,beforeProjectCache=cachedProject,beforeSceneCache=cachedScenes;
       busy=true;project=clone(project);invalidate();
       try{
         work(project);
         syncActive(project);
         invalidate();
         Model.validateProject(project);
-        if(restore)adapter.restore(project.legacy);
+        if(restore)adapter.restore(clone(project.legacy));
         if(render)adapter.render();
         capture();
         if(verify)verify();
+        Model.validateProject(project);
+        if(authoredKey(project)===authoredKey(before)){
+          project=before;selection=beforeSelection;
+          cachedProject=beforeProjectCache;cachedScenes=beforeSceneCache;
+          return getProject();
+        }
         project.revision=before.revision+1;
         project.updatedAt=new Date().toISOString();
         syncActive(project);Model.validateProject(project);invalidate();
+        getScenes();
         if(remember){history.push({label,project:before});if(history.length>40)history.shift();future=[];}
       }catch(error){
         project=before;selection=beforeSelection;invalidate();
-        adapter.restore(before.legacy);adapter.render();
+        adapter.restore(clone(before.legacy));adapter.render();
         throw error;
       }finally{busy=false;}
       emit(restore?'restore':'change');
@@ -163,7 +269,7 @@
     }
     function acceptLegacy(label='Edit layout'){
       if(busy||gesture)return;
-      const next=adapter.capture();
+      const next=captureLegacy();
       const authoredLegacy=value=>{
         const result=clone(value);delete result.controls.roomZoom;return result;
       };
@@ -185,7 +291,7 @@
         throw new Error('Exterior, protected or unclassified walls cannot be removed or trimmed.');
     }
     function checkOpening(wall,values,kind,id=null){
-      if(wall.removed||typeof wall.exterior!=='boolean'||!['unknown','non-structural'].includes(wall.structuralRole))
+      if((wall.removed&&id===null)||typeof wall.exterior!=='boolean'||!['unknown','non-structural'].includes(wall.structuralRole))
         throw new Error('Choose a surviving wall without a protected or unclassified structural role.');
       const {startM,endM}=Model.retainedWallSpan(wall);
       const offset=finite(values.offsetM,'Opening offset'),width=finite(values.widthM,'Opening width',true);
@@ -208,8 +314,19 @@
     }
     function execute(command){
       if(!command||typeof command.type!=='string')throw new Error('Choose a valid editor action.');
+      assertJSON(command);
       acceptLegacy();
       const type=command.type;
+      const patch=(value,label)=>{
+        if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(`Provide a valid ${label} object.`);
+        return clone(value);
+      };
+      let environmentPatch;
+      if(Object.prototype.hasOwnProperty.call(command,'environmentPatch')){
+        if(!['update-site','update-building'].includes(type))
+          throw new Error('Environment provenance can accompany only site or building updates.');
+        environmentPatch=patch(command.environmentPatch,'environment provenance');
+      }
       if(type==='select-floor')return navigateFloor(command.id);
       const featureCommand=['set-authored','upsert-authored','delete-authored','set-documentation','set-site-datum'].includes(type);
       if(featureCommand)Model.assertJSON(command);
@@ -220,7 +337,7 @@
         'open-wall':'wall','restore-wall':'wall','trim-wall':'wall'};
       const entity=entityTypes[type]?find(entityTypes[type],command.id):null;
       const beforeLayout=entity||type==='add-window'||type==='add-door'?getScene():null;
-      let added=null,deletedBalcony=null;
+      let added=null,deletedBalcony=null,deletedOpening=null;
       return commit(type,doc=>{
         if(type==='set-authored'){
           if(command.value===null)delete active(doc).authored;
@@ -243,19 +360,20 @@
           if(typeof command.name!=='string'||!command.name.trim())throw new Error('Enter a project name.');
           doc.name=command.name.trim().slice(0,150);
         }else if(type==='update-site'){
-          Object.assign(doc.site,command.patch);
+          Object.assign(doc.site,patch(command.patch,'site input'));
+          if(environmentPatch)doc.environment={...doc.environment,...environmentPatch};
         }else if(type==='update-solar-inputs'){
           Object.assign(doc.site,command.site);
           doc.environment={...doc.environment,sunSelection:clone(command.sunSelection)};
         }else if(type==='update-building'){
-          Object.assign(doc.building,command.patch);
+          Object.assign(doc.building,patch(command.patch,'building input'));
+          if(environmentPatch)doc.environment={...doc.environment,...environmentPatch};
           if(command.patch.wallHeightM!==undefined)adapter.setCeiling(command.patch.wallHeightM);
         }else if(type==='set-obstacles'||type==='set-electrical'){
           if(!Array.isArray(command.value))throw new Error('The item list must be an array.');
           doc[type==='set-obstacles'?'obstacles':'electrical']=clone(command.value);
         }else if(type==='set-environment'){
-          if(!command.patch||typeof command.patch!=='object'||Array.isArray(command.patch))throw new Error('Provide a valid analysis configuration.');
-          doc.environment={...doc.environment,...clone(command.patch)};
+          doc.environment={...doc.environment,...patch(command.patch,'analysis configuration')};
         }else if(type==='delete-room'){
           if(command.confirmRemoval!==true)throw new Error('Confirm removal of the selected room and its room-owned components.');
           if(typeof adapter.deleteRoom!=='function')throw new Error('Room removal is unavailable in this layout adapter.');
@@ -337,8 +455,25 @@
           }
           doc[type==='update-door'?'doorEdits':'windowEdits'][entity.id]=record;
         }else if(type==='delete-opening'){
-          adapter.deleteOpening(entity);
-          delete doc.doorEdits[entity.id];delete doc.windowEdits[entity.id];
+          const wall=find('wall',entity.wallId);
+          if(entity.kind==='passage'){
+            checkPartition(wall);
+            adapter.deleteOpening(entity);
+            delete doc.doorEdits[entity.id];delete doc.windowEdits[entity.id];
+          }else{
+            if(typeof wall.exterior!=='boolean'||!['unknown','non-structural'].includes(wall.structuralRole))
+              throw new Error('Choose a canonical opening on a classified, unprotected host wall.');
+            const edits=entity.kind==='window'?doc.windowEdits:doc.doorEdits;
+            const sourceIds=[...new Set([entity.sourceId,...(entity.sourceIds||[])])];
+            sourceIds.forEach(sourceId=>{
+              if(typeof sourceId!=='string'||!sourceId)throw new Error('The opening has no stable source identity. Its records were kept.');
+              const id=`${doc.activeFloorId}:${sourceId}`;
+              edits[id]={...(edits[id]||{}),suppressed:true};
+            });
+            deletedOpening={id:entity.id,sourceIds};
+            if(typeof adapter.prepareOpeningDeletion==='function')adapter.prepareOpeningDeletion(entity);
+          }
+          selection=null;
         }else if(type==='open-wall'){
           checkPartition(entity);
           if(command.confirmConceptual!==true)throw new Error('Confirm this is a conceptual internal partition edit, not permission to demolish.');
@@ -393,6 +528,13 @@
             return !next||['x','y','w','h'].some(key=>Math.abs(next.rect[key]-prior.rect[key])>1e-7);
           }))throw new Error('The balcony deletion could not preserve the other balconies. The edit was rolled back.');
         }
+        if(deletedOpening){
+          const removed=item=>item.id===deletedOpening.id||deletedOpening.sourceIds.includes(item.sourceId)||
+            (item.sourceIds||[]).some(id=>deletedOpening.sourceIds.includes(id));
+          if(getScene()?.openings.some(removed))
+            throw new Error('The opening suppression was not applied by the shared model. Keep planner-model.js and planner-bridge.js together; the deletion was rolled back.');
+          assertHistoryLayout({...beforeLayout,openings:beforeLayout.openings.filter(item=>!removed(item))},getScene());
+        }
         if(!added)return;
         const item=getScene()?.openings.find(item=>item.sourceId===added.sourceId&&item.wallId===added.wallId&&item.kind===added.kind);
         if(!item||['offsetM','widthM','heightM','sillM','openFraction'].some(key=>Math.abs(item[key]-added.values[key])>1e-7))
@@ -421,10 +563,11 @@
       try{
         project=clone(project);loadFloor(project,floor);invalidate();
         Model.validateProject(project);
-        adapter.restore(project.legacy);adapter.render();selection=null;
+        adapter.restore(clone(project.legacy));adapter.render();selection=null;
+        getScenes();
       }catch(error){
         project=before;selection=beforeSelection;invalidate();
-        adapter.restore(before.legacy);adapter.render();throw error;
+        adapter.restore(clone(before.legacy));adapter.render();throw error;
       }finally{busy=false;}
       emit('navigation');return getProject();
     }
@@ -435,33 +578,57 @@
       busy=true;
       try{
         project=clone(target.project);invalidate();
-        const expected=getScene();
-        adapter.restore(project.legacy);adapter.render();
-        capture();assertHistoryLayout(expected,getScene());project.revision=before.revision+1;
+        const expected=getScene(),expectedDocument=clone(project);
+        adapter.restore(clone(project.legacy));adapter.render();
+        capture();assertHistoryLayout(expected,getScene());
+        assertRestoredDocument(expectedDocument,project);project.revision=before.revision+1;
         project.updatedAt=new Date().toISOString();
         syncActive(project);Model.validateProject(project);invalidate();
+        getScenes();
         to.push({label:target.label,project:before});selection=null;
       }catch(error){
-        project=before;selection=beforeSelection;from.push(target);invalidate();adapter.restore(before.legacy);adapter.render();throw error;
+        project=before;selection=beforeSelection;from.push(target);invalidate();adapter.restore(clone(before.legacy));adapter.render();throw error;
       }finally{busy=false;}
       emit('restore');return true;
     }
     function replaceProject(next){
+      return replaceCandidate(next);
+    }
+    function replaceCandidate(next,initialize=false){
+      if(busy||gesture)throw new Error('A project edit is already in progress. Finish it before replacing the project.');
       Model.validateProject(next);
-      const prepared=normalize(clone(next));syncActive(prepared);
-      const previous=clone(project),previousHistory=history,previousFuture=future;
+      const prepared=clone(next);syncActive(prepared);
+      let expectedDocument=clone(prepared);
+      const previous=project,previousHistory=history,previousFuture=future,previousSelection=selection;
+      const previousProjectCache=cachedProject,previousSceneCache=cachedScenes;
       busy=true;
       try{
-        project=prepared;invalidate();adapter.restore(project.legacy);adapter.render();capture();
-        Model.validateProject(project);history=[];future=[];selection=null;invalidate();
+        project=prepared;invalidate();
+        if(initialize){
+          adapter.restore(clone(project.legacy));adapter.render();capture();
+          Model.validateProject(project);
+          expectedDocument=clone(project);
+        }
+        const expectedScenes=getScenes();
+        adapter.restore(clone(project.legacy));adapter.render();capture();
+        Model.validateProject(project);
+        assertRestoredDocument(expectedDocument,project);
+        const actualScenes=getScenes();
+        if(expectedScenes.length!==actualScenes.length)
+          throw new Error('The replacement lost a floor scene. The previous project was kept.');
+        expectedScenes.forEach(expected=>assertHistoryLayout(expected,actualScenes.find(scene=>scene.floorId===expected.floorId)));
+        history=[];future=[];selection=null;
       }catch(error){
-        project=previous;history=previousHistory;future=previousFuture;invalidate();
-        adapter.restore(previous.legacy);adapter.render();throw error;
+        project=previous;history=previousHistory;future=previousFuture;selection=previousSelection;invalidate();
+        try{adapter.restore(clone(previous.legacy));adapter.render();}
+        finally{cachedProject=previousProjectCache;cachedScenes=previousSceneCache;}
+        throw error;
       }finally{busy=false;}
       emit('project');return getProject();
     }
     const api={
       getProject,getScene,getScenes,getSelection:()=>selection,execute,
+      getObserverErrors:()=>Object.freeze(observerErrors.slice()),
       getDrawingScene:()=>Projection.build(getProject()),
       createSnapshot:options=>Projection.snapshot(getProject(),options),
       inputFingerprint:inputs=>Model.inputFingerprint(getProject(),inputs),
@@ -470,7 +637,10 @@
         if(selection?.kind===ref?.kind&&selection?.id===ref?.id)return;
         selection=ref?Object.freeze({kind:ref.kind,id:ref.id}):null;emit('selection');
       },
-      subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);},
+      subscribe(fn){
+        if(typeof fn!=='function')throw new Error('A planner observer must be a function.');
+        listeners.add(fn);return()=>listeners.delete(fn);
+      },
       undo:()=>restoreHistory(history,future),redo:()=>restoreHistory(future,history),
       canUndo:()=>history.length>0,canRedo:()=>future.length>0,
       exportProject:()=>JSON.stringify(getProject(),null,2),
@@ -480,14 +650,14 @@
         doc.floors=doc.floors.map(floor=>remapFloor(floor,floor.id,freshId('floor')));
         doc.activeFloorId=doc.floors[0].id;
         doc.site={latitude:17.385,longitude:78.4867,timeZone:'Asia/Kolkata'};
-        return replaceProject(doc);
+        return replaceCandidate(doc,true);
       },
       acceptLegacy,isBusy:()=>busy,
       sceneForRender:(plate,g,plan,cfg)=>sceneFor({plate,g,plan,cfg}),
       beginLegacyGesture(){if(!gesture)gesture=clone(project);},
       endLegacyGesture(cancel=false){
         const before=gesture;gesture=null;
-        if(cancel&&before){busy=true;try{adapter.restore(before.legacy);adapter.render();}finally{busy=false;}return;}
+        if(cancel&&before){busy=true;try{adapter.restore(clone(before.legacy));adapter.render();}finally{busy=false;}return;}
         acceptLegacy('Move or resize');
       },
       selectSource(kind,sourceId){
@@ -502,7 +672,7 @@
     return api;
   }
 
-  if(typeof module==='object'&&module.exports){module.exports={createController,remapFloor};return;}
+  if(typeof module==='object'&&module.exports){module.exports={createController,remapFloor,preserveLegacyMetadata};return;}
   if(!root.document)return;
   const Model=root.HomePlannerModel;
   if(!Model){
@@ -515,13 +685,23 @@
   const readControls=()=>Object.fromEntries(controls().map(el=>[el.id,el.type==='checkbox'?{checked:el.checked}:{value:el.value}]));
   const initialControls=readControls();
   let controller,scheduled=false,pendingRoomChoices=null,pendingZoom=null;
+  const openingSources=new WeakMap();
+  const sourcePlan=plan=>{
+    const original=openingSources.get(plan);
+    return original?{...plan,openings:{...plan.openings,...original}}:plan;
+  };
+  function restoreOpeningSources(plan){
+    const original=openingSources.get(plan);
+    if(original&&plan.openings)Object.assign(plan.openings,original);
+    openingSources.delete(plan);
+  }
   function contextSnapshot(){
     if(root.__plotInputError)return null;
     const ctx=root.__roomPlanner;
     if(!ctx||ctx.g.error||!Number.isFinite(ctx.g.W)||!Number.isFinite(ctx.g.D))return null;
     return clone({plate:ctx.plate,g:ctx.g,cfg:ctx.cfg,plan:{
       placed:ctx.plan.placed,unmet:ctx.plan.unmet,free:ctx.plan.free,flexSpaces:ctx.plan.flexSpaces,
-      openings:ctx.plan.openings,wallOpenings:ctx.plan.wallOpenings,customOpenings:ctx.plan.customOpenings,
+      openings:sourcePlan(ctx.plan).openings,wallOpenings:ctx.plan.wallOpenings,customOpenings:ctx.plan.customOpenings,
       furniture:ctx.plan.furniture
     }});
   }
@@ -544,8 +724,9 @@
         const unit=document.querySelector(`#roadInputs select[data-dir="${input.dataset.dir}"]`);
         return [input.dataset.dir,{width:input.value,unit:unit.value}];
       }));
-      return {controls:readControls(),roads,splitAxis:splitAxisEdge()||null,roomIdentities:clone(roomIdentityState),
-        manualLayouts:clone([...roomManualLayouts.entries()]),context:contextSnapshot()};
+      return preserveLegacyMetadata(controller?.getProject().legacy,{controls:readControls(),roads,
+        splitAxis:splitAxisEdge()||null,roomIdentities:clone(roomIdentityState),
+        manualLayouts:clone([...roomManualLayouts.entries()]),context:contextSnapshot()});
     },
     restore(legacy){
       roomIdentityState=clone(legacy.roomIdentities||{});
@@ -618,6 +799,11 @@
       const ctx=root.__roomPlanner;
       if(!ctx)throw new Error('There is no valid layout to reset.');
       roomManualLayouts.delete(ctx.signature);
+    },
+    prepareOpeningDeletion(){
+      const ctx=root.__roomPlanner;
+      if(!ctx)throw new Error('Generate a valid floor layout before removing openings.');
+      roomSaveManualLayout(ctx);
     },
     deleteOpening(entity){
       const ctx=root.__roomPlanner;
@@ -716,12 +902,15 @@
   };
   controller=createController(adapter,Model);
   root.HomePlanner=controller;
+  const sceneForRender=controller.sceneForRender;
+  controller.sceneForRender=(plate,g,plan,cfg)=>sceneForRender(plate,g,sourcePlan(plan),cfg);
   function renderContext(g,plan,cfg){
     // A rebuild can have new geometry before its plate is published; never mix it with the previous site's bounds.
     const plate=root.__roomPlanner?.g===g?root.__roomPlanner.plate:{id:'whole',frontEdge:g.frontEdge,width:g.W,depth:g.D};
-    return {plate:{...plate,frontEdge:g.frontEdge,width:g.W,depth:g.D},g,plan,cfg};
+    return {plate:{...plate,frontEdge:g.frontEdge,width:g.W,depth:g.D},g,plan:sourcePlan(plan),cfg};
   }
   controller.prepareHostedOpenings=(g,plan,cfg)=>{
+    restoreOpeningSources(plan);
     const hosted=(plan.customOpenings||[]).filter(record=>record.wallId);
     if(!plan.openings)return;
     for(const kind of ['doors','windows'])
@@ -765,6 +954,7 @@
     });
   };
   controller.applyOpeningEdits=(g,plan,cfg)=>{
+    restoreOpeningSources(plan);
     const scene=Model.buildScene(renderContext(g,plan,cfg),controller.getProject());
     for(const record of [...(plan.openings?.doors||[]),...(plan.openings?.windows||[])]){
       const opening=scene.openings.find(item=>item.sourceId===record.id||item.sourceIds?.includes(record.id));
@@ -790,6 +980,13 @@
         const wall=scene.walls.find(item=>item.id===opening.wallId);
         if(wall)record.sweep=Model.doorGeometry(opening,wall);
       }
+    }
+    if(plan.openings){
+      const project=controller.getProject();
+      const original={doors:plan.openings.doors||[],windows:plan.openings.windows||[]};
+      openingSources.set(plan,original);
+      for(const [kind,edits] of [['doors',project.doorEdits],['windows',project.windowEdits]])
+        plan.openings[kind]=original[kind].filter(record=>edits[`${project.activeFloorId}:${record.id}`]?.suppressed!==true);
     }
   };
   const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));

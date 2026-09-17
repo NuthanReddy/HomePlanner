@@ -1,6 +1,6 @@
 (function (root, factory) {
   'use strict';
-  const editor = factory();
+  const editor = factory(typeof module === 'object' && module.exports ? require('./planner-drafts.js') : root?.HomePlannerDrafts);
   if (typeof module === 'object' && module.exports) module.exports = editor;
   if (!root || !root.document) return;
   root.HomePlannerEditor = editor;
@@ -12,7 +12,7 @@
   if (root.document.readyState === 'loading' && !root.document.getElementById('plannerInspector')) {
     root.document.addEventListener('DOMContentLoaded', start, { once: true });
   } else start();
-})(typeof window === 'object' ? window : null, function () {
+})(typeof window === 'object' ? window : null, function (Drafts) {
   'use strict';
 
   const DIRECTIONS = { N: 0, E: 90, S: 180, W: 270 };
@@ -23,6 +23,39 @@
   const WALL_CAUTION = 'Conceptual plan edit only — never permission for safe demolition or construction. '
     + 'Structural, fire, acoustic and service roles are unverified. A qualified local professional must review '
     + 'the wall and any affected door, window or electrical attachments before work.';
+  const COLLECTIONS = { room: 'rooms', furniture: 'furniture', door: 'doors', window: 'windows', balcony: 'balconies', wall: 'walls' };
+  const inspectorStores = new WeakMap();
+  const sameDraft = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  function wallDraftBase(wall) {
+    if (!wall) return null;
+    const { id, start, end, retainedSpan, heightM, baseM, exterior, structuralRole, removed } = wall;
+    return { id, start, end, retainedSpan, heightM, baseM, exterior, structuralRole, removed };
+  }
+  function openingHostAvailable(wall, existingOpening = false) {
+    return !!wall && (existingOpening || !wall.removed) && typeof wall.exterior === 'boolean'
+      && ['unknown', 'non-structural'].includes(wall.structuralRole);
+  }
+
+  function selectionActions(scene, selection) {
+    const entity = selectionEntity(scene, selection), wall = selection?.kind === 'wall' && entity;
+    const partition = wall && wall.exterior === false && ['unknown', 'non-structural'].includes(wall.structuralRole);
+    const host = openingHostAvailable(wall);
+    const opening = entity && ['door', 'window'].includes(selection.kind);
+    const openingHost = opening && (scene.walls || []).find(wall => wall.id === entity.wallId);
+    const canDeleteOpening = opening && openingHostAvailable(openingHost, true);
+    return {
+      canEdit: !!entity,
+      canDelete: !!entity && (['room', 'balcony', 'furniture'].includes(selection.kind) || !!canDeleteOpening
+        || !!partition && !wall.removed),
+      canAddDoor: !!host, canAddWindow: !!host,
+      canEditWallSpan: !!partition,
+      reason: !entity ? 'Select an existing object on the active editable floor.'
+        : opening && !canDeleteOpening ? 'Opening deletion requires a canonical aperture on a classified, unprotected host. Its source records are retained; review the host or use Undo.'
+        : wall && !partition ? 'Exterior, protected or unclassified walls cannot be deleted or trimmed. Apertures require a surviving, classified and unprotected host.'
+          : ''
+    };
+  }
 
   function numberValue(value, options = {}) {
     const label = options.label || 'Value';
@@ -191,7 +224,7 @@
   function addOpeningCommand(wall, kind, values) {
     if (!['door', 'window'].includes(kind) || !wall || typeof wall.id !== 'string')
       throw new Error('Choose a door or window and a current host wall.');
-    if (wall.removed || typeof wall.exterior !== 'boolean' || !['unknown', 'non-structural'].includes(wall.structuralRole))
+    if (!openingHostAvailable(wall))
       throw new Error('Choose a surviving, unprotected host wall.');
     const span = retainedSpan(wall);
     const offsetM = numberValue(values.offsetM, { label: 'Opening offset', min: span.startM });
@@ -296,6 +329,15 @@
       }
       return null;
     }
+    if (!Drafts?.createStore || !Drafts?.key) {
+      for (const root of [inspectorRoot, toolsRoot].filter(Boolean)) {
+        root.textContent = 'The editor is unavailable: load planner-drafts.js before planner-editor.js to protect pending inputs.';
+        root.setAttribute('role', 'alert');
+      }
+      return null;
+    }
+    if (!inspectorStores.has(planner)) inspectorStores.set(planner, Drafts.createStore(planner, 'Selection inspector'));
+    const drafts = inspectorStores.get(planner);
 
     let destroyed = false;
     let selectionKey = null;
@@ -303,6 +345,9 @@
     let lastSelection = null;
     let selectionRefresh = () => {};
     let floorRefresh = () => {};
+    let selectionRequests = {};
+    let refreshDraftList = () => {};
+    let retainingInputs = false, pointerNavigation = false;
     const historyButtons = [];
 
     function element(tag, className, text, parent) {
@@ -353,6 +398,64 @@
     function keyFor(state) {
       return JSON.stringify([state.project.id, state.project.activeFloorId, state.selection && state.selection.kind,
         state.selection && state.selection.id]);
+    }
+    function selectionScope(key, collection) {
+      const [projectId, floorId, kind, entityId] = JSON.parse(key);
+      return { projectId, floorId, collection: collection || COLLECTIONS[kind], entityId };
+    }
+    function fieldScope(owner) {
+      const state = snapshot();
+      return owner === tools
+        ? { projectId: state.project.id, floorId: state.project.activeFloorId, collection: 'floors', entityId: state.project.activeFloorId }
+        : selectionScope(keyFor(state));
+    }
+    function fieldSource(scope, name, state = snapshot()) {
+      if (scope.projectId !== state.project.id || scope.floorId !== state.project.activeFloorId)
+        throw new Error('This draft belongs to another project or floor. Choose its owner explicitly before editing.');
+      let value, host;
+      if (scope.collection === 'floors') {
+        const floor = state.project.floors.find(item => item.id === scope.entityId);
+        if (!floor) throw new Error('The draft floor no longer exists. Its pending inputs are retained.');
+        value = floor[name];
+      } else {
+        const kind = Object.keys(COLLECTIONS).find(kind => COLLECTIONS[kind] === scope.collection);
+        const entity = selectionEntity(state.scene, { kind, id: scope.entityId });
+        if (!entity) throw new Error('The draft object is unavailable. Its pending inputs are retained.');
+        value = ['x', 'y', 'w', 'h'].includes(name) ? entity.rect?.[name]
+          : name === 'headM' ? entity.sillM + entity.heightM : entity[name];
+        if (kind === 'door' || kind === 'window') host = {
+          wall: wallDraftBase(state.scene.walls.find(wall => wall.id === entity.wallId)),
+          wallId: entity.wallId, kind: entity.kind, ...(name === 'headM' ? { sillM: entity.sillM } : {})
+        };
+      }
+      return { value, base: JSON.stringify({ value, host }) };
+    }
+    function pendingField(scope, name) { return drafts.get(scope)?.fields?.[name] || null; }
+    function putField(scope, name, value) {
+      const entry = drafts.get(scope) || { fields: {} };
+      entry.fields[name] = value;
+      drafts.put(scope, entry);
+      refreshDraftList();
+    }
+    function removeField(scope, name, expected) {
+      const entry = drafts.get(scope);
+      if (!entry?.fields?.[name] || expected && !sameDraft(entry.fields[name], expected)) return;
+      delete entry.fields[name];
+      if (Object.keys(entry.fields).length) drafts.put(scope, entry);
+      else drafts.remove(scope);
+      refreshDraftList();
+    }
+    function reveal(owner, target = owner?.heading) {
+      for (let node = target; node; node = node.parentElement) {
+        if (node.tagName === 'DETAILS') node.open = true;
+      }
+      focus(target);
+    }
+    function retainInputs(action) {
+      const previous = retainingInputs;
+      retainingInputs = true;
+      try { return action(); }
+      finally { retainingInputs = previous; }
     }
     function selectedContext(expectedKey) {
       const state = snapshot();
@@ -418,8 +521,10 @@
       if (restoreFocus) focus(pending.trigger && pending.trigger.isConnected ? pending.trigger : owner.heading);
     }
     function confirmationIsCurrent(pending, state) {
-      return pending.projectId === state.project.id && pending.revision === state.project.revision
-        && pending.floorId === state.project.activeFloorId;
+      return !!pending && pending.projectId === state.project.id && pending.revision === state.project.revision
+        && pending.floorId === state.project.activeFloorId
+        && pending.sourceKey === JSON.stringify(state.project)
+        && (pending.selectionKey === null || pending.selectionKey === keyFor(state));
     }
     function confirmAction(owner, trigger, options) {
       cancelConfirmation(owner, false);
@@ -446,6 +551,7 @@
       button(actions, 'Cancel', 'cancel-confirmation', () => cancelConfirmation(owner, true));
       owner.pending = {
         projectId: state.project.id, revision: state.project.revision, floorId: state.project.activeFloorId,
+        sourceKey: JSON.stringify(state.project), selectionKey: owner === inspector ? keyFor(state) : null,
         trigger, stale, approve
       };
       group.addEventListener('keydown', event => {
@@ -454,7 +560,7 @@
           cancelConfirmation(owner, true);
         }
       });
-      focus(approve);
+      retainInputs(() => focus(approve));
     }
 
     function field(owner, parent, specification) {
@@ -471,11 +577,16 @@
           if (option.value === '') node.disabled = true;
         }
       } else {
-        input.type = specification.type || 'number';
+        const numeric = !specification.type || specification.type === 'number';
+        // Number inputs erase incomplete values such as "-" when their DOM is rebuilt.
+        // Decimal text entry keeps the original draft; numberValue remains the validator.
+        input.type = numeric ? 'text' : specification.type;
         input.required = input.type !== 'checkbox';
-        if (input.type === 'number') {
-          input.step = 'any';
+        if (numeric) {
+          input.dataset.hpEditorNumeric = 'true';
           input.inputMode = 'decimal';
+          input.autocomplete = 'off';
+          input.spellcheck = false;
           if (specification.min !== undefined) input.min = String(specification.min);
           if (specification.max !== undefined) input.max = String(specification.max);
         }
@@ -490,8 +601,14 @@
       feedback.id = `${input.id}-error`;
       feedback.hidden = true;
       input.setAttribute('aria-describedby', [help && help.id, feedback.id].filter(Boolean).join(' '));
-      let dirty = false;
-      let lastSuccessful;
+      const scope = fieldScope(owner), name = specification.key;
+      const draftNote = element('span', 'hp-editor-warning', '', wrapper);
+      draftNote.id = `${input.id}-draft`;
+      draftNote.setAttribute('role', 'status');
+      draftNote.hidden = true;
+      const actions = element('div', 'hp-editor-actions', undefined, wrapper);
+      actions.hidden = true;
+      let initialized = false, composing = false;
       let currentValue;
       let failedValue;
       const raw = () => input.type === 'checkbox' ? input.checked : input.value;
@@ -506,26 +623,68 @@
           input.indeterminate = typeof value !== 'boolean';
           input.checked = value === true;
         } else input.value = value === undefined || value === null || (typeof value === 'number' && !Number.isFinite(value)) ? '' : String(value);
-        lastSuccessful = raw();
       }
-      function update(value) {
+      function showError(message) {
+        input.setAttribute('aria-invalid', 'true');
+        input.setCustomValidity(message);
+        feedback.textContent = message;
+        feedback.hidden = false;
+      }
+      function update(value, state) {
         currentValue = value;
-        // Keep the actual node, caret, incomplete numbers and rejected drafts through scene renders.
-        if (document.activeElement !== input && !dirty) writeValue(value);
+        const entry = pendingField(scope, name);
+        if (!initialized && entry) {
+          writeValue(entry.raw);
+          failedValue = entry.error ? entry.raw : undefined;
+        } else if (!entry && document.activeElement !== input) writeValue(value);
+        initialized = true;
+        let source, conflict = '';
+        try { source = fieldSource(scope, name, state); }
+        catch (error) { conflict = error.message; }
+        if (entry && source && source.base !== entry.base)
+          conflict = `The source changed since this draft began. Current value: ${source.value ?? 'not recorded'}. Review the draft against the current source before applying it.`;
+        actions.hidden = !entry;
+        review.hidden = !entry || !conflict;
+        draftNote.hidden = !entry;
+        text(draftNote, conflict || (entry ? 'Pending input only — not included in project saves or exports.' : ''));
+        input.setAttribute('aria-describedby', [help && help.id, feedback.id, entry && draftNote.id].filter(Boolean).join(' '));
+        if (entry?.error) showError(entry.error);
+        else clearError();
       }
-      function commit() {
-        if (!dirty || input.disabled) return;
-        if (raw() === lastSuccessful) {
-          dirty = false;
-          clearError();
-          return;
-        }
-        const value = raw();
-        if (value === failedValue) return;
+      function capture(force = false) {
+        const previous = pendingField(scope, name), value = raw();
+        if (!force && !previous && value === (input.type === 'checkbox' ? currentValue : String(currentValue ?? ''))) return;
+        const source = fieldSource(scope, name);
+        putField(scope, name, { raw: value, base: previous?.base ?? source.base, label: specification.label });
+        failedValue = undefined;
+        clearError();
+        cancelConfirmation(owner, false);
+        update(currentValue);
+      }
+      function discard() {
+        removeField(scope, name);
+        failedValue = undefined;
+        clearError();
+        const source = fieldSource(scope, name);
+        writeValue(source.value);
+        owner.error.hidden = true;
+        text(owner.error, '');
+        text(owner.status, 'Uncommitted field edit discarded; other drafts are retained.');
+        update(source.value);
+      }
+      function commit(explicit = false) {
+        const entry = pendingField(scope, name);
+        if (!entry || input.disabled || composing || retainingInputs || !explicit && pointerNavigation) return;
         try {
-          specification.commit(value);
-          dirty = false;
-          lastSuccessful = value;
+          const state = snapshot();
+          if (state.project.id !== scope.projectId || state.project.activeFloorId !== scope.floorId
+            || scope.collection !== 'floors' && (state.selection?.id !== scope.entityId || COLLECTIONS[state.selection?.kind] !== scope.collection)) return;
+          const source = fieldSource(scope, name);
+          if (entry.base !== source.base)
+            throw new Error('The source changed. Your draft is retained; review it against the current value or discard it before applying.');
+          if (entry.raw === failedValue) return;
+          specification.commit(entry.raw);
+          removeField(scope, name, entry);
           failedValue = undefined;
           clearError();
           owner.error.hidden = true;
@@ -533,42 +692,70 @@
           text(owner.status, `${specification.label} updated.`);
           render();
         } catch (error) {
-          failedValue = value;
-          input.setAttribute('aria-invalid', 'true');
-          input.setCustomValidity(error.message || 'This value could not be applied.');
-          feedback.textContent = error.message || 'This value could not be applied.';
-          feedback.hidden = false;
+          failedValue = entry.raw;
+          if (sameDraft(pendingField(scope, name), entry))
+            putField(scope, name, { ...entry, error: error.message || 'This value could not be applied.' });
+          showError(error.message || 'This value could not be applied.');
           reportError(owner, error);
         }
       }
-      input.addEventListener('input', () => {
-        dirty = true;
-        failedValue = undefined;
-        clearError();
+      const review = button(actions, 'Review current source…', 'review-field-draft', () => run(owner, () => {
+        const entry = pendingField(scope, name), source = fieldSource(scope, name);
+        if (!entry) return;
+        confirmAction(owner, input, {
+          title: 'Review retained field draft', label: 'Keep draft against current source',
+          description: `${specification.label}: pending “${entry.raw}”; current source “${source.value ?? 'not recorded'}”. `
+            + 'This only updates the draft base. Apply the field separately after review; no geometry changes now.',
+          success: 'Draft reviewed against the current source. Apply it explicitly when ready.',
+          execute: () => {
+            if (!sameDraft(pendingField(scope, name), entry)) throw new Error('The pending field changed. Review it again.');
+            putField(scope, name, { raw: entry.raw, label: entry.label, base: fieldSource(scope, name).base });
+            failedValue = undefined;
+            update(currentValue);
+          }
+        });
+      }));
+      button(actions, 'Apply field', 'apply-field-draft', () => { failedValue = undefined; commit(true); });
+      button(actions, 'Discard field…', 'discard-field-draft', () => {
+        const entry = pendingField(scope, name);
+        if (!entry) return;
+        confirmAction(owner, input, {
+          title: 'Discard this field draft?', label: 'Discard field draft',
+          description: `Discard only the pending ${specification.label.toLowerCase()} value “${entry.raw}”. The current project and other drafts are unchanged.`,
+          success: 'Field draft discarded; current source reloaded.',
+          execute: () => {
+            if (!sameDraft(pendingField(scope, name), entry)) throw new Error('The pending field changed. Review discard again.');
+            discard();
+          }
+        });
       });
+      input.addEventListener('input', () => {
+        try { capture(true); } catch (error) { reportError(owner, error); }
+      });
+      input.addEventListener('compositionstart', () => { composing = true; });
+      input.addEventListener('compositionend', () => { composing = false; });
       input.addEventListener('change', () => {
-        dirty = raw() !== lastSuccessful;
-        commit();
+        if (composing) return;
+        try {
+          if (raw() !== pendingField(scope, name)?.raw) capture();
+          commit(!!specification.options || input.type === 'checkbox');
+        } catch (error) { reportError(owner, error); }
       });
       input.addEventListener('blur', () => {
         commit();
-        if (!dirty) writeValue(currentValue);
+        if (!pendingField(scope, name)) writeValue(currentValue);
       });
       input.addEventListener('keydown', event => {
-        if (event.isComposing) return;
+        if (event.isComposing || event.defaultPrevented || composing) return;
         if (event.key === 'Enter' && !specification.options && input.type !== 'checkbox') {
           event.preventDefault();
-          dirty = raw() !== lastSuccessful;
-          commit();
+          try {
+            if (raw() !== pendingField(scope, name)?.raw) capture();
+            commit(true);
+          } catch (error) { reportError(owner, error); }
         } else if (event.key === 'Escape') {
           event.preventDefault();
-          dirty = false;
-          failedValue = undefined;
-          clearError();
-          writeValue(currentValue);
-          owner.error.hidden = true;
-          text(owner.error, '');
-          text(owner.status, 'Uncommitted field edit discarded.');
+          try { discard(); } catch (error) { reportError(owner, error); }
         }
       });
       return { input, update, wrapper };
@@ -625,7 +812,7 @@
       identityId.id = 'hp-editor-selected-id';
       selectionNote = element('p', 'hp-editor-note', '', inspector.body);
       selectionNote.setAttribute('role', 'status');
-      floorSelectionHint = button(inspector.body, 'Choose its floor above the plan', 'focus-floor-selector', () => focus(floorSelect));
+      floorSelectionHint = button(inspector.body, 'Choose its active floor explicitly', 'focus-floor-selector', () => requestChooseFloor());
       floorSelectionHint.hidden = true;
       selectionFields = element('div', 'hp-editor-properties', undefined, inspector.body);
       diagnosticList = element('ul', 'hp-editor-diagnostics', undefined, inspector.body);
@@ -643,7 +830,7 @@
             executeChanged(rectCommand(kind, ctx.entity, axis, value), ctx.entity);
           }
         });
-        fields.push(ctx => control.update(ctx.entity.rect && ctx.entity.rect[axis]));
+        fields.push(ctx => control.update(ctx.entity.rect && ctx.entity.rect[axis], ctx));
       }
       element('p', 'hp-editor-help', 'Building-local coordinates: X right; Y toward the rear. '
         + 'Commit with Enter or leave the field. Escape discards a draft. Bounds and collisions are checked by the planner.', dimensions);
@@ -673,11 +860,11 @@
         }
       });
       fields.push(ctx => {
-        direction.update(Object.prototype.hasOwnProperty.call(DIRECTIONS, ctx.entity.headLocal) ? ctx.entity.headLocal : '');
+        direction.update(Object.prototype.hasOwnProperty.call(DIRECTIONS, ctx.entity.headLocal) ? ctx.entity.headLocal : '', ctx);
         const degrees = headBearing(ctx.entity.headLocal, ctx.scene.headingDeg);
         text(bearing, degrees === null ? 'Unknown — no inferred head direction' : `${Number(degrees.toFixed(2))}° from true north`);
         text(pinnedState, ctx.entity.pinned === true ? 'Pinned · manual' : ctx.entity.pinned === false ? 'Unpinned · automatic eligible' : 'Pin state not recorded');
-        pinned.update(ctx.entity.pinned);
+        pinned.update(ctx.entity.pinned, ctx);
       });
     }
 
@@ -707,7 +894,7 @@
         inputs.push(control);
         fields.push(ctx => control.update(name === 'headM'
           ? Number.isFinite(ctx.entity.sillM) && Number.isFinite(ctx.entity.heightM) ? ctx.entity.sillM + ctx.entity.heightM : undefined
-          : ctx.entity[name]));
+          : ctx.entity[name], ctx));
       }
       if (kind === 'door' && firstContext.entity.kind === 'hinged') {
         let swingControl;
@@ -725,7 +912,7 @@
           });
           inputs.push(control);
           if (name === 'swing') swingControl = control;
-          fields.push(ctx => control.update(ctx.entity[name]));
+          fields.push(ctx => control.update(ctx.entity[name], ctx));
         }
         const svgNamespace = 'http://www.w3.org/2000/svg';
         const sketch = document.createElementNS(svgNamespace, 'svg');
@@ -819,6 +1006,25 @@
         if (nominalLeaf) text(nominalLeaf, metreText(ctx.entity.nominalLeafWidthM));
         for (const control of inputs) control.input.disabled = !ctx.wall;
       });
+      const actions = element('div', 'hp-editor-actions', undefined, opening);
+      const remove = button(actions, `Delete ${kind}…`, 'delete-opening', () => requestDeleteSelection());
+      remove.classList.add('hp-editor-caution-button');
+      fields.push(ctx => {
+        const state = selectionActions(ctx.scene, ctx.selection);
+        remove.disabled = !state.canDelete;
+        remove.title = state.canDelete ? '' : state.reason;
+      });
+      selectionRequests.delete = () => run(inspector, () => {
+        const ctx = selectedContext(key);
+        confirmAction(inspector, remove, {
+          title: `Delete this ${kind}?`, label: `Confirm ${kind} deletion`,
+          description: `Suppress the selected opening's source(s) (${ctx.entity.id}) on this floor, including any fragments sharing those sources. `
+            + 'Original generated or added source records and existing edit metadata remain in project backups. '
+            + 'Other opening sources, rooms and furniture are unchanged. Review access and ventilation after removal.',
+          success: `${kind === 'door' ? 'Door' : 'Window'} deleted in both views. Use Undo to restore it.`,
+          execute: () => planner.execute({ type: 'delete-opening', id: selectedContext(key).entity.id })
+        });
+      });
     }
 
     function stagedNumber(parent, key, label, value, changed) {
@@ -827,14 +1033,114 @@
       const input = element('input', 'hp-editor-input', undefined, wrapper);
       input.id = `hp-editor-${key}`;
       input.dataset.hpEditorField = key;
-      input.type = 'number';
-      input.step = 'any';
+      input.type = 'text';
+      input.dataset.hpEditorNumeric = 'true';
       input.min = '0';
       input.inputMode = 'decimal';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
       input.value = value === undefined || value === null ? '' : String(value);
       labelNode.htmlFor = input.id;
       input.addEventListener('input', changed);
       return input;
+    }
+
+    function stagedDraft(parent, specification) {
+      const note = element('p', 'hp-editor-warning', '', parent);
+      note.setAttribute('role', 'status');
+      const actions = element('div', 'hp-editor-actions', undefined, parent);
+      let loadedKey = null;
+      const scope = () => specification.scope();
+      const label = () => typeof specification.label === 'function' ? specification.label() : specification.label;
+      function sync(force = false) {
+        const owner = scope();
+        if (!owner) { note.hidden = actions.hidden = true; return; }
+        const entry = drafts.get(owner), source = specification.source(), key = Drafts.key(owner);
+        if (force || loadedKey !== key || !entry && !specification.inputs().includes(document.activeElement))
+          specification.write(entry ? entry.values : source.values);
+        loadedKey = key;
+        const stale = entry && !sameDraft(entry.base, source.base);
+        note.hidden = actions.hidden = !entry;
+        review.hidden = !stale;
+        text(note, entry?.error || (stale
+          ? 'The host or wall edit changed since this draft began. The pending values are retained. Review the current source before applying.'
+          : 'Staged inputs are retained on this project, floor and wall, but are not included in saves or exports.'));
+      }
+      function capture() {
+        const owner = scope();
+        if (!owner) return;
+        const previous = drafts.get(owner), source = specification.source();
+        drafts.put(owner, { label: label(), values: specification.read(), base: previous?.base ?? source.base });
+        cancelConfirmation(inspector, false);
+        refreshDraftList();
+        sync();
+      }
+      function reject(error) {
+        const owner = scope(), entry = owner && drafts.get(owner);
+        if (entry) drafts.put(owner, { ...entry, error: error.message || 'This staged edit could not be applied.' });
+        refreshDraftList();
+        try { sync(); }
+        catch (_) { note.hidden = false; text(note, error.message); }
+        throw error;
+      }
+      function assertCurrent(saved) {
+        if (!sameDraft(scope(), saved.scope) || !sameDraft(drafts.get(saved.scope), saved.entry))
+          throw new Error('The staged inputs changed. Review the pending action again.');
+        if (!sameDraft(saved.entry.base, specification.source().base))
+          throw new Error('The host or wall edit changed. Review the retained draft against the current source or discard it before applying.');
+      }
+      function checkpoint() {
+        try {
+          const owner = scope();
+          if (!owner) throw new Error('Choose a staged wall action first.');
+          const existing = drafts.get(owner);
+          if (!existing || !sameDraft(existing.values, specification.read())) capture();
+          const saved = { scope: owner, entry: drafts.get(owner) };
+          assertCurrent(saved);
+          return saved;
+        } catch (error) { return reject(error); }
+      }
+      function commit(action, saved) {
+        try {
+          saved = saved || checkpoint();
+          assertCurrent(saved);
+          action();
+        } catch (error) { return reject(error); }
+        if (sameDraft(drafts.get(saved.scope), saved.entry)) drafts.remove(saved.scope);
+        refreshDraftList();
+      }
+      const review = button(actions, 'Review current host…', 'review-staged-draft', () => run(inspector, () => {
+        const owner = scope(), entry = drafts.get(owner);
+        if (!entry) return;
+        confirmAction(inspector, specification.inputs()[0], {
+          title: 'Review retained wall draft', label: 'Keep draft against current host',
+          description: `${label()}: ${Object.entries(entry.values).map(([key, value]) => `${key} = ${value || '(empty)'}`).join('; ')}. `
+            + 'Review the current wall dimensions and retained span above. This updates only the draft base; adding or changing geometry still requires its ordinary action and validation.',
+          success: 'Draft reviewed against the current host. Apply or review the geometry action separately.',
+          execute: () => {
+            if (!sameDraft(drafts.get(owner), entry)) throw new Error('The staged inputs changed. Review them again.');
+            drafts.put(owner, { label: entry.label, values: entry.values, base: specification.source().base });
+            refreshDraftList();
+            sync();
+          }
+        });
+      }));
+      const discard = button(actions, 'Discard staged inputs…', 'discard-staged-draft', () => {
+        const owner = scope(), entry = owner && drafts.get(owner);
+        if (!entry) return;
+        confirmAction(inspector, specification.inputs()[0], {
+          title: 'Discard these staged inputs?', label: 'Discard staged inputs',
+          description: `Discard only “${entry.label}” for wall ${owner.entityId}. Current geometry and every other owner's pending inputs are unchanged.`,
+          success: 'Staged inputs discarded; current wall values reloaded.',
+          execute: () => {
+            if (!sameDraft(drafts.get(owner), entry)) throw new Error('The staged inputs changed. Review discard again.');
+            drafts.remove(owner);
+            refreshDraftList();
+            sync(true);
+          }
+        });
+      });
+      return { sync, capture, checkpoint, commit, reject, discard };
     }
 
     function addOpeningFields(parent, key, fields) {
@@ -846,7 +1152,11 @@
       const title = element('h3', 'hp-editor-subheading', '', form);
       const grid = element('div', 'hp-editor-grid', undefined, form);
       const inputs = {};
-      const changed = () => cancelConfirmation(inspector, false);
+      let stage;
+      const changed = () => {
+        if (!kind) return;
+        try { stage.capture(); } catch (error) { reportError(inspector, error); }
+      };
       for (const [name, label] of [
         ['offsetM', 'Offset from original wall start (m)'], ['widthM', 'Opening width (m)'],
         ['heightM', 'Door opening height (m)'], ['sillM', 'Window sill above floor (m)'],
@@ -868,18 +1178,33 @@
           if (!value) option.disabled = true;
         }
         select.value = '';
+        select.addEventListener('change', changed);
         inputs[name] = select;
       }
       element('p', 'hp-editor-help', 'All dimensions are metres. An actual wall aperture is created in both views; '
         + 'it cannot cross a wall end, another opening or a removed span. Heights are above this floor. '
         + 'Open fraction starts at 0 (closed); it is not a swing angle or certified clear passage.', form);
+      const read = () => Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, input.value]));
+      stage = stagedDraft(form, {
+        scope: () => kind ? selectionScope(key, `wall-opening-${kind}`) : null,
+        label: () => `New ${kind} aperture`, read, inputs: () => Object.values(inputs),
+        write: values => { for (const [name, input] of Object.entries(inputs)) input.value = values[name] ?? ''; },
+        source: () => {
+          const ctx = selectedContext(key);
+          return {
+            values: Object.fromEntries(Object.keys(inputs).map(name => [name, name === 'openFraction' ? '0' : ''])),
+            base: { wall: wallDraftBase(ctx.entity), edit: ctx.project.wallEdits?.[ctx.entity.id] || null }
+          };
+        }
+      });
       const place = button(form, 'Add opening', 'add-wall-opening', () => run(inspector, () => {
-        const ctx = selectedContext(key);
-        const values = Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, input.value]));
-        if (kind === 'door') delete values.headM;
-        planner.execute(addOpeningCommand(ctx.entity, kind, values));
+        stage.commit(() => {
+          const ctx = selectedContext(key), values = read();
+          if (kind === 'door') delete values.headM;
+          planner.execute(addOpeningCommand(ctx.entity, kind, values));
+        });
       }, 'Opening added to the selected wall. Its real aperture and selection are shared by 2D and 3D.'));
-      function show(next) {
+      function show(next, moveFocus = true) {
         kind = next;
         form.hidden = false;
         text(title, next === 'door' ? 'New door aperture' : 'New window aperture');
@@ -888,20 +1213,28 @@
         handing.hidden = next !== 'door';
         text(place, next === 'door' ? 'Add door' : 'Add window');
         place.dataset.hpEditorAction = `add-${next}`;
-        focus(inputs.offsetM);
+        stage.sync(true);
+        if (!drafts.get(selectionScope(key, `wall-opening-${kind}`))) stage.capture();
+        if (moveFocus) reveal(inspector, inputs.offsetM);
       }
-      const door = button(actions, 'Add door…', 'configure-door', () => show('door'));
-      const windowButton = button(actions, 'Add window…', 'configure-window', () => show('window'));
-      button(form, 'Cancel placement', 'cancel-wall-opening', () => {
+      const door = button(actions, 'Add door…', 'configure-door', () => requestAddOpening('door'));
+      const windowButton = button(actions, 'Add window…', 'configure-window', () => requestAddOpening('window'));
+      selectionRequests.addOpening = show;
+      button(form, 'Close placement · keep draft', 'cancel-wall-opening', () => {
         form.hidden = true;
         focus(kind === 'door' ? door : windowButton);
       });
       fields.push(ctx => {
-        const unavailable = ctx.entity.removed || typeof ctx.entity.exterior !== 'boolean'
-          || !['unknown', 'non-structural'].includes(ctx.entity.structuralRole);
-        for (const control of [door, windowButton, place, ...Object.values(inputs)]) control.disabled = unavailable;
-        section.title = unavailable ? 'Restore the wall or choose a surviving, unprotected wall before adding an opening.' : '';
+        const available = selectionActions(ctx.scene, ctx.selection);
+        door.disabled = !available.canAddDoor;
+        windowButton.disabled = !available.canAddWindow;
+        for (const control of [place, ...Object.values(inputs)])
+          control.disabled = kind === 'window' ? !available.canAddWindow : !available.canAddDoor;
+        section.title = 'Choose a surviving, classified and unprotected internal or exterior host wall.';
+        stage.sync();
       });
+      const retained = ['door', 'window'].find(next => drafts.get(selectionScope(key, `wall-opening-${next}`)));
+      if (retained) show(retained, false);
     }
 
     function wallFields(parent, key, fields, firstContext) {
@@ -913,7 +1246,8 @@
       }
       element('p', 'hp-editor-warning', WALL_CAUTION, wallGroup);
       const directActions = element('div', 'hp-editor-actions', undefined, wallGroup);
-      const remove = button(directActions, 'Delete internal wall…', 'delete-wall', () => run(inspector, () => {
+      const remove = button(directActions, 'Delete internal wall…', 'delete-wall', () => requestDeleteSelection());
+      selectionRequests.delete = () => run(inspector, () => {
         const ctx = selectedContext(key), span = retainedSpan(ctx.entity);
         wallOpeningCommand(ctx.entity, { full: true });
         confirmAction(inspector, remove, {
@@ -923,7 +1257,7 @@
           caution: WALL_CAUTION, success: 'Internal partition opened in both views. Use Undo or Restore wall to reverse it.',
           execute: () => planner.execute(wallOpeningCommand(selectedContext(key).entity, { full: true }))
         });
-      }));
+      });
       remove.classList.add('hp-editor-caution-button');
       const draft = element('div', 'hp-editor-wall-draft', undefined, wallGroup);
       const modeLabel = element('label', 'hp-editor-label', 'Full-height opening', draft);
@@ -938,14 +1272,13 @@
       const existing = firstContext.project.wallEdits && firstContext.project.wallEdits[firstContext.entity.id];
       const modeFor = edit => edit?.toEnd ? 'to-end' : edit?.full === false ? 'partial' : 'full';
       mode.value = modeFor(existing);
-      let draftDirty = false;
+      let connectionStage;
       let latestWall = firstContext.entity;
       const partial = element('div', 'hp-editor-grid', undefined, draft);
       const staged = {};
       for (const [name, label] of [['offsetM', 'Offset from original wall start (m)'], ['widthM', 'Open span width (m)']]) {
         const input = stagedNumber(partial, `wall-${name}`, label, existing?.full === false ? existing[name] : '', () => {
-          draftDirty = true;
-          cancelConfirmation(inspector, false);
+          try { connectionStage.capture(); } catch (error) { reportError(inspector, error); }
           updateRemaining();
         });
         input.dataset.hpEditorField = name;
@@ -981,16 +1314,37 @@
         updateRemaining();
       }
       mode.addEventListener('change', () => {
-        draftDirty = true;
+        try { connectionStage.capture(); } catch (error) { reportError(inspector, error); }
         updateMode();
-        cancelConfirmation(inspector, false);
+      });
+      const connectionScope = selectionScope(key, 'wall-connection');
+      connectionStage = stagedDraft(draft, {
+        scope: () => connectionScope, label: 'Full-height wall connection',
+        inputs: () => [mode, ...Object.values(staged)],
+        read: () => ({ mode: mode.value, offsetM: staged.offsetM.value, widthM: staged.widthM.value }),
+        write: values => {
+          mode.value = values.mode;
+          for (const [name, input] of Object.entries(staged)) input.value = values[name];
+        },
+        source: () => {
+          const ctx = selectedContext(key), edit = ctx.project.wallEdits?.[ctx.entity.id];
+          return {
+            values: { mode: modeFor(edit), offsetM: edit?.full === false ? String(edit.offsetM ?? '') : '',
+              widthM: edit?.full === false ? String(edit.widthM ?? '') : '' },
+            base: { wall: wallDraftBase(ctx.entity), edit: edit || null }
+          };
+        }
       });
       const actions = element('div', 'hp-editor-actions', undefined, draft);
       const review = button(actions, 'Review conceptual opening…', 'review-open-wall', () => run(inspector, () => {
+        const pending = connectionStage.checkpoint();
         const ctx = selectedContext(key);
-        const command = wallOpeningCommand(ctx.entity, {
-          full: mode.value === 'full', toEnd: mode.value === 'to-end', offsetM: staged.offsetM.value, widthM: staged.widthM.value
-        });
+        let command;
+        try {
+          command = wallOpeningCommand(ctx.entity, {
+            full: mode.value === 'full', toEnd: mode.value === 'to-end', offsetM: staged.offsetM.value, widthM: staged.widthM.value
+          });
+        } catch (error) { connectionStage.reject(error); }
         const span = retainedSpan(ctx.entity);
         const description = command.full
           ? `Open the full ${metreText(span.endM - span.startM)} retained span and full wall height.`
@@ -1001,11 +1355,10 @@
           description: `${description} Wall ID: ${ctx.entity.id}. Named rooms remain. `
             + 'Affected attachments may require review; an internal connection is not an outdoor air inlet.',
           caution: WALL_CAUTION, success: 'Conceptual connection applied. Review affected attachments and diagnostics.',
-          execute: () => {
+          execute: () => connectionStage.commit(() => {
             const latest = selectedContext(key);
             planner.execute(wallOpeningCommand(latest.entity, command));
-            draftDirty = false;
-          }
+          }, pending)
         });
       }));
       const restore = button(directActions, 'Restore wall…', 'review-restore-wall', () => run(inspector, () => {
@@ -1017,7 +1370,6 @@
           caution: WALL_CAUTION, success: 'Wall restored in the conceptual plan.',
           execute: () => {
             planner.execute({ type: 'restore-wall', id: selectedContext(key).entity.id, confirmConceptual: true });
-            draftDirty = false;
           }
         });
       }));
@@ -1028,21 +1380,38 @@
         + 'Openings or attachments in cut-away material stay retained but unresolved for review.', trim);
       const trimGrid = element('div', 'hp-editor-grid', undefined, trim);
       const initialSpan = retainedSpan(firstContext.entity);
-      let trimDirty = false;
-      const trimChanged = () => { trimDirty = true; cancelConfirmation(inspector, false); };
+      let trimStage;
+      const trimChanged = () => {
+        try { trimStage.capture(); } catch (error) { reportError(inspector, error); }
+      };
       const trimStart = stagedNumber(trimGrid, 'retainedStartM', 'Retained start (m)', initialSpan.startM, trimChanged);
       const trimEnd = stagedNumber(trimGrid, 'retainedEndM', 'Retained end (m)', initialSpan.endM, trimChanged);
+      const trimScope = selectionScope(key, 'wall-trim');
+      trimStage = stagedDraft(trim, {
+        scope: () => trimScope, label: 'Retained wall ends', inputs: () => [trimStart, trimEnd],
+        read: () => ({ startM: trimStart.value, endM: trimEnd.value }),
+        write: values => { trimStart.value = values.startM; trimEnd.value = values.endM; },
+        source: () => {
+          const ctx = selectedContext(key), span = retainedSpan(ctx.entity);
+          return { values: { startM: String(span.startM), endM: String(span.endM) },
+            base: { wall: wallDraftBase(ctx.entity), edit: ctx.project.wallEdits?.[ctx.entity.id] || null } };
+        }
+      });
       const trimReview = button(trim, 'Review retained ends…', 'review-trim-wall', () => run(inspector, () => {
-        const ctx = selectedContext(key), command = wallTrimCommand(ctx.entity, trimStart.value, trimEnd.value);
+        const pending = trimStage.checkpoint(), ctx = selectedContext(key);
+        let command;
+        try { command = wallTrimCommand(ctx.entity, trimStart.value, trimEnd.value); }
+        catch (error) { trimStage.reject(error); }
         confirmAction(inspector, trimReview, {
           title: 'Review internal wall trim', label: 'Confirm retained wall ends',
           description: `Retain only ${metreText(command.startM)} to ${metreText(command.endM)} within the original `
             + `${metreText(wallLength(ctx.entity))} wall span. Existing full-height openings within that interval remain. `
             + 'Door/window and independent attachment records are not deleted or silently moved.',
           caution: WALL_CAUTION, success: 'Retained wall ends applied. Review attachments in removed material.',
-          execute: () => { planner.execute(command); trimDirty = false; }
+          execute: () => trimStage.commit(() => planner.execute(command), pending)
         });
       }));
+      selectionRequests.editWallSpan = () => { trim.open = true; reveal(inspector, trimStart); };
       fields.push(ctx => {
         const wall = ctx.entity;
         latestWall = wall;
@@ -1053,7 +1422,8 @@
         text(values.classification, `${wall.exterior === true ? 'Exterior' : wall.exterior === false ? 'Internal' : 'Unclassified'} · structural role: ${wall.structuralRole || 'unknown'}`);
         const edit = ctx.project.wallEdits && ctx.project.wallEdits[wall.id];
         const passages = (ctx.scene.openings || []).filter(item => item.wallId === wall.id && item.kind === 'passage');
-        text(values.state, wall.removed ? 'Full-height partition removed'
+        const retainsAperture = (ctx.scene.openings || []).some(item => item.wallId === wall.id && ['hinged', 'sliding', 'window'].includes(item.kind));
+        text(values.state, wall.removed ? retainsAperture ? 'No surviving masonry; door/window aperture retained' : 'Full-height partition removed'
           : edit?.retainedSpan ? `Retained interval ${metreText(wall.retainedSpan?.startM)} → ${metreText(wall.retainedSpan?.endM)}`
             : passages.length ? 'Partial-span opening' : 'No open-connection override');
         text(values.rooms, (wall.roomIds || []).map(id => (ctx.scene.rooms || []).find(room => room.id === id)?.label || id).join(' ↔ ') || 'Not recorded');
@@ -1064,18 +1434,9 @@
         trimReview.disabled = protectedWall;
         trimStart.disabled = trimEnd.disabled = protectedWall;
         review.title = protectedWall ? 'Exterior, protected or unclassified walls cannot be opened here.' : '';
-        restore.disabled = protectedWall || (!edit && !wall.removed && !passages.length);
-        if (!draftDirty && document.activeElement !== mode && !Object.values(staged).includes(document.activeElement)) {
-          mode.value = modeFor(edit);
-          for (const [name, input] of Object.entries(staged)) {
-            input.value = edit && edit.full === false && Number.isFinite(edit[name]) ? String(edit[name]) : '';
-          }
-        }
-        if (!trimDirty && ![trimStart, trimEnd].includes(document.activeElement)) {
-          const span = retainedSpan(wall);
-          trimStart.value = String(span.startM);
-          trimEnd.value = String(span.endM);
-        }
+        restore.disabled = protectedWall || (!edit && !passages.length);
+        connectionStage.sync();
+        trimStage.sync();
         updateMode();
       });
       updateMode();
@@ -1085,6 +1446,7 @@
     function buildSelection(ctx, key) {
       replaceSection(inspector, selectionFields);
       cancelConfirmation(inspector, false);
+      selectionRequests = {};
       const updates = [];
       const kind = ctx.selection.kind;
       if (kind === 'room' || kind === 'furniture') rectFields(selectionFields, kind, key, updates);
@@ -1106,7 +1468,8 @@
             `${(footprint.w*footprint.h).toFixed(2)} m²`:'Not available');
         });
         const actions=element('div','hp-editor-actions',undefined,selectionFields);
-        const remove=button(actions,'Delete room…','delete-room',()=>run(inspector,()=>{
+        const remove=button(actions,'Delete room…','delete-room',()=>requestDeleteSelection());
+        selectionRequests.delete=()=>run(inspector,()=>{
           const current=selectedContext(key);
           confirmAction(inspector,remove,{
             title:'Delete this room?',label:'Confirm room deletion',
@@ -1114,7 +1477,7 @@
             success:'Room deleted. Use Undo to restore it and its room-owned components.',
             execute:()=>planner.execute({type:'delete-room',id:selectedContext(key).entity.id,confirmRemoval:true})
           });
-        }));
+        });
         remove.classList.add('hp-editor-caution-button');
       } else if (kind === 'balcony') {
         const position = readout(selectionFields, 'Balcony footprint');
@@ -1125,7 +1488,8 @@
           text(host, (state.scene.rooms || []).find(room => room.id === state.entity.roomId)?.label || 'Unresolved / not recorded');
         });
         const actions = element('div', 'hp-editor-actions', undefined, selectionFields);
-        const remove = button(actions, 'Delete balcony…', 'delete-balcony', () => run(inspector, () => {
+        const remove = button(actions, 'Delete balcony…', 'delete-balcony', () => requestDeleteSelection());
+        selectionRequests.delete = () => run(inspector, () => {
           const current = selectedContext(key);
           confirmAction(inspector, remove, {
             title: 'Delete this balcony?', label: 'Confirm balcony deletion',
@@ -1134,7 +1498,7 @@
             success: 'Balcony deleted. Its quantity is updated; use Undo to restore it.',
             execute: () => planner.execute({ type: 'delete-balcony', id: selectedContext(key).entity.id, confirmRemoval: true })
           });
-        }));
+        });
         remove.classList.add('hp-editor-caution-button');
       } else if (kind === 'furniture') {
         const host = readout(selectionFields, 'Room');
@@ -1145,10 +1509,16 @@
         button(actions, ctx.entity.type === 'bed' ? 'Reorient head +90°' : 'Rotate 90°', 'rotate-furniture', () => run(inspector, () => {
           planner.execute({ type: 'rotate-furniture', id: selectedContext(key).entity.id });
         }, 'Component reoriented. Actual head and footprint come from the updated scene.'));
-        const remove = button(actions, 'Delete component', 'delete-furniture', () => run(inspector, () => {
-          planner.execute({ type: 'delete-furniture', id: selectedContext(key).entity.id });
-          focus(inspector.heading);
-        }, 'Component deleted. Use Undo to restore it.'));
+        const remove = button(actions, 'Delete component…', 'delete-furniture', () => requestDeleteSelection());
+        selectionRequests.delete = () => run(inspector, () => {
+          const ctx = selectedContext(key);
+          confirmAction(inspector, remove, {
+            title: 'Delete this component?', label: 'Confirm component deletion',
+            description: `Remove “${ctx.entity.label || ctx.entity.type || ctx.entity.id}” (${ctx.entity.id}) from this floor. Other components and pending inputs are unchanged.`,
+            success: 'Component deleted. Use Undo to restore it.',
+            execute: () => planner.execute({ type: 'delete-furniture', id: selectedContext(key).entity.id })
+          });
+        });
         remove.classList.add('hp-editor-caution-button');
       } else if (kind === 'door' || kind === 'window') openingFields(selectionFields, kind, key, updates, ctx);
       else if (kind === 'wall') wallFields(selectionFields, key, updates, ctx);
@@ -1228,8 +1598,8 @@
       floorRefresh = latest => {
         const active = latest.project.floors.find(item => item.id === latest.project.activeFloorId);
         if (!active) return;
-        name.update(active.name);
-        height.update(active.heightM);
+        name.update(active.name, latest);
+        height.update(active.heightM, latest);
         text(id, active.id);
         try { text(elevation, metreText(floorElevation(latest.project, active.id))); }
         catch (error) { text(elevation, error.message); }
@@ -1277,6 +1647,7 @@
         if (selectionKey !== shape) {
           replaceSection(inspector, selectionFields);
           cancelConfirmation(inspector, false);
+          selectionRequests = {};
         }
         const stale = state.selection || (lastSelection && lastSelection.projectId === state.project.id
           && lastSelection.floorId === state.project.activeFloorId ? lastSelection : null);
@@ -1326,12 +1697,132 @@
       text(allowanceNote, floorAllowanceNotice(floors.length, state.scene?.regulatory));
     }
 
+    const draftList = inspector ? element('details', 'hp-editor-group', undefined, inspector.body) : null;
+    let draftListSignature = '';
+    if (draftList) {
+      draftList.dataset.hpEditorDrafts = '';
+      const summary = element('summary', 'hp-editor-label', 'Pending inspector inputs', draftList);
+      const list = element('div', 'hp-editor-body', undefined, draftList);
+      refreshDraftList = () => {
+        const entries = drafts.scopes().map(scope => ({ scope, draft: drafts.get(scope) })), state = snapshot();
+        const signature = JSON.stringify([state.project.id, state.project.activeFloorId, entries]);
+        if (signature === draftListSignature) return;
+        draftListSignature = signature;
+        draftList.hidden = !entries.length;
+        text(summary, `Pending inspector inputs · ${entries.length} owner${entries.length === 1 ? '' : 's'}`);
+        list.replaceChildren();
+        element('p', 'hp-editor-help', 'These session-only values are not included in project saves or exports. '
+          + 'Selection and floor changes retain them; review or discard each owner explicitly.', list);
+        for (const { scope, draft } of entries) {
+          const section = element('section', 'hp-editor-group', undefined, list);
+          section.dataset.hpEditorDraftScope = Drafts.key(scope);
+          element('p', 'hp-editor-note', `${scope.projectId} · ${scope.floorId} · ${scope.collection} · ${scope.entityId}`, section);
+          const values = draft.fields
+            ? Object.entries(draft.fields).map(([name, value]) => `${value.label || name}: ${String(value.raw)}${value.error ? ` — ${value.error}` : ''}`)
+            : Object.entries(draft.values || {}).map(([name, value]) => `${name}: ${String(value)}`);
+          for (const value of values) element('p', 'hp-editor-help', value, section);
+          if (draft.error) element('p', 'hp-editor-warning', draft.error, section);
+          const actions = element('div', 'hp-editor-actions', undefined, section);
+          button(actions, 'Review owner', 'review-owner-draft', () => run(inspector, () => {
+            const current = snapshot();
+            if (scope.projectId !== current.project.id)
+              throw new Error('This draft belongs to another project. Reopen that project explicitly to review it; its values remain here.');
+            if (scope.floorId !== current.project.activeFloorId) {
+              requestChooseFloor();
+              text(inspector.status, `Choose floor “${current.project.floors.find(floor => floor.id === scope.floorId)?.name || scope.floorId}” explicitly. The draft and active floor are unchanged.`);
+              return;
+            }
+            if (scope.collection === 'floors') { requestChooseFloor(); return; }
+            const kind = scope.collection.startsWith('wall-') ? 'wall'
+              : Object.keys(COLLECTIONS).find(kind => COLLECTIONS[kind] === scope.collection);
+            const selection = { kind, id: scope.entityId };
+            if (!selectionEntity(current.scene, selection))
+              throw new Error('The draft object is unavailable or deleted. The pending values are retained here; use Undo to restore its source or discard this owner explicitly.');
+            planner.select(selection);
+            const accepted = scope.collection.startsWith('wall-opening-')
+              ? requestAddOpening(scope.collection.slice('wall-opening-'.length))
+              : requestEditSelection({ section: scope.collection === 'wall-trim' ? 'wall-span' : 'properties' });
+            if (!accepted) throw new Error('The draft is retained, but this owner no longer supports that editing action. Review its current geometry or discard the owner inputs.');
+          }));
+          const discard = button(actions, 'Discard owner inputs…', 'discard-owner-draft', () => {
+            const expected = drafts.get(scope);
+            if (!expected) return;
+            confirmAction(inspector, discard, {
+              title: 'Discard this owner’s pending inputs?', label: 'Discard owner inputs',
+              description: `Discard only ${scope.collection} inputs for ${scope.entityId} on ${scope.floorId} (${scope.projectId}). `
+                + 'The authored project and other pending inputs are unchanged.',
+              success: 'This owner’s pending inputs were discarded. Other drafts are retained.',
+              execute: () => {
+                if (!sameDraft(drafts.get(scope), expected)) throw new Error('These pending inputs changed. Review discard again.');
+                drafts.remove(scope);
+                refreshDraftList();
+              }
+            });
+          });
+        }
+      };
+    }
+
+    function getActionState() {
+      const state = snapshot(), actions = selectionActions(state.scene, state.selection);
+      const otherFloor = state.selection && !selectionEntity(state.scene, state.selection) && typeof planner.getScenes === 'function'
+        ? selectionFloor(planner.getScenes(), state.selection, state.project.activeFloorId) : null;
+      return {
+        ...actions, projectId: state.project.id, floorId: state.project.activeFloorId,
+        selection: state.selection, selectionFloorId: otherFloor || (state.selection ? state.project.activeFloorId : null),
+        canUndo: planner.canUndo(), canRedo: planner.canRedo(),
+        reason: otherFloor ? 'Choose the selected object’s floor explicitly in Active editable floor before editing. Picking does not switch floors.' : actions.reason
+      };
+    }
+    function requestChooseFloor() {
+      if (destroyed || !tools || !floorSelect) return false;
+      retainInputs(() => reveal(tools, floorSelect));
+      return true;
+    }
+    function requestEditSelection({ section = 'properties' } = {}) {
+      if (destroyed || !inspector) return false;
+      return retainInputs(() => run(inspector, () => {
+        render();
+        const state = getActionState();
+        if (!['properties', 'wall-span'].includes(section)) throw new Error('Choose selection properties or retained wall ends.');
+        if (!state.canEdit || section === 'wall-span' && !state.canEditWallSpan)
+          throw new Error(state.reason || 'Only supported internal partitions have editable retained wall ends.');
+        if (section === 'wall-span') selectionRequests.editWallSpan();
+        else reveal(inspector, selectionFields.querySelector('input:not(:disabled), select:not(:disabled)') || inspector.heading);
+      }));
+    }
+    function requestAddOpening(kind) {
+      if (destroyed || !inspector) return false;
+      return retainInputs(() => run(inspector, () => {
+        render();
+        const state = getActionState();
+        if (!['door', 'window'].includes(kind)) throw new Error('Choose a door or window.');
+        if (!(kind === 'window' ? state.canAddWindow : state.canAddDoor))
+          throw new Error(state.reason || 'Select a surviving, classified and unprotected internal or exterior wall on the active floor.');
+        selectionRequests.addOpening(kind);
+      }));
+    }
+    function requestDeleteSelection() {
+      if (destroyed || !inspector) return false;
+      try {
+        render();
+        const state = getActionState();
+        if (!state.canDelete || typeof selectionRequests.delete !== 'function')
+          throw new Error(state.reason || 'This selection cannot be deleted here. Exterior and protected walls are retained.');
+        return retainInputs(() => {
+          reveal(inspector);
+          return selectionRequests.delete();
+        });
+      } catch (error) { reportError(inspector, error); return false; }
+    }
+
     function render() {
       if (destroyed) return;
       try {
         const current = snapshot();
         renderInspector(current);
         renderTools(current);
+        refreshDraftList();
         for (const item of historyButtons) item.control.disabled = !planner[item.action === 'undo' ? 'canUndo' : 'canRedo']();
         for (const owner of [inspector, tools].filter(Boolean)) {
           if (!owner.pending) continue;
@@ -1344,6 +1835,17 @@
       }
     }
     const unsubscribe = planner.subscribe(() => render());
+    const pointerdown = event => {
+      pointerNavigation = false;
+      for (let node = event.target; node; node = node.parentElement) {
+        if (/^(BUTTON|SELECT|SUMMARY|CANVAS|SVG|A)$/i.test(node.tagName || '')
+          || ['button', 'tab'].includes(node.getAttribute?.('role'))) {
+          pointerNavigation = true;
+          break;
+        }
+      }
+    };
+    const clearPointer = () => { pointerNavigation = false; };
     const keydown = event => {
       const action = historyShortcut(event);
       if (!action || !planner[action === 'undo' ? 'canUndo' : 'canRedo']()) return;
@@ -1352,19 +1854,32 @@
       run(owner, () => planner[action](), `${action === 'undo' ? 'Undo' : 'Redo'} applied.`);
     };
     document.addEventListener('keydown', keydown);
+    document.addEventListener('pointerdown', pointerdown, true);
+    document.addEventListener('pointerup', clearPointer, true);
+    document.addEventListener('pointercancel', clearPointer, true);
+    document.addEventListener('keydown', clearPointer, true);
     render();
     return {
-      render,
+      render, getActionState, requestAddOpening, requestEditSelection, requestDeleteSelection, requestChooseFloor,
+      getPendingDrafts: () => drafts.scopes().map(scope => ({ ...scope, draft: drafts.get(scope) })),
       destroy() {
         destroyed = true;
         unsubscribe();
         document.removeEventListener('keydown', keydown);
+        document.removeEventListener('pointerdown', pointerdown, true);
+        document.removeEventListener('pointerup', clearPointer, true);
+        document.removeEventListener('pointercancel', clearPointer, true);
+        document.removeEventListener('keydown', clearPointer, true);
+        if (!drafts.scopes().length) {
+          drafts.dispose();
+          inspectorStores.delete(planner);
+        }
       }
     };
   }
 
   return {
-    init, numberValue, selectionEntity, selectionFloor, rectCommand, headBearing, bedHeadCommand, openingCommand,
+    init, numberValue, selectionEntity, selectionFloor, selectionActions, rectCommand, headBearing, bedHeadCommand, openingCommand,
     wallLength, retainedSpan, wallOpeningCommand, wallTrimCommand, addOpeningCommand, floorElevation, floorPatchCommand, deleteFloorCommand,
     floorAllowanceNotice, isTextEntry, historyShortcut
   };

@@ -7,12 +7,19 @@ of scene geometry, or introduce a framework, network request or storage service.
 
 ## Integration
 
-The coordinator must include `planner-editor.css` and load the scripts in this
-order, after the existing application startup:
+The coordinator must include `planner-editor.css` and retain the existing
+startup prerequisites. The relevant dependency sequence is:
 
-1. `planner-model.js`
-2. `planner-bridge.js`
-3. `planner-editor.js`
+1. `planner-features.js`
+2. `planner-drafts.js`
+3. `planner-model.js`
+4. `planner-bridge.js`, after its legacy application dependencies
+5. `planner-editor.js`
+
+Load the draft registry before **every** consumer, including electrical,
+environment and persistence modules. Their factories can capture the
+dependency at script evaluation time; adding it only immediately before the
+bridge/editor is too late for earlier consumers.
 
 Provide these existing mounting elements:
 
@@ -22,11 +29,32 @@ Provide these existing mounting elements:
 | `#plannerProjectTools` | Floor selector, independent-floor actions and edit history above the plan. |
 | `#plannerPersistence` | Not used by this module; persistence controls belong to their separate feature. |
 
-Missing bridge methods produce a visible initialization error instead of an
+Missing bridge methods or the draft registry produce a visible initialization error instead of an
 apparently functional but disconnected inspector. `HomePlanner.subscribe` is
 registered once, with an explicit initial render. The optional
 `window.HomePlannerEditorInstance.render()` refreshes the interface;
 `.destroy()` removes the subscription and document history-key listener.
+It does not discard pending inputs: a remount against the same planner reuses
+the existing registry store. Empty stores are disposed during teardown.
+
+### Shared 2D / 3D action requests
+
+The live `HomePlannerEditorInstance` exposes:
+
+| Method | Contract |
+| --- | --- |
+| `requestEditSelection({section:'properties'} = {})` | Open the existing inspector and focus an editable field, or its persistent heading for read-only properties. `section:'wall-span'` opens the retained-end numeric controls for an eligible internal partition. |
+| `requestAddOpening('door' \| 'window')` | Begin/resume that selected wall's staged aperture form. Doors and windows require a surviving, classified, unprotected **internal or exterior** host. No geometry is authored by this request. |
+| `requestDeleteSelection()` | Open the same in-app selected room/balcony/component/opening/internal-wall confirmation used by inspector buttons. Confirmation, not the request, executes the bridge command. |
+| `requestChooseFloor()` | Reveal and focus the existing active-floor selector. It never chooses a floor automatically. |
+| `getActionState()` | Read `canEdit`, `canDelete`, `canAddDoor`, `canAddWindow`, `canEditWallSpan`, `canUndo`, `canRedo`, `projectId`, `floorId`, `selection`, `selectionFloorId` and `reason`. No mutation or private history. |
+| `getPendingDrafts()` | Detached, read-only inventory of this inspector's scoped registry entries, including retained values and errors. |
+
+Requests return `true` when staged/focused, `false` with local feedback when
+unavailable. Both toolbars should call these requests, not duplicate their
+commands or simulate clicks on generated inspector markup. Opening the live
+inspector does not close 3D, navigate workspaces or switch floors. Undo/Redo
+buttons use the same bridge history directly.
 
 The inspector includes its own compact Undo/Redo buttons so those actions remain
 available when only the component pane is moved into fullscreen. The module does
@@ -52,6 +80,7 @@ Useful integration/test selectors:
 - `[data-hp-editor-action="add-floor"]`, `"duplicate-floor"`, `"delete-floor"`
 - `[data-hp-editor-action="delete-room"]` in the selected-room inspector
 - `[data-hp-editor-action="delete-balcony"]` in the selected-balcony inspector
+- `[data-hp-editor-action="delete-opening"]` for both generated and added apertures
 - `[data-hp-editor-action="delete-wall"]`, `"review-trim-wall"` for internal partitions
 - `[data-hp-editor-action="configure-door"]` / `"configure-window"`, then
   `"add-door"` / `"add-window"` for wall-hosted apertures
@@ -62,6 +91,9 @@ Useful integration/test selectors:
   `-headM`, `-openFraction`, `-hinge`, `-swing` for staged placement
 - `[data-hp-editor-action="review-open-wall"]`, `"review-restore-wall"`,
   `"confirm"`, `"cancel-confirmation"`
+- `[data-hp-editor-action="review-field-draft"]`, `"apply-field-draft"`,
+  `"discard-field-draft"`, `"review-staged-draft"`, `"discard-staged-draft"`,
+  `"review-owner-draft"` and `"discard-owner-draft"`
 
 All stylesheet selectors are scoped to `hp-editor` classes and use the
 application's existing theme variables and system-font stack.
@@ -86,8 +118,11 @@ The inspector displays matching scene diagnostics even when an unresolved
 opening is excluded from active scene apertures but retained in the project.
 
 - Room/furniture X, Y, width and depth are building-local **metres**.
-- Enter, change or blur commits a modified field, once. Typing alone does not
-  execute geometry commands. Escape discards a field draft.
+- Enter, change or ordinary field blur commits a modified field, once. Typing
+  alone does not execute geometry commands. Pointer navigation to an object,
+  floor, toolbar action or workspace parks the draft instead of committing it
+  merely because focus moved; shared request methods also retain pending inputs.
+  Escape discards a field draft.
 - Empty, incomplete, non-finite, unit-bearing and out-of-range numbers are
   rejected before command execution. There is no implicit zero or clamping.
 - Edits merge only the committed coordinate into the **latest** scene rectangle;
@@ -101,10 +136,52 @@ opening is excluded from active scene apertures but retained in the project.
   inputs, selects, textareas and editable content. Native text undo, arrow keys,
   Delete and composing input are not hijacked.
 
-Controls use native buttons, labels, fieldsets and number inputs, visible focus
+Controls use native buttons, labels, fieldsets and decimal-input-mode text
+fields with strict numeric validation, visible focus
 rings, local error feedback and live status messages. Confirmation panels are
 in-app groups, not browser dialogs. Their Cancel button or Escape cancels the
 pending action. No document-wide arrow/Delete or SVG pointer handlers are added.
+
+### Pending inputs and conflict review
+
+Every editable inspector field uses the existing `HomePlannerDrafts` registry,
+scoped by **project / floor / collection / entity**. Room and furniture
+coordinates, bed direction/pin, door/window properties and floor name/height
+retain independent field drafts. Wall connection, retained-end trim, new-door
+and new-window forms have separate scoped entries even on the same wall.
+Typing or staging is not an authored project revision.
+
+Decimal text entry deliberately preserves incomplete strings such as `-`,
+empty fields and rejected values: native `type=number` would sanitize some
+of those strings when selection rebuilds the controls. Validation still rejects
+nonfinite, unit-bearing and out-of-range values; it does not clamp or turn them
+into zero. Same-selection refreshes retain DOM nodes, caret and native text
+Undo. A successful field commit clears only that field, not pending sibling
+coordinates or another owner's inputs. Explicit Apply can retry a rejected
+field; Enter followed by change/blur does not repeat the failed attempt.
+
+Drafts retain the original source value and, for hosted edits, the host geometry
+and wall edit base. Changed sources produce an explicit conflict instead of
+silently replacing current geometry. **Review current source/host** confirms
+keeping the draft against the new base without authoring it; the ordinary
+Apply/geometry-review action is still required afterward. Unchanged rectangle
+coordinates continue to merge from the latest shared scene.
+
+Selection/floor/project changes park drafts on their original owners. The
+**Pending inspector inputs** disclosure exposes their values, including
+unavailable/deleted owners, with individual Review and Discard actions.
+Reviewing another floor only focuses the existing floor selector; it does not
+silently switch. Discard buttons require confirmation; Cancel keeps the values.
+Field Escape discards only that field. **Close placement · keep draft** hides
+the staged aperture form without erasing it. Deletion of an object, a different
+successful action and closing 3D do not discard unapplied inputs.
+
+Persistence save status, replacement guards and before-unload protection see
+these same registry entries, including parked drafts. They are session-only
+inputs, **not** included in project JSON/browser saves and not durable backups.
+Apply wanted inputs before saving. A failing draft observer is reported to the
+console without starving later persistence observers or turning a completed
+edit into a reported command failure.
 
 ## Components and physical partitions
 
@@ -195,6 +272,24 @@ Open fraction ranges from 0 (closed) to 1 (fully open). It is not the drawing
 angle; a quarter-circle preview does not declare a door operationally open.
 Glazing is not automatically an open airflow aperture.
 
+**Delete door/window…** uses `{type:'delete-opening', id}` for generated and
+added records alike. It reviews the exact selected ID before executing; the
+bridge suppresses the original input source IDs for both generated and added
+openings, retaining their source records and existing edit metadata in the
+project/backup. Merged source aliases and any fragments sharing those sources
+are suppressed together; Undo/Redo restores/reapplies that intent.
+Delete availability follows the bridge's classified, unprotected host and
+current canonical-aperture requirements; closing an exterior opening is
+allowed, unlike removing an exterior partition. `wall.removed` describes
+masonry quantity: a full-wall ordinary aperture can remain editable/deletable
+when no masonry survives. New aperture placement still requires surviving
+masonry. The wall readout distinguishes this from partition removal and does
+not offer Restore wall without an actual wall override or passage.
+A missing/protected/unclassified host or an unresolved ordinary opening remains
+unavailable; source records are retained for review.
+The inspector does not erase meshes, invent a replacement opening or rehost
+independent references. Review access and ventilation after deletion.
+
 Selecting a wall in **either 2D or 3D** exposes **Add door…** and **Add
 window…**. Those buttons reveal a staged metre-based form, not a pixels-only
 placement mode. Dimensions are required; a door requires explicit hinge/swing
@@ -203,6 +298,12 @@ canonical command/Undo entry, and selects the new opening after verifying its
 physical host interval. End, height and collision failures retain the draft
 and the existing project; the command does not clear generated windows or
 unrelated custom openings/furniture.
+
+The shared inspector and bridge use the same canonical wall-hosted eligibility
+for internal and exterior windows. The legacy room-edge palette is a separate
+placement path and remains exterior-only. Existing imports and internal-window
+records are unchanged; this does not introduce a schema migration or bypass
+host, aperture-fit or overlap checks.
 
 `roomApplySavedOpenings` must keep wall-hosted saved records outside its
 legacy fraction/clamping and generated-window replacement branches, retain
@@ -247,8 +348,9 @@ demolition**. Both confirmation paths require professional review of structural,
 fire, acoustic, service and attachment implications. An internal connection is
 not automatically an outdoor inlet. Functional room labels remain.
 
-A project revision or active-floor change invalidates an outstanding
-confirmation. Geometry and attachment preservation/restoration remain atomic
+A project revision, active-floor, relevant selection or source-content change
+invalidates an outstanding confirmation, including replacement with the same
+project ID and revision. Geometry and attachment preservation/restoration remain atomic
 bridge responsibilities; this module does not erase SVG strokes to simulate
 wall removal.
 
@@ -308,13 +410,20 @@ Run the existing Node built-in runner:
 
 ```powershell
 node --check .\planner-editor.js
-node --test .\tests\planner-editor.test.cjs
+node --test tests\planner-editor.test.cjs tests\planner-editor-r0.test.cjs tests\planner-drafts.test.cjs tests\planner-3d.test.cjs tests\planner-phase1-regressions.test.cjs
 ```
 
 The helper tests cover strict number parsing, immutable rect updates, exact
 selection identities, all bed polarities across cardinal headings, door/slider
 commands, window head translation, wall protection and span validation, ordered
 floor elevations, last-floor protection and text-safe keyboard shortcuts.
+The mounted R0 tests use the real bridge/model with a disposable in-memory
+adapter: all owner drafts, rejected fields, source conflicts, canceled discard,
+same-ID replacement/remount, one-action commits, shared 3D requests/history,
+inactive floors, camera retention and lifecycle cleanup. Local vendored Three.js
+raycasts additionally cover balcony selection in floor-local and registered
+site frames at rotated headings. Node DOM doubles are not native-input,
+assistive-technology or real-GPU browser validation.
 
 The direct-action slice adds:
 
@@ -331,14 +440,11 @@ production 3D canvas raycast selection followed by window creation, physical
 wall deletion, balcony Undo/Redo/import and inactive-floor read-only UI. Supply
 the existing isolated Playwright installation via
 `HOMEPLANNER_PLAYWRIGHT_MODULE`. The optional
-`HOMEPLANNER_TEST_INDEX_INTEGRATION=1` stages missing parent-owned index hunks
-**only in the served test response** and explicitly reports
-`stagedIndexIntegration:true`; such a run does not prove those hunks are
-installed in the working `index.html`.
-`indexStaging` lists each staged integration, including an optional missing
-`planner-drafts.js` load before persistence/workbench consumers. That
-cross-page dependency must be installed by its owner before an unstaged
-application run can pass.
+standalone `browserSmoke` helper in `tests\planner-editor.test.cjs` exercises
+isolated inspector fixtures. Production acceptance must serve the actual,
+unmodified `index.html`; missing loader/action hooks are failures, not hunks
+to inject into the served response. The production page must load
+`planner-drafts.js` before all inspector/persistence/workbench consumers.
 
 ### Rotation adapter integration
 

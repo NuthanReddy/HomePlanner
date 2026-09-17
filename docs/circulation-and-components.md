@@ -55,8 +55,8 @@ Undoable edit.
 
 ## Doors and windows
 
-Door and window components are dragged to a room wall and snapped to the
-nearest valid segment.
+The older room-edge door/window components are dragged to a room wall and
+snapped to the nearest valid segment. Their placement rules are:
 
 - Custom doors require a valid internal or access relationship.
 - Custom windows are restricted to exterior room walls.
@@ -65,6 +65,14 @@ nearest valid segment.
   checklist-driven exposure decisions remain authoritative.
 - Custom openings survive re-rendering in the current in-memory layout.
 - Each custom opening has an SVG delete control.
+
+The shared inspector and 2D/3D **Add door / Add window** actions use the
+separate canonical wall-hosted path. It supports eligible internal or exterior
+walls, exact offset/width/sill/height and the existing host-role/overlap guards;
+do not apply the older palette's exterior-only window rule to that API.
+Generated and added openings share the same selected-opening Delete action.
+Deletion suppresses their effective geometry while retaining sources and
+prior edits for Undo and JSON restoration.
 
 Window targets use effective openable area:
 

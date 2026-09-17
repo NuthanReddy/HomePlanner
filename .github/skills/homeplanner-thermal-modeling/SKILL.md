@@ -117,6 +117,12 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
 
 ## Validation
 
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-thermal-modeling\scripts\example.py --check
+```
+
 Run applicable tests from the repository root:
 
 ```powershell
@@ -142,3 +148,7 @@ building-physics review needs, never implied EnergyPlus/BESTEST certification.
 ## References
 
 Use the verified [primary sources and method caveats](references/sources.md).
+
+- [Assembly, RC and supplied psychrometric equations](references/calculations.md).
+- [Optional Python APIs and engine prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).

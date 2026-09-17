@@ -114,6 +114,7 @@
         if (own(edit, 'headLocal')) enumValue(edit.headLocal, Object.keys(DIRECTIONS), `${here}.headLocal`);
         if (own(edit, 'pinned')) bool(edit.pinned, `${here}.pinned`);
       } else {
+        if (own(edit, 'suppressed')) bool(edit.suppressed, `${here}.suppressed`);
         if (own(edit, 'offsetM')) number(edit.offsetM, `${here}.offsetM`, 0);
         if (own(edit, 'widthM')) number(edit.widthM, `${here}.widthM`, 0, Infinity, true);
         if (own(edit, 'heightM')) number(edit.heightM, `${here}.heightM`, 0, Infinity, true);
@@ -931,6 +932,7 @@
       seenInput.set(id, inputIdentity); sourceOpeningIds.add(id);
       const editSet = kind === 'window' ? project.windowEdits : project.doorEdits;
       const edit = kind === 'passage' ? {} : editSet[id] || {};
+      if (edit.suppressed === true) continue;
       openingPriority.set(id, (own(editSet, id) ? 2 : 0) + (source.custom ? 1 : 0));
       let sourceSegment = source.segment;
       let axis = own(DIRECTIONS, edge) ? edgeData(room ? room.module : building, edge).axis : null;

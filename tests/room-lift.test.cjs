@@ -10,7 +10,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 function load(){
   const context=vm.createContext({
     RoomRegions:Regions,ROOM_EPS:1e-7,ROOM_PASSAGE_MIN:0.9,ROOM_DOOR_MIN:0.68,ROOM_DOOR_WIDTH:0.9,
-    INT_WALL:0.12,EXT_WALL:0.25,FT:0.3048,roomManualLayouts:new Map(),
+    INT_WALL:0.12,EXT_WALL:0.25,FT:0.3048,roomManualLayouts:new Map(),roomIdentityState:{},
     roomClamp:(n,min,max)=>Math.min(max,Math.max(min,n)),
     roomLocalEdgeGlobal:edge=>edge,f1:n=>n.toFixed(1),window:{},
     roomRecalculatePlan:plan=>plan,roomHardAdjacencyValid:()=>true,
@@ -19,7 +19,7 @@ function load(){
   for(const name of ['deriveRoomGeometry','roomRectInside','roomIntersects','roomCarpetModule',
     'roomEdgeSegment','roomSharedOpening','roomCorridorOpenings','roomOccupiedBounds','roomPlacementConflict',
     'roomModuleInside','roomModuleClear','roomMoveCandidate',
-    'roomResizeCandidate','roomApplyManualLayout','roomOrder']){
+    'roomResizeCandidate','roomApplyManualLayout','roomOrder','roomStableIds']){
     const source=html.match(new RegExp(`function ${name}\\([^]*?\\n\\}`));
     assert.ok(source,`Missing ${name}`);vm.runInContext(source[0],context);
   }
@@ -109,6 +109,20 @@ test('automatic ordering reserves inside-dwelling lift space before filling ordi
   ];
   for(const mode of ['large','service','privacy'])
     assert.equal(api.roomOrder(requests,mode)[0].id,'lift-1');
+});
+
+test('balcony geometry keeps surviving identities after a middle deletion and does not reuse the removed ID',()=>{
+  const api=load(),cfg=config();
+  cfg.counts.balcony=3;
+  const plate={width:18,depth:18,frontEdge:'N'},first=api.deriveRoomGeometry(plate,cfg,[]);
+  assert.deepEqual(clone(first.balconies.map(b=>b.id)),['balcony-1','balcony-2','balcony-3']);
+  api.roomIdentityState.balcony.ids.splice(1,1);cfg.counts.balcony=2;
+  const remaining=api.deriveRoomGeometry(plate,cfg,[]);
+  assert.deepEqual(clone(remaining.balconies.map(b=>b.id)),['balcony-1','balcony-3']);
+  assert.deepEqual(clone(remaining.balconies.map(b=>b.label)),['Balcony 1','Balcony 3']);
+  cfg.counts.balcony=3;
+  assert.deepEqual(clone(api.deriveRoomGeometry(plate,cfg,[]).balconies.map(b=>b.id)),
+    ['balcony-1','balcony-3','balcony-4']);
 });
 
 test('a saved outside lift position is not silently accepted or erased',()=>{

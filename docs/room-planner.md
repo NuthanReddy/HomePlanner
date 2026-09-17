@@ -75,6 +75,18 @@ A kitchen can therefore jump past a bedroom into a free destination. Intermediat
 red previews do not alter geometry; releasing in a valid location commits once.
 An invalid release or Escape keeps the previous placement.
 Undo and Redo are directly available in the drawing toolbar, including fullscreen.
+The same toolbar exposes **Edit**, **Add door**, **Add window**, **Wall ends**
+and **Delete** for the selected eligible object. These call the shared
+inspector requests also used by 3D; they do not create a second edit/history
+path. Deletion opens the existing confirmation, and wall-end controls operate
+within the original supported partition span. Wall-hosted window actions
+support eligible internal or exterior hosts; the older room-edge palette
+retains its exterior-only placement behavior. Unavailable actions explain the
+required selection rather than altering another object.
+
+**Import JSON** and **Export JSON** reuse Projects & backups for the complete
+project, including inactive floors and dimensions. Import retains the existing
+validation/confirmation flow; this is not a separate lossy layout-only format.
 
 Lifts and staircases use the same free X/Y movement and resize controls inside the
 dwelling, including their complete physical wall footprint. There is no forced

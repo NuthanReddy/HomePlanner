@@ -12,6 +12,14 @@ FastAPI/database/broker topology are choices, not prerequisites for the local
 editor or the first bounded external-engine fixture. The earlier AI-generation
 product goal and explicitly approved map-planning scope remain unchanged.
 
+**R0 remediation completed:** production startup, observer diagnostics, atomic
+provenance/history, owner-qualified drafts, exact import/New Project handling,
+supported shared 2D/3D actions, balcony identity/projection, complete-project
+JSON controls and all twelve calculation-reference packages are now integrated.
+The gap review records the passing production-browser and numerical-reference
+evidence. R1-R7 engine-readiness, simulation and interoperability work remains
+planned; this completion adds no Blender or external simulation backend.
+
 **Scoped delivery amendment:** the local workbench now includes conceptual
 architectural/structural sheets, elevations/sections, plumbing/drainage drawings,
 native reduced-model airflow and light studies, and coordinated document packages.

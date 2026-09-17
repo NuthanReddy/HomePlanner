@@ -25,8 +25,9 @@ Product facts are recorded in [PRODUCT.md](../PRODUCT.md).
 
 **17 September implementation review:** the
 [current gap and delivery plan](building-performance-gap-review.md) supersedes
-historical absent-feature statements below and makes startup, draft/history
-preservation and 2D/3D action parity the immediate integration gate. Keep SVG
+historical absent-feature statements below. Its scoped R0 startup, draft/history,
+replacement and supported 2D/3D action fixes are now integrated and verified;
+the wider generation and engine workflows remain planned. Keep SVG
 and Three.js over the shared project; Blender is optional external authoring/
 rendering, not a replacement workspace or a prerequisite for ordinary users.
 React/backend/hosted-storage adoption remains conditional on a concrete

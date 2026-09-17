@@ -440,11 +440,15 @@
   function mount(element=root.document?.getElementById('environmentWorkspace'),planner=root.HomePlanner){
     if(!element||element.dataset.envMounted)return null;
     if(!planner){element.textContent='Environment needs the HomePlanner coordinator. Keep planner-bridge.js before environment-ui.js.';return null;}
+    if(typeof Drafts?.createStore!=='function'){
+      element.textContent='Environment input drafts are unavailable. Load planner-drafts.js before environment-ui.js, then retry initialization.';
+      return null;
+    }
     element.dataset.envMounted='true';element.classList.add('env-workspace');element.innerHTML=markup();
     const by=id=>element.querySelector(`#${id}`),Data=root.EnvironmentData,Sun=root.HomeSun;
     let previousProjectId=null,previousFloorId=null,previousSiteKey=null,previousGeometryKey=null,previousWeatherId=null,previousAssemblyKey=null;
     const drafts=Drafts.createStore(planner,'Site / environment inputs'),formOwners=new Map(),formBases=new Map();
-    const floorForms=new Set(['env-building-form','env-storey-form','env-obstacle-form']);
+    const floorForms=new Set(['env-building-form','env-storey-form','env-obstacle-form','env-pressure-form','env-thermal-form']);
     const formScope=(id,project=planner.getProject())=>({projectId:project.id,floorId:floorForms.has(id)?project.activeFloorId:'',entityId:id});
     const formBase=(id,project=planner.getProject())=>{
       const values={
@@ -453,7 +457,11 @@
         'env-storey-form':project.floors.find(f=>f.id===project.activeFloorId)?.heightM,
         'env-obstacle-form':project.obstacles.find(o=>o.id===by('env-obstacle-id').value)||null,
         'env-material-form':project.environment?.materials,
-        'env-glazing-form':project.environment?.glazing
+        'env-glazing-form':project.environment?.glazing,
+        'env-solar-form':project.environment?.solar,
+        'env-wind-form':project.environment?.wind,
+        'env-pressure-form':project.environment?.pressure,
+        'env-thermal-form':project.environment?.thermal
       };
       return JSON.stringify(values[id]??null);
     };
@@ -487,6 +495,7 @@
     let requestController=null,weatherOperation=0,locationOperation=0,monthlyOperation=0;
     let proposals=[],preview=null,proposalGeometryKey=null,solarResult=null,windResult=null;
     let pressureTemplateKey=null,thermalTemplateKey=null,lastMaterialLayers=[],destroyed=false;
+    const experimentKeys=new Map();
     const scene=()=>planner.getScene();
     const scenes=()=>typeof planner.getScenes==='function'?planner.getScenes():[scene()].filter(Boolean);
     const currentGeometryKey=()=>geometryKey(planner.getProject(),scenes());
@@ -502,19 +511,20 @@
       catch(error){if(!destroyed)showError(errorId,error);}
     }
     function bindClick(id,errorId,work){by(id).addEventListener('click',()=>action(errorId,work));}
+    async function applyForm(id,work){
+      assertFormOwner(id);
+      const scope=formOwners.get(id)||formScope(id),pending=JSON.stringify(drafts.get(scope));
+      await work();
+      if(JSON.stringify(drafts.get(scope))!==pending)return;
+      drafts.remove(scope);
+      if(Drafts.key(formOwners.get(id)||formScope(id))===Drafts.key(scope)){
+        by(id).dataset.dirty='';formBases.set(id,formBase(id));
+        render();
+      }
+    }
     function bindForm(id,errorId,work){
       by(id).addEventListener('submit',event=>{
-        event.preventDefault();action(errorId,async()=>{
-          assertFormOwner(id);
-          const scope=formOwners.get(id)||formScope(id),pending=JSON.stringify(drafts.get(scope));
-          await work();
-          if(JSON.stringify(drafts.get(scope))===pending){
-            drafts.remove(scope);
-            if(Drafts.key(formOwners.get(id)||formScope(id))===Drafts.key(scope)){
-              by(id).dataset.dirty='';formBases.set(id,formBase(id));
-            }
-          }
-        });
+        event.preventDefault();action(errorId,()=>applyForm(id,work));
       });
     }
     function saveEnvironment(patch){planner.execute({type:'set-environment',patch:{schemaVersion:1,...patch}});}
@@ -538,13 +548,23 @@
       }
       return result;
     }
-    function storeResult(name,input,output,extra={}){
+    function storeResult(name,input,output,extra={},inputPatch={}){
       const project=planner.getProject(),results=project.environment?.results||{};
       const entry={schemaVersion:1,calculatedAt:new Date().toISOString(),projectRevision:project.revision,
         geometryKey:currentGeometryKey(),geometrySnapshot:{site:copy(project.site),building:copy(project.building),scenes:copy(scenes())},
         input:copy(input),output:copy(output),...extra};
-      saveEnvironment({results:{...results,[name]:entry}});
+      saveEnvironment({...inputPatch,results:{...results,[name]:entry}});
       return entry;
+    }
+    function prepareExperiment(name,builder,message){
+      const id=`env-${name}-form`,scope=formScope(id),shapeKey=currentGeometryKey(),input=builder(scene());
+      if(by(id).dataset.dirty&&!root.confirm('Replace this pending scenario draft with a new template from the current floor?'))return;
+      if(Drafts.key(scope)!==Drafts.key(formScope(id))||shapeKey!==currentGeometryKey())
+        throw new Error('The project or floor changed while preparing the template. Nothing was replaced; retry from the current floor.');
+      saveEnvironment({[name]:{input,notes:'',geometryKey:shapeKey,acknowledged:false}});
+      drafts.remove(scope);by(id).dataset.dirty='';by(id).dataset.reload='true';
+      render();
+      by(`env-${name}-result`).innerHTML=`<p class="env-help">${esc(message)}</p>`;
     }
     function cancelWeather(message='Request cancelled; existing weather was preserved.'){
       weatherOperation++;
@@ -590,8 +610,10 @@
       }
       if(['env-radiation-mode','env-wind-source'].includes(event.target.id))updateAvailability();
       if(form?.id==='env-material-form')by('env-material-results').innerHTML='<p class="env-help">Layers changed; evaluate again.</p>';
-      if(form?.id==='env-pressure-form')by('env-pressure-result').innerHTML='';
-      if(form?.id==='env-thermal-form')by('env-thermal-result').innerHTML='';
+      for(const name of ['pressure','thermal'])if(form?.id===`env-${name}-form`){
+        by(`env-${name}-result`).innerHTML='';
+        if(event.target.id!==`env-${name}-ack`)by(`env-${name}-ack`).checked=false;
+      }
       rememberForm(form);
     };
     element.addEventListener('input',onInput);
@@ -600,11 +622,11 @@
     function syncForm(id,values,force=false){
       const form=by(id);
       force=force||form.dataset.reload==='true';
-      if(!force&&(form.dataset.dirty||form.contains(root.document.activeElement)))return;
+      if(!force&&form.dataset.dirty)return;
       for(const [key,val] of Object.entries(values)){
         const field=by(key);
         if(field.type==='checkbox')field.checked=!!val;
-        else field.value=val??'';
+        else if(field.value!==String(val??''))field.value=val??'';
       }
       if(force)form.dataset.dirty='';
       formBases.set(id,formBase(id));
@@ -673,6 +695,32 @@
       by('env-material-results').innerHTML+=warnList(['Example properties are source-specific. Moisture, density, mortar, plaster, bridges and layer order matter; films are stated assumptions.',
         '“Mud” has no universal conductivity/capacity. The Lyon rammed-earth record remains unevaluated until the applicable measured properties are supplied.']);
     }
+    function renderPressure(entry){
+      const output=entry?.output;
+      if(!output||typeof output.converged!=='boolean'||!finite(output.residualM3s)||!Array.isArray(output.flows)||
+        !output.flows.every(flow=>flow&&typeof flow.id==='string'&&finite(flow.m3s))||!Array.isArray(output.warnings)){
+        by('env-pressure-result').innerHTML='<p class="env-warning">Stored pressure output is incomplete or unsupported. Review the saved inputs and evaluate again.</p>';
+        return;
+      }
+      by('env-pressure-result').innerHTML=`<p class="${output.converged?'env-status':'env-warning'}"><strong>${output.converged?'Numerical network converged':'NOT CONVERGED — do not interpret as a balanced flow solution'}</strong>. Maximum residual ${nice(output.residualM3s,9)} m³/s.</p>
+        ${table(['Opening link','From','To','Signed flow (m³/s)'],output.flows.map(f=>[esc(f.id),esc(f.from),esc(f.to),nice(f.m3s,6)]),'Explicit-pressure reduced network · not occupant airspeed')}
+        ${warnList(output.warnings)}<details class="env-details"><summary>Read-only pressure diagnostics</summary><pre class="env-json">${esc(JSON.stringify(output,null,2))}</pre></details>`;
+    }
+    function renderThermal(entry){
+      const input=entry?.input,output=entry?.output;
+      if(!Array.isArray(input?.zones)||!output||!Array.isArray(output.samples)||!output.samples.length||
+        !finite(output.energyResidualJ)||!Array.isArray(output.warnings)||
+        !input.zones.every(zone=>zone&&typeof zone.id==='string')||
+        !output.samples.every(sample=>sample&&finite(sample.elapsedSeconds)&&
+          input.zones.every(zone=>finite(sample.temperaturesC?.[zone.id])))){
+        by('env-thermal-result').innerHTML='<p class="env-warning">Stored thermal output is incomplete or unsupported. Review the saved inputs and evaluate again.</p>';
+        return;
+      }
+      const shown=output.samples.length<=240?output.samples:[output.samples[0],...output.samples.slice(-239)];
+      by('env-thermal-result').innerHTML=`<p class="env-warning"><strong>Hypothetical RC-state temperatures only — not actual site temperatures.</strong> Energy residual ${nice(output.energyResidualJ,6)} J. No automatic weather, ventilation, humidity or HVAC coupling.</p>
+        ${table(['Elapsed hours',...input.zones.map(z=>`${z.id} (°C, model state)`)],shown.map(s=>[nice(s.elapsedSeconds/3600,2),...input.zones.map(z=>nice(s.temperaturesC[z.id],3))]),'Explicit sensible-only experiment')}
+        ${output.samples.length>240?'<p class="env-help">First and last 239 samples shown; all samples are preserved in analysis export.</p>':''}${warnList(output.warnings)}`;
+    }
     function render(event){
       if(event?.type==='selection')return;
       const project=planner.getProject(),all=scenes(),active=scene(),environment=project.environment||{};
@@ -729,45 +777,60 @@
       syncForm('env-storey-form',{'env-storey':project.floors.find(f=>f.id===project.activeFloorId)?.heightM},changedProject||changedFloor);
       const solar=environment.solar||{};
       const today=Sun?Sun.dateAt(new Date(),project.site.timeZone):new Date().toISOString().slice(0,10);
-      if(changedProject)syncForm('env-solar-form',{'env-solar-date':solar.date||today,'env-solar-time':solar.time||'12:00',
+      syncForm('env-solar-form',{'env-solar-date':solar.date||today,'env-solar-time':solar.time||'12:00',
         'env-solar-occurrence':solar.occurrence||'','env-solar-scope':solar.scope||'active',
         'env-radiation-mode':solar.radiationMode||'none','env-dni':solar.manualRadiation?.dniWm2,
-        'env-dhi':solar.manualRadiation?.dhiWm2,'env-ghi':solar.manualRadiation?.ghiWm2,'env-albedo':solar.groundAlbedo??.2},true);
+        'env-dhi':solar.manualRadiation?.dhiWm2,'env-ghi':solar.manualRadiation?.ghiWm2,'env-albedo':solar.groundAlbedo??.2},changedProject);
       if(changedProject){
         const year=new Date().getUTCFullYear()-1;
         syncForm('env-fetch-form',{'env-weather-start':`${year}-01-01`,'env-weather-end':`${year}-12-31`},true);
       }
       const material=environment.materials;
       const layers=material?.layers||[{...MATERIAL_PRESETS[0]}];
-      if((changedProject||JSON.stringify(lastMaterialLayers)!==JSON.stringify(layers))&&!by('env-material-form').dataset.dirty&&
-         (!by('env-material-form').contains(root.document.activeElement)||by('env-material-form').dataset.reload==='true'))renderLayers(layers);
+      if((changedProject||JSON.stringify(lastMaterialLayers)!==JSON.stringify(layers))&&!by('env-material-form').dataset.dirty){
+        if(JSON.stringify(layerDraft(false))!==JSON.stringify(layers))renderLayers(layers);
+        else lastMaterialLayers=copy(layers);
+      }
       syncForm('env-material-form',{'env-film-in':material?.films?.inside??.13,'env-film-out':material?.films?.outside??.04,
         'env-compare-thickness':material?.comparisonThicknessM??.2},changedProject);
       const glazing=environment.glazing;
       syncForm('env-glazing-form',{'env-glazing-u':glazing?.uValueW_M2K,'env-glazing-shgc':glazing?.shgc,
         'env-glazing-vlt':glazing?.vlt,'env-glazing-source':glazing?.source},changedProject);
       const assembly=environment.results?.assemblies,assemblyKey=JSON.stringify([material??null,assembly??null]);
-      if(changedProject||assemblyKey!==previousAssemblyKey){
+      if(changedProject||assemblyKey!==previousAssemblyKey||by('env-material-form').dataset.dirty){
         const inputs={layers:material?.layers,films:material?.films,comparisonThicknessM:material?.comparisonThicknessM};
         if(by('env-material-form').dataset.dirty)
           by('env-material-results').innerHTML='<p class="env-help">Pending layer draft has not been evaluated. Evaluate again for these fields.</p>';
         else if(assembly&&JSON.stringify(assembly.input)===JSON.stringify(inputs))renderAssemblies(assembly);
         else by('env-material-results').innerHTML='<p class="env-help">Assembly result unavailable or stale for the saved inputs. Evaluate again.</p>';
-        previousAssemblyKey=assemblyKey;
+        previousAssemblyKey=by('env-material-form').dataset.dirty?null:assemblyKey;
       }
       setStatus('env-glazing-status',glazing?`Stored explicit window inputs: U ${nice(glazing.uValueW_M2K)} W/m² K; SHGC ${nice(glazing.shgc)}; VLT ${nice(glazing.vlt)}.`:'No whole-window product specified.');
-      if(changedProject){
+      {
         const wind=environment.wind||{};
         syncForm('env-wind-form',{'env-wind-source':wind.source||'weather','env-wind-bearing':wind.windFromDeg,
           'env-wind-speed':wind.windSpeedMps,'env-wind-month':wind.months?.join(',')||'','env-wind-hours':wind.daytime||'all',
           'env-wind-day-start':wind.dayStartHour??6,'env-wind-day-end':wind.dayEndHour??18,
           'env-wind-calm':wind.calmThresholdMps??.5,'env-wind-clock':wind.clock||'site',
           'env-window-width':wind.window?.widthM??1.2,'env-window-sill':wind.window?.sillM??.9,
-          'env-window-height':wind.window?.heightM??1.2,'env-window-open':wind.window?.openFraction??.5},true);
+          'env-window-height':wind.window?.heightM??1.2,'env-window-open':wind.window?.openFraction??.5},changedProject);
+        if(!by('env-pressure-form').dataset.dirty)pressureTemplateKey=environment.pressure?.geometryKey||null;
+        if(!by('env-thermal-form').dataset.dirty)thermalTemplateKey=environment.thermal?.geometryKey||null;
         syncForm('env-pressure-form',{'env-pressure-input':environment.pressure?.input?JSON.stringify(environment.pressure.input,null,2):'',
-          'env-pressure-notes':environment.pressure?.notes||'','env-pressure-ack':false},true);
+          'env-pressure-notes':environment.pressure?.notes||'','env-pressure-ack':false},changedProject||changedFloor);
         syncForm('env-thermal-form',{'env-thermal-input':environment.thermal?.input?JSON.stringify(environment.thermal.input,null,2):'',
-          'env-thermal-notes':environment.thermal?.notes||'','env-thermal-ack':false},true);
+          'env-thermal-notes':environment.thermal?.notes||'','env-thermal-ack':false},changedProject||changedFloor);
+      }
+      for(const name of ['pressure','thermal']){
+        const form=by(`env-${name}-form`),scenario=environment[name],entry=environment.results?.[name];
+        const resultKey=JSON.stringify([scenario??null,entry??null,shapeKey,form.dataset.dirty==='true']);
+        if(experimentKeys.get(name)===resultKey)continue;
+        experimentKeys.set(name,resultKey);
+        if(form.dataset.dirty)by(`env-${name}-result`).innerHTML='<p class="env-help">Pending scenario draft has not been evaluated. Review and evaluate these fields explicitly.</p>';
+        else if(scenario?.acknowledged&&entry?.geometryKey===shapeKey&&scenario.geometryKey===shapeKey&&
+          entry.notes===scenario.notes&&JSON.stringify(entry.input)===JSON.stringify(scenario.input)){
+          if(name==='pressure')renderPressure(entry);else renderThermal(entry);
+        }else by(`env-${name}-result`).innerHTML='<p class="env-help">No matching current result. Prepare or review the saved scenario and evaluate it explicitly.</p>';
       }
       renderObstacles(project);
       by('env-floor-label').textContent=active?`${project.floors.find(f=>f.id===project.activeFloorId)?.name||'Active floor'} · ${all.length} scene(s)`:'No valid plate / floor scene';
@@ -789,6 +852,11 @@
         }
         form.dataset.dirty='true';formBases.set(form.id,pending.base);
         if(form.id==='env-material-form')by('env-material-results').innerHTML='<p class="env-help">Restored pending layer draft; evaluate explicitly.</p>';
+        if(form.id==='env-pressure-form'||form.id==='env-thermal-form'){
+          const name=form.id==='env-pressure-form'?'pressure':'thermal';
+          by(`env-${name}-result`).innerHTML='<p class="env-help">Restored pending scenario draft; review and evaluate explicitly.</p>';
+          experimentKeys.delete(name);
+        }
       }
       if(changedFloor&&!changedProject)setStatus('env-global-status','Active floor changed. Each floor keeps its own pending dimension/obstacle drafts; no draft was applied to another floor.');
       for(const form of element.querySelectorAll('form[id]'))delete form.dataset.reload;
@@ -887,7 +955,9 @@
     function install(){
       for(const [id,errorId] of [['env-site-form','env-site-error'],['env-building-form','env-site-error'],
         ['env-storey-form','env-site-error'],['env-obstacle-form','env-obstacle-error'],
-        ['env-material-form','env-material-error'],['env-glazing-form','env-glazing-error']]){
+        ['env-material-form','env-material-error'],['env-glazing-form','env-glazing-error'],
+        ['env-solar-form','env-solar-error'],['env-wind-form','env-wind-error'],
+        ['env-pressure-form','env-pressure-error'],['env-thermal-form','env-thermal-error']]){
         const reload=root.document.createElement('button');reload.type='button';reload.id=`${id}-reload`;
         reload.textContent='Discard draft / reload project inputs';
         reload.addEventListener('click',()=>action(errorId,()=>{
@@ -1048,9 +1118,8 @@
           exposure:radiation?physics.surfaceExposure(s,sun.vector,radiation):null}));
         const input={selection,site:copy(planner.getProject().site),sunENU:sun.vector,radiation,weatherRecord,
           glazing:planner.getProject().environment?.glazing?copy(planner.getProject().environment.glazing):null};
-        saveEnvironment({solar:selection});
         solarResult=storeResult('solar',input,{instantUTC:sun.instant.toISOString(),azimuth:sun.azimuth,altitude:sun.altitude,floors},
-          {scope:'Sampled geometry and irradiance screening; no thermal/daylight/CFD result'});
+          {scope:'Sampled geometry and irradiance screening; no thermal/daylight/CFD result'},{solar:selection});
         renderSolar(solarResult);
       });
       bindClick('env-use-record','env-solar-error',()=>{
@@ -1128,8 +1197,8 @@
             result:complete?physics.assemblyProperties([{label:p.label,source:p.source,thicknessM:thickness,
               conductivityW_MK:p.conductivityW_MK,densityKgM3:p.densityKgM3,specificHeatJ_KgK:p.specificHeatJ_KgK}],films):null};
         });
-        saveEnvironment({materials:{layers,films,comparisonThicknessM:thickness,basis:'Explicit layers / sourced examples; not assigned thermal zones'}});
-        renderAssemblies(storeResult('assemblies',{layers,films,comparisonThicknessM:thickness},{selected,comparisons}));
+        renderAssemblies(storeResult('assemblies',{layers,films,comparisonThicknessM:thickness},{selected,comparisons},{},
+          {materials:{layers,films,comparisonThicknessM:thickness,basis:'Explicit layers / sourced examples; not assigned thermal zones'}}));
       });
       bindForm('env-glazing-form','env-glazing-error',()=>{
         const glazing={uValueW_M2K:positive(value('env-glazing-u'),'Whole-window U'),
@@ -1168,51 +1237,41 @@
         const active=scene();
         if(active)proposals=bearings.flatMap(windFromDeg=>buildWindowRecommendations(active,{...config.window,windFromDeg})).slice(0,10);
         proposalGeometryKey=currentGeometryKey();
-        saveEnvironment({wind:config});
         windResult=storeResult('wind',{config,weatherId:config.source==='weather'?weather.id:null,
           weatherProvenance:config.source==='weather'?{source:weather.source,coverage:weather.coverage,units:weather.units}:null,options},
-          {rose,proposalBearings:bearings,proposals},{scope:'Frequency distribution and actual-wall/path screening, not pressure estimates or CFD'});
+          {rose,proposalBearings:bearings,proposals},{scope:'Frequency distribution and actual-wall/path screening, not pressure estimates or CFD'},{wind:config});
         renderRose(rose,label);renderProposals();
         setStatus('env-wind-status',`Showing ${rose.total} included records and ${proposals.length} reviewable proposals${active?'':'; no valid floor scene for proposals'}. ${config.source==='weather'?'Top two occupied sector centres are kept separately; no annual mean bearing is substituted.':''}`);
       });
       bindClick('env-pressure-template','env-pressure-error',()=>{
-        const input=buildAirflowTemplate(scene());pressureTemplateKey=currentGeometryKey();
-        by('env-pressure-input').value=JSON.stringify(input,null,2);by('env-pressure-notes').value='';by('env-pressure-ack').checked=false;
-        by('env-pressure-result').innerHTML='<p class="env-help">Not evaluated. Replace density, Cd and signed pressure nulls, review geometry-derived volumes/areas, and document the assumptions.</p>';
-        saveEnvironment({pressure:{input,notes:'',geometryKey:pressureTemplateKey,acknowledged:false}});
+        prepareExperiment('pressure',buildAirflowTemplate,'Not evaluated. Replace density, Cd and signed pressure nulls, review geometry-derived volumes/areas, and document the assumptions.');
       });
       bindClick('env-thermal-template','env-thermal-error',()=>{
-        const input=buildThermalTemplate(scene());thermalTemplateKey=currentGeometryKey();
-        by('env-thermal-input').value=JSON.stringify(input,null,2);by('env-thermal-notes').value='';by('env-thermal-ack').checked=false;
-        by('env-thermal-result').innerHTML='<p class="env-help">Not evaluated. All capacities, conductances, temperatures and gains must be explicitly supplied. The 3600-second step is an editable example duration.</p>';
-        saveEnvironment({thermal:{input,notes:'',geometryKey:thermalTemplateKey,acknowledged:false}});
+        prepareExperiment('thermal',buildThermalTemplate,'Not evaluated. All capacities, conductances, temperatures and gains must be explicitly supplied. The 3600-second step is an editable example duration.');
       });
-      bindClick('env-pressure-save','env-pressure-error',()=>{
+      bindClick('env-pressure-save','env-pressure-error',()=>applyForm('env-pressure-form',()=>{
         const input=parseInput('env-pressure-input');
         if(!object(input))throw new Error('Save a JSON input object, starting with the scene template.');
         saveEnvironment({pressure:{input,notes:value('env-pressure-notes').trim(),geometryKey:pressureTemplateKey,acknowledged:false}});
         by('env-pressure-ack').checked=false;
         by('env-pressure-result').innerHTML='<p class="env-help">Unevaluated draft saved in the project. Missing values remain missing; no network was solved.</p>';
-      });
-      bindClick('env-thermal-save','env-thermal-error',()=>{
+      }));
+      bindClick('env-thermal-save','env-thermal-error',()=>applyForm('env-thermal-form',()=>{
         const input=parseInput('env-thermal-input');
         if(!object(input))throw new Error('Save a JSON input object, starting with the room template.');
         saveEnvironment({thermal:{input,notes:value('env-thermal-notes').trim(),geometryKey:thermalTemplateKey,acknowledged:false}});
         by('env-thermal-ack').checked=false;
         by('env-thermal-result').innerHTML='<p class="env-help">Unevaluated draft saved in the project. No missing heat-capacity, weather or gain value was replaced by zero.</p>';
-      });
+      }));
       bindForm('env-pressure-form','env-pressure-error',()=>{
         by('env-pressure-result').innerHTML='';
         requireAcknowledgement('env-pressure-ack','Review all pressure-network assumptions and check the experimental acknowledgement before solving.');
         if(pressureTemplateKey!==currentGeometryKey())throw new Error('The pressure template is missing or geometry changed. Prepare it from current openings and review it again.');
         const input=validatePressureInput(parseInput('env-pressure-input'),scene()),notes=value('env-pressure-notes').trim();
         if(!notes)throw new Error('Document pressure/Cd/density sources and operating assumptions, not only numeric values.');
-        saveEnvironment({pressure:{input,notes,geometryKey:pressureTemplateKey,acknowledged:true}});
         const output=needPhysics('solveAirflow').solveAirflow(input);
-        storeResult('pressure',input,output,{notes,acknowledged:true,scope:'Uncalibrated steady network; not single-sided turbulent exchange, two-way flow or CFD'});
-        by('env-pressure-result').innerHTML=`<p class="${output.converged?'env-status':'env-warning'}"><strong>${output.converged?'Numerical network converged':'NOT CONVERGED — do not interpret as a balanced flow solution'}</strong>. Maximum residual ${nice(output.residualM3s,9)} m³/s.</p>
-          ${table(['Opening link','From','To','Signed flow (m³/s)'],output.flows.map(f=>[esc(f.id),esc(f.from),esc(f.to),nice(f.m3s,6)]),'Explicit-pressure reduced network · not occupant airspeed')}
-          ${warnList(output.warnings)}<details class="env-details"><summary>Read-only pressure diagnostics</summary><pre class="env-json">${esc(JSON.stringify(output,null,2))}</pre></details>`;
+        renderPressure(storeResult('pressure',input,output,{notes,acknowledged:true,scope:'Uncalibrated steady network; not single-sided turbulent exchange, two-way flow or CFD'},
+          {pressure:{input,notes,geometryKey:pressureTemplateKey,acknowledged:true}}));
       });
       bindForm('env-thermal-form','env-thermal-error',()=>{
         by('env-thermal-result').innerHTML='';
@@ -1220,13 +1279,9 @@
         if(thermalTemplateKey!==currentGeometryKey())throw new Error('The thermal template is missing or geometry changed. Prepare/review it for the current floor first.');
         const input=validateThermalInput(parseInput('env-thermal-input'),scene()),notes=value('env-thermal-notes').trim();
         if(!notes)throw new Error('Document capacity/conductance/gain sources, operation and omitted physics.');
-        saveEnvironment({thermal:{input,notes,geometryKey:thermalTemplateKey,acknowledged:true}});
         const output=needPhysics('simulateThermal').simulateThermal(input);
-        storeResult('thermal',input,output,{notes,acknowledged:true,scope:'Uncalibrated sensible RC experiment, NOT actual site temperature or a comfort forecast'});
-        const shown=output.samples.length<=240?output.samples:[output.samples[0],...output.samples.slice(-239)];
-        by('env-thermal-result').innerHTML=`<p class="env-warning"><strong>Hypothetical RC-state temperatures only — not actual site temperatures.</strong> Energy residual ${nice(output.energyResidualJ,6)} J. No automatic weather, ventilation, humidity or HVAC coupling.</p>
-          ${table(['Elapsed hours',...input.zones.map(z=>`${z.id} (°C, model state)`)],shown.map(s=>[nice(s.elapsedSeconds/3600,2),...input.zones.map(z=>nice(s.temperaturesC[z.id],3))]),'Explicit sensible-only experiment')}
-          ${output.samples.length>240?'<p class="env-help">First and last 239 samples shown; all samples are preserved in analysis export.</p>':''}${warnList(output.warnings)}`;
+        renderThermal(storeResult('thermal',input,output,{notes,acknowledged:true,scope:'Uncalibrated sensible RC experiment, NOT actual site temperature or a comfort forecast'},
+          {thermal:{input,notes,geometryKey:thermalTemplateKey,acknowledged:true}}));
       });
       bindClick('env-export-weather','env-export-error',()=>{
         const weather=planner.getProject().environment?.weather;

@@ -71,6 +71,12 @@ Read [architectural drawings](../../../docs/architectural-drawings.md), [export 
 - Do not add another exporter/topology engine, download fonts, upload project data to converters or change the pinned runtime without an explicit dependency task and provenance review.
 
 ## Validation
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-drawing-exports\scripts\example.py --check
+```
+
 Run the smallest relevant command from the repository root:
 - Plans/labels/continuations: `node --test tests\planner-drawing.test.cjs tests\planner-drawing-pagination.test.cjs`
 - Actual PDF encoding and browser-raster contract: `node --test tests\planner-drawing-export.test.cjs`
@@ -104,5 +110,8 @@ These are staged outputs, not published downloads. Let the existing UI recheck i
 
 ## References
 - [Verified first-party format specifications and their limits](references/sources.md).
+- [Scale/unit equations and worked calculations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).
 - [Project model and net regions](../../../docs/project-model.md), [package workbench](../../../docs/package-workbench.md), [local JSON persistence](../../../docs/local-persistence.md).
 - [Pinned PDF runtime provenance](../../../vendor/pdf/PROVENANCE.md).

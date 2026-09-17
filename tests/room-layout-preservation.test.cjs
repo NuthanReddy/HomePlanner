@@ -21,6 +21,16 @@ test('the drawing toolbar includes canonical undo and redo controls',()=>{
   assert.match(init,/subscribe\(syncHistory\)/);
 });
 
+test('layout JSON buttons reuse the complete-project persistence request flow',()=>{
+  assert.match(html,/<button[^>]*id="roomImportJSON"/);
+  assert.match(html,/<button[^>]*id="roomExportJSON"/);
+  const init=html.match(/function initRoomViewport\([^]*?\n\}/)[0];
+  assert.match(init,/requestImportJSON/);
+  assert.match(init,/requestExportJSON/);
+  assert.match(init,/homePlannerPersistence/);
+  assert.doesNotMatch(init,/JSON\.stringify|createObjectURL/);
+});
+
 async function browserSmoke(browser,url){
   const context=await browser.newContext({viewport:{width:1440,height:1050}});
   const page=await context.newPage(),errors=[];

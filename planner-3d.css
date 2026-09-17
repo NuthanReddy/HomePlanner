@@ -82,6 +82,17 @@
   padding: 0;
   accent-color: var(--acc);
 }
+#planner3d .hp3d-edit-toolbar {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+#planner3d .hp3d-edit-toolbar button:disabled { cursor: not-allowed; }
+#planner3d .hp3d-action-error {
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 7px;
+  padding: 8px 10px;
+}
 #planner3d .hp3d-viewport {
   position: relative;
   height: clamp(300px, 55vh, 640px);

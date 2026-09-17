@@ -1,4 +1,4 @@
-# Optional 3D inspection
+# Optional 3D inspection and shared actions
 
 The **Open 3D** action in the room-output card mounts a local Three.js WebGL2
 view. It is an inspection projection, not another planner or project store.
@@ -7,7 +7,8 @@ feature before that action. No models, textures, fonts, telemetry, geolocation
 or other remote services are requested.
 
 The normal 2D application remains available when 3D is closed, unsupported or
-fails. Edits still go through the shared 2D inspector and project commands.
+fails. Edits still go through the one shared inspector and project commands;
+native 3D action buttons reveal that inspector without closing 3D.
 
 ## Integration
 
@@ -15,6 +16,12 @@ Mount the feature on `#planner3d`, load `planner-3d.css`, and load the **classic
 `planner-3d.js` after `planner-model.js` and the initialized `planner-bridge.js`.
 The existing `HomeSun` API is optional; without it the view uses labelled
 neutral inspection lighting.
+For shared editing actions, initialize `HomePlannerEditorInstance`. Production
+loads `planner-drafts.js` immediately after `planner-features.js`, before the
+model and all electrical/bridge/editor/environment/persistence consumers;
+factories must not capture an unavailable draft registry. Without the inspector the 3D view
+still works, but action buttons are disabled with an explicit availability
+message. There is no fallback mutation path.
 
 Before any feature module imports, include this small local import map:
 
@@ -40,6 +47,32 @@ The browser namespace is `HomePlanner3D`; its `instance` exposes `open()`,
 `close()`, `resetView()`, `destroy()` and a read-only `isOpen` property.
 Initialization is idempotent per host. `destroy()` also removes the persistent
 Open/Close/control button handlers; ordinary close leaves those buttons usable.
+
+### Shared action toolbar
+
+The native toolbar offers **Undo**, **Redo**, **Selection properties**,
+**Add door…**, **Add window…**, **Retained wall ends…**,
+**Delete selection…** and **Choose active floor**. Availability follows the
+current shared scene/selection, not a renderer-owned object list. Selection
+properties and wall/opening actions call the request methods documented in
+[editor workspace](editor-workspace.md); history calls the bridge's
+`undo/redo/canUndo/canRedo` directly.
+
+Delete opens the shared inspector confirmation for an eligible room, balcony,
+component, generated/added opening or internal partition. Exterior, protected
+and unclassified partition deletion stays guarded. Canonical wall-hosted doors
+and windows accept surviving, classified, unprotected internal or exterior hosts;
+the separate legacy room-edge palette remains exterior-only. Retained ends open accessible exact
+metre fields, not arbitrary wall movement/topology tools. The underlying
+conceptual-wall cautions and attachment diagnostics remain visible.
+
+Picking an inactive floor never switches it. **Choose active floor** reveals
+the one existing floor selector; the user must explicitly choose before edit
+actions become available. Property and confirmation controls stay in their
+live DOM, preserving numeric drafts and text-editing keys. The 3D feature adds
+no document-wide Delete/Backspace handler and no private Undo stack.
+Action errors have a separate alert and do not hide model warnings or study
+overlays. Opening a property form neither runs a study nor changes the camera.
 
 ### Static hosting and local files
 
@@ -72,7 +105,10 @@ releases the view instead of silently retrying or altering the project.
   walls, change openings, move slabs or affect analytical inputs. Each displayed
   storey has a schematic cap at its wall height; no pitched roof or stair void
   is inferred.
-- Room surfaces use `room.rect`. Furniture solids use `furniture.rect`; bed
+- Room surfaces use `room.usableRegions ?? [room.rect]`; an explicit empty
+  region list stays empty. Every usable fragment carries the same shared room
+  selection, and service reservations are not filled by the host rectangle.
+  Furniture solids use `furniture.rect`; bed
   pillows follow all four `headLocal` polarities, including square footprints.
   A bed with unknown head direction is not assigned one by its aspect ratio.
 - Physical walls come from `scene.walls`, **not one extrusion per room**.
@@ -87,7 +123,9 @@ releases the view instead of silently retrying or altering the project.
   faces. Removed masonry and unsupported full-height gaps stay absent.
 - Resolved canonical `scene.openings` retain their leaf/glazing even when a
   full-width, full-height aperture leaves `wall.removed === true`: that flag
-  describes masonry, not opening infill. True partition-removal passages
+  describes masonry, not opening infill. Existing-aperture edit/delete actions
+  remain available under the ordinary host guards; new aperture placement still
+  requires surviving masonry. True partition-removal passages
   supersede conflicting door/window records into `unresolvedOpenings`.
   Those attachments remain reviewable in the model/2D tools, not as floating panes.
 - Hinged leaves use the model's `doorGeometry()` pivot, nominal closed endpoint
@@ -98,10 +136,15 @@ releases the view instead of silently retrying or altering the project.
   motion is not invented from `openFraction`. Selection reports that operating
   input separately. Transparent-looking glass is **not** a verified free
   airflow aperture or a transmission simulation.
+- Balcony surfaces use the supplied `scene.balconies[].rect`, with
+  `{kind:'balcony',id}` on the mesh and the original namespaced ID. Their
+  0.14 m preview slab thickness is explicitly schematic; railing, structural
+  support and construction assemblies are not inferred. Balconies do not
+  add usable room area or alter reserved regions.
 - Click selection calls `HomePlanner.select({kind,id})`, with model IDs for
-  room, wall, door, window and furniture. Clicking an inactive storey does
+  room, balcony, wall, door, window and furniture. Clicking an inactive storey does
   not mutate the active floor; the local status explains that the floor must
-  be chosen in 2D before editing. Roofs, slabs and context solids occlude
+  be explicitly chosen before editing. Roofs, slabs and context solids occlude
   picking instead of allowing clicks through them.
 - Selection-only notifications update the selection outline, not geometry.
   Committed changes rebuild from fresh immutable bridge snapshots. The camera
@@ -119,6 +162,13 @@ east  = dx*cos(heading) - dy*sin(heading)
 north = -(dx*sin(heading) + dy*cos(heading))
 Three = (east, absolute elevation, -north)
 ```
+
+Enabled intent/study layers instead consume the registered `site-local`
+projection and center on the plot width/depth. Projection translates
+`balcony.rect` through the same nonzero plot-origin shift as room and furniture
+rectangles, preserving dimensions and metadata. The renderer consumes the
+supplied frame; it does not apply that shift a second time or invent a balcony
+layout. The heading rotation is still applied once.
 
 Absolute wall `baseM` is not added to the storey elevation a second time.
 The compass projects geographic north `(0,0,-1)` through the current camera,
@@ -217,3 +267,9 @@ immutable inputs and disposal events. Final application browser coverage
 should additionally check lazy network requests, the import map, resizing,
 camera retention, picking versus orbiting, theme changes, keyboard/touch,
 close/reopen and visible file/WebGL/context-loss fallbacks.
+`tests\planner-editor-r0.test.cjs` exercises the native toolbar with the actual
+inspector/bridge, including guarded availability, canceled confirmation,
+inactive-floor selection, shared history, pending inputs, camera retention and
+close cleanup. Balcony raycasts cover nonzero origins and all cardinal
+frontages as well as a mathematical rotated-heading fixture. These Node
+checks do not substitute for an unmodified production-page browser run.

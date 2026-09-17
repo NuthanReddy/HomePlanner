@@ -108,6 +108,12 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
 
 ## Validation
 
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-airflow-modeling\scripts\example.py --check
+```
+
 Run the smallest applicable groups from the repository root; no install is needed:
 
 ```powershell
@@ -133,3 +139,7 @@ uncertainty and professional ventilation/engineering review needs before advice.
 ## References
 
 Use the verified [primary sources and method caveats](references/sources.md).
+
+- [Flow, conservation and bounded scalar equations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).

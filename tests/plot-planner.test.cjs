@@ -166,12 +166,19 @@ test('core plot controls and generated road fields have explicit accessible name
 test('intermediate room rebuilds cannot combine new geometry with old plot boundaries',()=>{
   const bridge=fs.readFileSync(path.join(__dirname,'..','planner-bridge.js'),'utf8');
   const source=bridge.match(/function renderContext\([^]*?\n  \}/)[0];
+  const sourcePlan=bridge.match(/const openingSources=new WeakMap\(\);\s+const sourcePlan=plan=>\{[^]*?\n  \};/);
+  assert.ok(sourcePlan,'Load the actual source-preserving plan helper with the render-context adapter');
   const oldGeometry={W:10,D:8,frontEdge:'N'};
   const current={g:oldGeometry,plate:{id:'whole',sitePlot:{x:-2,y:-3,w:14,h:13}}};
   const context=vm.createContext({root:{__roomPlanner:current}});
-  vm.runInContext(source,context);
+  vm.runInContext(`${sourcePlan[0]}\n${source}`,context);
   const newer=context.renderContext({W:20,D:18,frontEdge:'E'},{},{});
   assert.equal(newer.plate.sitePlot,undefined);
   assert.equal(newer.plate.frontEdge,'E');
   assert.deepEqual(plain(context.renderContext(oldGeometry,{},{}).plate.sitePlot),current.plate.sitePlot);
+  context.filteredPlan={openings:{doors:[]}};
+  context.originalOpenings={doors:[{id:'suppressed-source'}]};
+  vm.runInContext('openingSources.set(filteredPlan,originalOpenings);',context);
+  assert.deepEqual(plain(context.renderContext(oldGeometry,context.filteredPlan,{}).plan.openings),context.originalOpenings);
+  assert.deepEqual(context.filteredPlan.openings.doors,[],'Rendering a source snapshot must not refill active suppressed openings');
 });

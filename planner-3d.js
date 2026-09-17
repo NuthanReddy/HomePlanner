@@ -439,6 +439,15 @@
           for (const region of regions)
             localBox(owner, scene, region, base, PREVIEW.finishM, mat, ref, info, 0);
         }
+        for (const balcony of scene.balconies || []) {
+          if (!validRect(balcony.rect) || typeof balcony.id !== 'string' || !balcony.id) {
+            warnings.push('A supplied balcony has unavailable geometry or identity; no replacement footprint was inferred.');
+            continue;
+          }
+          localBox(owner, scene, balcony.rect, base - PREVIEW.slabM, PREVIEW.slabM, material(0xb7b9a8),
+            { kind: 'balcony', id: balcony.id }, detail(balcony.label || 'Balcony',
+              'Supplied balcony footprint; the 0.14 m slab thickness is schematic, not a designed slab or verified support. No railing is inferred. '));
+        }
         const walls = new Map((scene.walls || []).map(wall => [wall.id, wall]));
         const hosted = new Map();
         for (const opening of scene.openings || []) {
@@ -706,7 +715,7 @@
     host.innerHTML = `
       <div class="hp3d-heading">
         <div><h3>3D inspection <span class="hp3d-badge">Optional · schematic</span></h3>
-          <p>Inspect the shared plan in 3D. All storeys are stacked; editing stays in the 2D workspace.</p></div>
+          <p>Inspect the shared plan in 3D. Active-floor actions use the same numeric inspector and project history without leaving this view.</p></div>
         <div class="hp3d-actions"><button type="button" data-hp3d="open" aria-expanded="false">Open 3D</button>
           <button type="button" data-hp3d="close" hidden>Close 3D</button></div>
       </div>
@@ -731,6 +740,18 @@
             <button type="button" data-hp3d="out" aria-label="Zoom out">Zoom −</button>
             <button type="button" data-hp3d="reset">Reset view</button></div>
         </div>
+        <div class="hp3d-edit-toolbar hp3d-actions" data-hp3d="edit-toolbar" role="group" aria-label="Shared model actions on the active floor">
+          <button type="button" data-hp3d="undo" disabled>Undo</button>
+          <button type="button" data-hp3d="redo" disabled>Redo</button>
+          <button type="button" data-hp3d="edit-selection" disabled>Selection properties</button>
+          <button type="button" data-hp3d="add-door" disabled>Add door…</button>
+          <button type="button" data-hp3d="add-window" disabled>Add window…</button>
+          <button type="button" data-hp3d="edit-wall-span" disabled>Retained wall ends…</button>
+          <button type="button" data-hp3d="delete-selection" disabled>Delete selection…</button>
+          <button type="button" data-hp3d="choose-floor" disabled>Choose active floor</button>
+        </div>
+        <p class="hp3d-help" data-hp3d="edit-note" role="status" aria-live="polite"></p>
+        <p class="hp3d-action-error" data-hp3d="action-error" role="alert" hidden></p>
         <div class="hp3d-viewport" data-hp3d="viewport">
           <div class="hp3d-compass" aria-label="True north, oriented to the camera">
             <span class="hp3d-needle" data-hp3d="north" aria-hidden="true">N<br>↑</span><small>True north</small>
@@ -773,7 +794,7 @@
       </div>
       <details class="hp3d-assumptions"><summary>Preview assumptions &amp; limitations</summary>
         <p>Wall heights, storey elevations and roof thickness use project inputs, which may be defaults rather than surveyed values.
-          Presentation slabs are assumed 0.14 m thick; furniture heights, door leaves, frames and glazing thickness are schematic.
+          Presentation slabs, including supplied balcony footprints, are assumed 0.14 m thick; furniture heights, door leaves, frames and glazing thickness are schematic.
           No stairs, structural members, terrain or construction assemblies are inferred.</p>
         <p>Structural intent is off by default. When enabled, only complete authored coordination geometry is shown;
           unknown extents are counted without invented volumes. Structural solids are not selectable here and do not cast
@@ -799,6 +820,7 @@
     let runtime = null, ticket = 0, phase = 'closed', savedCamera = null, destroyed = false, lightInvalidated = false;
     const bridge = () => suppliedBridge || root.HomePlanner;
     const model = () => suppliedModel || root.HomePlannerModel;
+    const editor = () => options.editor || root.HomePlannerEditorInstance;
     const permanentListeners = [];
     const listen = (target, event, fn, settings, cleanup = permanentListeners) => {
       target.addEventListener(event, fn, settings);
@@ -808,6 +830,46 @@
       ui.status.textContent = `${text} Plumbing engineering is not assessed. Drainage engineering is not assessed.`;
       ui.status.classList.toggle('hp3d-error', error);
     };
+    function updateActions() {
+      const api = bridge(), inspector = editor();
+      let state = {}, reason = '';
+      try {
+        if (typeof inspector?.getActionState === 'function') state = inspector.getActionState();
+        else reason = 'The shared selection inspector is unavailable. Load planner-drafts.js and planner-editor.js to enable model actions; 3D inspection is still available.';
+        for (const [control, capability] of [
+          ['edit-selection', 'canEdit'], ['add-door', 'canAddDoor'], ['add-window', 'canAddWindow'],
+          ['edit-wall-span', 'canEditWallSpan'], ['delete-selection', 'canDelete']
+        ]) ui[control].disabled = !state[capability];
+        ui.undo.disabled = typeof api?.undo !== 'function' || !api.canUndo?.();
+        ui.redo.disabled = typeof api?.redo !== 'function' || !api.canRedo?.();
+        ui['choose-floor'].disabled = typeof inspector?.requestChooseFloor !== 'function';
+        ui['edit-note'].textContent = reason || state.reason
+          || 'Actions use the shared inspector and active floor. Delete requires confirmation. Picking another storey does not change the active floor.';
+      } catch (error) {
+        for (const control of ['edit-selection', 'add-door', 'add-window', 'edit-wall-span', 'delete-selection', 'undo', 'redo', 'choose-floor'])
+          ui[control].disabled = true;
+        ui['edit-note'].textContent = `Shared actions are unavailable: ${error.message}. The displayed geometry has not been changed.`;
+      }
+    }
+    function modelAction(action) {
+      try {
+        const accepted = action();
+        if (accepted === false) throw new Error('The request was not applied. Review the shared inspector message and active-floor selection.');
+        ui['action-error'].hidden = true;
+        ui['action-error'].textContent = '';
+      } catch (error) {
+        ui['action-error'].hidden = false;
+        ui['action-error'].textContent = error.message || 'The shared model action could not be completed.';
+      }
+      updateActions();
+    }
+    function inspectorRequest(method, ...args) {
+      return modelAction(() => {
+        const inspector = editor();
+        if (typeof inspector?.[method] !== 'function') throw new Error('The shared selection inspector is unavailable; no edit was made.');
+        return inspector[method](...args);
+      });
+    }
     function lightSnapshot(drawing, project) {
       const state = document.getElementById?.('workspaceLightStudy')?.homePlannerLight?.getState?.();
       return currentLight(drawing, project, lightInvalidated ? { ...state, result: null } : state,
@@ -898,6 +960,7 @@
       });
     }
     function selectionChanged(selection) {
+      updateActions();
       const r = runtime;
       if (!r?.content) return;
       const entry = r.content.refs.get(refKey(selection));
@@ -906,10 +969,12 @@
         r.outline.box.makeEmpty();
         entry.objects.forEach(object => r.outline.box.expandByObject(object));
         const active = bridge().getScene();
-        ui.selection.textContent = `${entry.label} · ${entry.floorName}. ${entry.note || ''}${entry.floorId !== active?.floorId ? ' Choose this floor in the 2D floor selector to edit it.' : ' Use the shared 2D inspector to edit.'}`;
+        ui.selection.textContent = `${entry.label} · ${entry.floorName}. ${entry.note || ''}${entry.floorId !== active?.floorId
+          ? ' Choose this floor explicitly with Choose active floor before editing; picking has not switched it.'
+          : ' Use Selection properties or the shared actions above to edit while staying in 3D.'}`;
       } else ui.selection.textContent = selection ?
         'The selected object is not in the displayed geometry. Choose its floor or turn off Active floor only.' :
-        'No object selected. Click a room floor, wall, door, window or furniture solid.';
+        'No object selected. Click a room floor, balcony, wall, door, window or furniture solid.';
       requestRender();
     }
     function lightScene(project) {
@@ -1174,7 +1239,7 @@
         }, false, r.cleanup);
         listen(canvas, 'pointercancel', event => { down.delete(event.pointerId); pointer = null; }, false, r.cleanup);
         listen(canvas, 'keydown', event => {
-          if (event.ctrlKey || event.metaKey || event.altKey) return;
+          if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
           if (['+', '=', '-', '_', 'r', 'R', 'Escape'].includes(event.key)) event.preventDefault();
           if (event.key === '+' || event.key === '=') zoom(0.8);
           if (event.key === '-' || event.key === '_') zoom(1.25);
@@ -1221,6 +1286,18 @@
     }
     listen(ui.open, 'click', open);
     listen(ui.close, 'click', () => close());
+    for (const action of ['undo', 'redo']) listen(ui[action], 'click', () => modelAction(() => {
+      const api = bridge();
+      if (typeof api?.[action] !== 'function' || !api[action === 'undo' ? 'canUndo' : 'canRedo']?.())
+        throw new Error(`No shared ${action} action is available.`);
+      api[action]();
+    }));
+    listen(ui['edit-selection'], 'click', () => inspectorRequest('requestEditSelection'));
+    listen(ui['add-door'], 'click', () => inspectorRequest('requestAddOpening', 'door'));
+    listen(ui['add-window'], 'click', () => inspectorRequest('requestAddOpening', 'window'));
+    listen(ui['edit-wall-span'], 'click', () => inspectorRequest('requestEditSelection', { section: 'wall-span' }));
+    listen(ui['delete-selection'], 'click', () => inspectorRequest('requestDeleteSelection'));
+    listen(ui['choose-floor'], 'click', () => inspectorRequest('requestChooseFloor'));
     listen(ui.active, 'change', rebuild);
     listen(document, 'homeplanner:light-result', event => {
       if (destroyed) return;

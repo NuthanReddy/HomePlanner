@@ -117,6 +117,12 @@ unchanged saved anchor. List an explicit rehost decision; do not move it to
 
 ## Validation
 
+Run the independent stdlib reference (no project reads, writes or optional engines):
+
+```powershell
+.\.venv\Scripts\python.exe -I -B .github\skills\homeplanner-electrical-modeling\scripts\example.py --check
+```
+
 Run the smallest real existing `node --test` selector covering the change, from
 the repository root:
 
@@ -144,3 +150,7 @@ certification. Report unavailable standards or uncertain local adoption, not aut
 
 [Verified primary-source notes, E1–E3](references/sources.md), checked
 **17 Sep 2026**. These are methodological context, not a numeric standards preset.
+
+- [Power/unit and supplied-envelope calculations](references/calculations.md).
+- [Optional Python APIs and prerequisites](references/python-tools.md).
+- [Executable stdlib reference and computed SVG](scripts/example.py).

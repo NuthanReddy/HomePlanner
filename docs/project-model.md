@@ -410,6 +410,16 @@ Window head controls translate to height; there is no `headM` edit field.
 Explicit wall-hosted opening records are retained when a later host is
 missing, split or cut away. They are not attached to the nearest wall.
 
+Door/window edits also accept optional boolean `suppressed`. A true value
+removes that source's effective aperture/infill without erasing its original
+record or other edit metadata; false/absent retains normal compilation.
+Source identities and conflicting-duplicate checks still run before suppression.
+The edit key is the canonical floor-prefixed input identity. A compiled merged
+opening's `sourceIds` are **raw input source IDs**, so the coordinator prefixes
+each with its floor when suppressing every shared source. Derived fragment IDs
+are not a replacement for this source mapping. JSON backups retain suppression
+and prior fields; Undo restores the former authored state.
+
 ### Door and window assumptions
 
 Door metadata separates:

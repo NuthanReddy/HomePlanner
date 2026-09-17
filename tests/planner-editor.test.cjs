@@ -251,16 +251,56 @@ test('wall-context opening fields create canonical metre commands and translate 
   assert.deepEqual(editor.addOpeningCommand(wall, 'door', { offsetM: '.2', widthM: '.9', heightM: '2.1',
     openFraction: '0', hinge: 'end', swing: 'right' }),
   { type: 'add-door', wallId: wall.id, offsetM: .2, widthM: .9, heightM: 2.1, openFraction: 0, hinge: 'end', swing: 'right' });
-  const result = editor.addOpeningCommand(wall, 'window', { offsetM: '1.2', widthM: '1',
-    sillM: '.9', headM: '2.1', openFraction: '.5' });
+  const exterior = { ...wall, exterior: true };
+  const values = { offsetM: '1.2', widthM: '1', sillM: '.9', headM: '2.1', openFraction: '.5' };
+  const result = editor.addOpeningCommand(wall, 'window', values);
+  assert.deepEqual(editor.addOpeningCommand(exterior, 'window', values), result, 'Canonical internal/exterior hosts share the same aperture command.');
   assert.ok(Math.abs(result.heightM - 1.2) < 1e-9);
   assert.equal(result.sillM, .9);
   assert.equal(Object.hasOwn(result, 'headM'), false);
   assert.equal(Object.hasOwn(result, 'hinge'), false);
   for (const patch of [{ widthM: '' }, { widthM: '4' }, { sillM: '-1' }, { headM: '.8' }, { headM: '3' }, { openFraction: 'true' }])
-    assert.throws(() => editor.addOpeningCommand(wall, 'window', { offsetM: '2', widthM: '1', sillM: '.9', headM: '2.1',
+    assert.throws(() => editor.addOpeningCommand(exterior, 'window', { offsetM: '2', widthM: '1', sillM: '.9', headM: '2.1',
       openFraction: '0', ...patch }));
   assert.throws(() => editor.addOpeningCommand({ ...wall, removed: true }, 'door', {}), /surviving/);
+  for (const patch of [{ removed: true }, { exterior: undefined }, { structuralRole: 'structural' }, { structuralRole: undefined }])
+    assert.throws(() => editor.addOpeningCommand({ ...wall, ...patch }, 'window', values), /surviving/);
+});
+
+test('shared action availability guards partitions and canonical aperture hosts without editing source geometry', () => {
+  const scene = deepFreeze({ floorId: 'floor-one', walls: [wall, { ...wall, id: 'outside', exterior: true },
+    { ...wall, id: 'protected', structuralRole: 'structural' }, { ...wall, id: 'removed', removed: true }],
+  rooms: [{ id: 'room' }], balconies: [{ id: 'balcony' }], furniture: [{ id: 'bed' }], openings: [door, windowOpening] });
+  const before = copy(scene), internal = editor.selectionActions(scene, { kind: 'wall', id: wall.id });
+  assert.ok(internal.canDelete && internal.canAddDoor && internal.canEditWallSpan);
+  assert.equal(internal.canAddWindow, true);
+  const outside = editor.selectionActions(scene, { kind: 'wall', id: 'outside' });
+  assert.ok(outside.canAddDoor && outside.canAddWindow);
+  assert.equal(outside.canDelete, false);
+  assert.equal(outside.canEditWallSpan, false);
+  for (const id of ['protected', 'removed', 'missing']) {
+    const state = editor.selectionActions(scene, { kind: 'wall', id });
+    assert.equal(state.canDelete, false); assert.equal(state.canAddDoor, false); assert.equal(state.canAddWindow, false);
+  }
+  for (const [kind, id] of [['room', 'room'], ['balcony', 'balcony'], ['furniture', 'bed'], ['door', door.id], ['window', windowOpening.id]])
+    assert.equal(editor.selectionActions(scene, { kind, id }).canDelete, true);
+  for (const patch of [{ structuralRole: 'structural' }, { exterior: undefined }]) {
+    const guarded = { ...scene, walls: [{ ...wall, ...patch }] };
+    for (const [kind, id] of [['door', door.id], ['window', windowOpening.id]]) {
+      const state = editor.selectionActions(guarded, { kind, id });
+      assert.equal(state.canDelete, false);
+      assert.match(state.reason, /canonical aperture on a classified, unprotected host/);
+    }
+  }
+  const emptyMasonry = { ...scene, walls: [{ ...wall, removed: true }] };
+  for (const [kind, id] of [['door', door.id], ['window', windowOpening.id]])
+    assert.equal(editor.selectionActions(emptyMasonry, { kind, id }).canDelete, true, 'Canonical infill survives the masonry quantity flag.');
+  assert.equal(editor.selectionActions(emptyMasonry, { kind: 'wall', id: wall.id }).canAddWindow, false);
+  assert.equal(editor.selectionActions({ ...scene, walls: [] }, { kind: 'door', id: door.id }).canDelete, false);
+  assert.equal(editor.selectionActions({ ...scene, walls: [{ ...wall, exterior: true }] }, { kind: 'door', id: door.id }).canDelete, true,
+    'Closing an exterior opening is not exterior partition demolition.');
+  assert.equal(editor.selectionActions(scene, { kind: 'door', id: 'floor-two:door' }).canDelete, false);
+  assert.deepEqual(scene, before);
 });
 
 test('balconies have their own selection kind and preserve cross-floor read-only identity', () => {
@@ -537,6 +577,7 @@ async function browserSmoke(page, directory) {
       };
     });
     await browserPage.addStyleTag({ path: `${directory}\\planner-editor.css` });
+    await browserPage.addScriptTag({ path: `${directory}\\planner-drafts.js` });
     await browserPage.addScriptTag({ path: `${directory}\\planner-editor.js` });
     const inspectorText = () => browserPage.locator('#plannerInspector').innerText();
     const choose = (kind, id) => browserPage.evaluate(ref => HomePlanner.select(ref), { kind, id });

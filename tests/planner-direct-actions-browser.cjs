@@ -3,52 +3,24 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const os = require('node:os');
 const { chromium } = require(process.env.HOMEPLANNER_PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(__dirname, '..');
-const workspace = path.resolve(root, '.playwright-mcp', 'direct-model-actions');
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'homeplanner-actions-'));
 const runtime = path.join(workspace, 'runtime');
 fs.mkdirSync(runtime, { recursive: true });
 process.env.TEMP = process.env.TMP = runtime;
 
-// Optional staging tests the bounded parent integration without editing index.html
-// or touching the user's browser profile. Normal runs require the real hooks.
+// Serve production bytes unchanged: missing loader or action hooks are failures.
 function indexIntegration(source) {
-  let staged = false;
-  const stages = [];
-  const replace = (before, after) => {
-    assert.ok(source.includes(before), `Missing integration anchor: ${before.slice(0, 70)}`);
-    source = source.replace(before, after);
-    staged = true;
-  };
-  const allow = process.env.HOMEPLANNER_TEST_INDEX_INTEGRATION === '1';
-  if (!source.includes("balconyIds=roomStableIds('balcony'")) {
-    assert.ok(allow, 'Apply the stable balcony ID hunk in index.integration.patch before running this integration test.');
-    replace('  const balconies=[];', "  const balconies=[],balconyIds=roomStableIds('balcony',cfg.counts.balcony);");
-    replace('balconies.push({id:`balcony-${i+1}`,type:\'balcony\',label:`Balcony ${i+1}`,',
-      'balconies.push({id:balconyIds[i],type:\'balcony\',label:`Balcony ${balconyIds[i].slice(8)}`,');
-    stages.push('stable-balcony-ids');
-  }
-  if (!source.includes('prepareHostedOpenings(g,plan,cfg)')) {
-    assert.ok(allow, 'Apply the hosted-opening hunk in index.integration.patch before running this integration test.');
-    replace("  const manualWindowRooms=new Set((saved.openings||[]).filter(o=>o.type==='window').map(o=>o.roomId));",
-      "  const hosted=(saved.openings||[]).filter(record=>record.wallId);\n"
-      + "  const legacyOpenings=(saved.openings||[]).filter(record=>!record.wallId);\n"
-      + "  const manualWindowRooms=new Set(legacyOpenings.filter(o=>o.type==='window').map(o=>o.roomId));");
-    replace('  (saved.openings||[]).forEach(record=>{', '  legacyOpenings.forEach(record=>{');
-    replace('  plan.customOpenings=customOpenings;',
-      '  plan.customOpenings=[...customOpenings,...hosted.map(record=>({...record,custom:true}))];');
-    replace('  window.HomePlanner?.preparePartitions(g,plan,cfg);\n  window.HomePlanner?.applyOpeningEdits(g,plan,cfg);',
-      '  window.HomePlanner?.prepareHostedOpenings(g,plan,cfg);\n'
-      + '  window.HomePlanner?.preparePartitions(g,plan,cfg);\n  window.HomePlanner?.applyOpeningEdits(g,plan,cfg);');
-    stages.push('hosted-openings');
-  }
-  if (fs.existsSync(path.join(root, 'planner-drafts.js')) && !source.includes('src="planner-drafts.js"')) {
-    assert.ok(allow, 'Load planner-drafts.js before its persistence/workbench consumers; missing initialization must not mask the geometry test.');
-    replace('<script src="planner-model.js"></script>',
-      '<script src="planner-drafts.js"></script>\n<script src="planner-model.js"></script>');
-    stages.push('draft-script-order');
-  }
-  return { source, staged, stages };
+  assert.ok(source.includes("balconyIds=roomStableIds('balcony'"), 'Production balcony IDs must use the stable identity registry.');
+  assert.ok(source.includes('prepareHostedOpenings(g,plan,cfg)'), 'Production must prepare canonical hosted openings.');
+  const scripts = [...source.matchAll(/<script\s+src="([^"]+)"/g)].map(match => match[1]);
+  const draftIndex = scripts.indexOf('planner-drafts.js');
+  assert.ok(draftIndex >= 0, 'Production must load planner-drafts.js.');
+  for (const consumer of ['electrical-planner.js', 'planner-editor.js', 'environment-ui.js', 'planner-persistence.js'])
+    assert.ok(draftIndex < scripts.indexOf(consumer), `Draft registry must load before ${consumer}.`);
+  return { source, staged: false, stages: [] };
 }
 
 async function run() {
@@ -172,7 +144,7 @@ async function run() {
       assert.deepEqual(await page.evaluate(() => HomePlanner.getSelection()), { kind, id });
     };
     await select2D('wall', fixture.wallId);
-    await action('delete-wall').click(); await action('confirm').click();
+    await page.locator('#roomDeleteSelection').click(); await action('confirm').click();
     assert.equal(await page.evaluate(id => HomePlanner.getScene().walls.find(item => item.id === id).removed, fixture.wallId), true);
     await history('undo').click();
     await select2D('wall', fixture.wallId);
@@ -192,7 +164,7 @@ async function run() {
     assert.equal(await page.locator(`#roomPlan [data-planner-id=${JSON.stringify(fixture.wallId)}] line`).count(), 2,
       'The real 2D wall layer has one material interval and one transparent hit interval, not a ghost end');
     await action('review-restore-wall').click(); await action('confirm').click();
-    await inspector.locator('summary').filter({ hasText: 'Adjust retained wall ends' }).click();
+    await page.locator('#roomWallEnds').click();
     await page.locator('#hp-editor-retainedStartM').fill('.3');
     await page.locator('#hp-editor-retainedEndM').fill('3.4');
     await action('review-trim-wall').click(); await action('confirm').click();
@@ -200,7 +172,7 @@ async function run() {
     assert.deepEqual(state.solidSegments, [{ startM: .3, endM: 3.4 }]);
     await action('review-restore-wall').click(); await action('confirm').click();
 
-    await action('configure-door').click();
+    await page.locator('#roomAddDoor').click();
     for (const [key, value] of Object.entries({ offsetM: '.25', widthM: '.8', heightM: '2.1', openFraction: '0' }))
       await page.locator(`#hp-editor-new-opening-${key}`).fill(value);
     await page.locator('#hp-editor-new-opening-hinge').selectOption('start');
@@ -221,12 +193,10 @@ async function run() {
     await page.waitForFunction(() => HomePlanner3D.instance?.isOpen);
     const history3D = name => page.locator(`#planner3d [data-hp3d="${name}"]`);
     const visible3DHistory = await history3D('undo').isVisible() && await history3D('redo').isVisible();
-    const undoFrom3D = async () => {
-      if (visible3DHistory) await history3D('undo').click();
-      else await history('undo').click();
-    };
+    assert.equal(visible3DHistory, true, 'Production 3D must provide its shared Undo and Redo controls.');
+    const undoFrom3D = () => history3D('undo').click();
     await page.locator('#planner3d [data-hp3d="reset"]').click();
-    const pick = await page.evaluate(async id => {
+    const pickPoint = id => page.evaluate(async id => {
       const THREE = await import('./vendor/three/three.module.min.js');
       const content = HomePlanner3D.buildContent(THREE, HomePlanner.getScenes(), HomePlanner.getProject(), HomePlannerModel, { cutaway: true });
       try {
@@ -258,17 +228,19 @@ async function run() {
         }
         return null;
       } finally { HomePlanner3D.disposeObject(content.group); }
-    }, fixture.wallId);
+    }, id);
+    const pick = await pickPoint(fixture.wallId);
     assert.ok(pick, 'A real 3D wall triangle must be visible in the controlled fixture');
-    const click3D = async () => {
+    const click3D = async (point = pick) => {
       const canvas = page.locator('#planner3d canvas');
       await canvas.scrollIntoViewIfNeeded();
       const box = await canvas.boundingBox();
-      await page.mouse.click(box.x + (pick.x + 1) * box.width / 2, box.y + (1 - pick.y) * box.height / 2);
+      await page.mouse.click(box.x + (point.x + 1) * box.width / 2, box.y + (1 - point.y) * box.height / 2);
     };
     await click3D();
     assert.deepEqual(await page.evaluate(() => HomePlanner.getSelection()), { kind: 'wall', id: fixture.wallId });
-    await action('delete-wall').click(); await action('confirm').click();
+    await page.locator('#planner3d').getByRole('button', { name: /Delete selection/ }).click();
+    await action('confirm').click();
     assert.equal(await page.evaluate(id => HomePlanner.getScene().walls.find(item => item.id === id).removed, fixture.wallId), true);
     await undoFrom3D();
     if (visible3DHistory) {
@@ -279,8 +251,11 @@ async function run() {
     }
     await click3D();
     assert.deepEqual(await page.evaluate(() => HomePlanner.getSelection()), { kind: 'wall', id: fixture.wallId });
-    await action('configure-window').click();
-    for (const [key, value] of Object.entries({ offsetM: '1.5', widthM: '.6', sillM: '.9', headM: '1.9', openFraction: '.5' }))
+    assert.equal(await page.locator('#planner3d').getByRole('button', { name: /Add window/ }).isEnabled(), true,
+      'Shared wall-hosted authoring must preserve the existing internal-window capability');
+    const windowHost = { id: fixture.wallId, offset: 1.5 };
+    await page.locator('#planner3d').getByRole('button', { name: /Add window/ }).click();
+    for (const [key, value] of Object.entries({ offsetM: String(windowHost.offset), widthM: '.6', sillM: '.9', headM: '1.9', openFraction: '.5' }))
       await page.locator(`#hp-editor-new-opening-${key}`).fill(value);
     await action('add-window').click();
     const window = await page.evaluate(() => {
@@ -288,7 +263,8 @@ async function run() {
       return ref?.kind === 'window' && HomePlanner.getScene().openings.find(item => item.id === ref.id);
     });
     assert.ok(window, await inspector.innerText());
-    assert.equal(window.wallId, fixture.wallId);
+    assert.equal(window.wallId, windowHost.id);
+    assert.equal(await page.evaluate(() => HomePlanner3D.instance.isOpen), true);
     const after = await page.evaluate(() => ({ furniture: HomePlanner.getScene().furniture, openings: HomePlanner.getScene().openings }));
     assert.deepEqual(after.furniture, prior.furniture);
     for (const opening of prior.openings) assert.ok(after.openings.some(item => item.id === opening.id), 'Unrelated openings must survive');
@@ -318,13 +294,27 @@ async function run() {
     await history('redo').click();
     await page.evaluate(() => { const saved = HomePlanner.exportProject(); HomePlanner.newProject(); HomePlanner.importProject(saved); });
     assert.deepEqual(await page.evaluate(() => HomePlanner.getScene().balconies.map(item => item.sourceId)), ['balcony-1', 'balcony-3']);
+    const generated = await page.evaluate(() => {
+      const opening = HomePlanner.getScene().openings.find(item => !item.hosted && item.kind === 'window');
+      if (opening) HomePlanner.select({ kind: 'window', id: opening.id });
+      return opening;
+    });
+    assert.ok(generated, 'The fixture must retain a generated window for deletion parity');
+    await page.locator('#roomDeleteSelection').click(); await action('confirm').click();
+    assert.equal(await page.evaluate(id => HomePlanner.getScene().openings.some(item => item.id === id), generated.id), false);
+    await history('undo').click();
+    assert.ok(await page.evaluate(id => HomePlanner.getScene().openings.some(item => item.id === id), generated.id));
+    await history('redo').click();
+    await page.evaluate(() => { const saved = HomePlanner.exportProject(); HomePlanner.newProject(); HomePlanner.importProject(saved); });
+    assert.equal(await page.evaluate(id => HomePlanner.getScene().openings.some(item => item.id === id), generated.id), false,
+      'Generated-opening suppression must survive the real project JSON codec');
     await page.evaluate(() => HomePlanner.execute({ type: 'add-floor', copyFromId: 'floor-1' }));
     await page.evaluate(id => HomePlanner.select({ kind: 'wall', id }), fixture.wallId);
     assert.ok((await inspector.innerText()).includes('belongs to'));
     assert.equal(await action('delete-wall').count(), 0);
     assert.equal(await action('configure-door').count(), 0);
     await page.evaluate(() => {
-      const wall = HomePlanner.getScene().walls.find(item => !item.exterior && !item.removed);
+      const wall = HomePlanner.getScene().walls.find(item => item.exterior && !item.removed);
       HomePlanner.select({ kind: 'wall', id: wall.id });
     });
     await action('configure-window').click();
@@ -342,13 +332,14 @@ async function run() {
       noUnrelatedRoomRelayout: true, exactToEnd2D: true, retainedSpan2D: true,
       realCanvas3DPick: true, doorFrom2D: true, windowFrom3D: true, wallDelete2DAnd3D: true, wallDeleteUndo: true,
       balconyDeleteUndoRedoImport: true, balcony3DReady: pick.balcony3DPicks, inactiveFloorReadOnly: true,
+      generatedOpeningDeleteUndoRedoImport: true, shared2DToolbar: true, shared3DToolbar: true,
       narrowOpeningControls: true, textSafeEditing: true, errors };
-    fs.writeFileSync(path.join(workspace, 'browser-result.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
   } finally {
     await context?.close();
     await browser?.close();
     await new Promise(resolve => server.close(resolve));
+    fs.rmSync(workspace, { recursive: true, force: true });
   }
 }
 

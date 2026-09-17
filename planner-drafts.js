@@ -14,7 +14,10 @@
   }
   function notify(state) {
     state.version++;
-    for (const listener of state.listeners) listener();
+    for (const listener of [...state.listeners]) {
+      try { listener(); }
+      catch (error) { console.error('HomePlanner draft observer failed; pending inputs are retained and other observers will still be notified.', error); }
+    }
   }
   function createStore(planner, label) {
     const state = registry(planner), entries = new Map();

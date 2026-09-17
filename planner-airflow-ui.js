@@ -29,7 +29,7 @@
     freeAreaM2: 'operating free area', cd: 'discharge coefficient (Cd)', pressurePa: 'signed pressure forcing',
     openFraction: 'operating fraction' };
   const inputHelp = {
-    densityKgM3: 'Converts pressure into flow. Enter documented air mass per volume here; no weather-derived default.',
+    densityKgM3: 'Use the Python density card above for a location/weather estimate, or enter a documented constant in kg/m³.',
     volumeM3: 'Use whole house fills a plan-volume estimate from usable area and wall height. Override here if you have a better clear-volume value.',
     freeAreaM2: 'Area air can pass through, not glass area. Enter documented operating area within the cap below; do not multiply by the fraction again.',
     cd: 'Describes opening flow restriction. Enter an applicable measured or documented coefficient, not a material preset.',

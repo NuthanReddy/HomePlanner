@@ -22,11 +22,15 @@ The planner creates an access graph after room placement:
   placement. Missing access is flagged rather than snapping the service back
   to a fixed location. Shafts, floor openings, landings and compliant escape
   routes still require professional design.
-- New lift proposals prefer the side of a staircase's shared passage. Its
-  full wall-inclusive footprint cannot block an existing stair entrance
-  passage or the configured along-stair clearance guide. Move/resize rejection
+- New lift proposals prefer the side of a staircase's bounded entry approach.
+  The full footprint cannot block that approach. An advisory side guide and
+  an entire generic circulation flex-space are not hard exclusion regions. Move/resize rejection
   preserves the old plan and does not shift another room or passage to make
   space. Manual non-adjacent positions remain available where valid.
+- New open stairs have no generated room door or masonry enclosure. Older
+  saved enclosures remain until an explicit property edit; independent door
+  and wall references remain saved if the enclosure changes. The plan's
+  flight/landing/UP symbol is schematic, not an engineered stair schedule.
 
 Shared-wall openings use the actual overlap segment. Small gaps up to one
 internal-wall thickness may be bridged when packing has left a wall module

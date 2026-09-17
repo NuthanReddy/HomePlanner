@@ -20,6 +20,15 @@ The gap review records the passing production-browser and numerical-reference
 evidence. R1-R7 engine-readiness, simulation and interoperability work remains
 planned; this completion adds no Blender or external simulation backend.
 
+**Subsequent approved utility slice:** the second review also delivered
+[live local Python density and solar calculations](python-analysis.md),
+including explicit location-weather retrieval. These use PsychroLib and pvlib
+through the existing Flask service. They are not the whole-building energy
+compiler, Radiance workflow, coupled thermal/CFD, or generic job platform
+described later in this roadmap. Programme Apply/Enter, result-restoration,
+stair representation and concise 3D layer corrections are recorded in the
+updated gap review.
+
 **Scoped delivery amendment:** the local workbench now includes conceptual
 architectural/structural sheets, elevations/sections, plumbing/drainage drawings,
 native reduced-model airflow and light studies, and coordinated document packages.

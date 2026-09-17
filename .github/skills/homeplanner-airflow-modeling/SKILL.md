@@ -29,6 +29,11 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
   `mount`; `planner-airflow-ui.css`: presentation only.
 - `environment-data.js`: `EnvironmentData.windRose`; `environment-ui.js`:
   `EnvironmentUI.buildAirflowTemplate`, `validatePressureInput`.
+- `python_analysis.py`, `planner-python-analysis.js`: optional local PsychroLib
+  density calculation and explicit location-weather retrieval. Read
+  [the live Python contract](../../../docs/python-analysis.md); this is a
+  supplied/modelled-weather property estimate, not measured indoor density or
+  a pressure-forcing value. Apply only to the matching current scenario draft.
 - Read [foundation](../../../docs/airflow-visualizer.md),
   [field](../../../docs/airflow-field.md), [display](../../../docs/airflow-display.md),
   [worker](../../../docs/airflow-worker.md), and [workbench](../../../docs/airflow-workbench.md).

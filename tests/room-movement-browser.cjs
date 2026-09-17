@@ -31,7 +31,11 @@ module.exports=async function movementSmoke(browser,url,{width=1440,touch=false}
       document.getElementById('face').value='N';buildRoadInputs();
       for(const [id,value] of Object.entries({dunit:'1',pEW:'30',pNS:'30',livingCount:'1',
         bedCount:'1',kitchenCount:'1',bathCount:'0',poojaCount:'0',liftCount:'1',stairCount:'1'}))
-        document.getElementById(id).value=value;
+      {
+        const input=document.getElementById(id);
+        if(input.hasAttribute('data-room-setting'))HomePlannerRoomInputs.writeCommitted(input,value);
+        else input.value=value;
+      }
       render();
       const ctx=window.__roomPlanner,c=ctx.g.core,x=c.x,y=c.y;
       roomSaveManualLayout(ctx);

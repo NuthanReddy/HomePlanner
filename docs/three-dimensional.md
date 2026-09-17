@@ -10,6 +10,18 @@ The normal 2D application remains available when 3D is closed, unsupported or
 fails. Edits still go through the one shared inspector and project commands;
 native 3D action buttons reveal that inspector without closing 3D.
 
+### Model layer controls
+
+The controls are **Show structure**, **Show plumbing layout**, **Show drainage
+layout** and **Show light results**. They display existing data, not simulations.
+Counts identify recorded objects across floors; empty layers are disabled and
+have working Add/Open links to their authoring or calculation workspace.
+If records lack drawable geometry, the concise status identifies the missing
+count instead of inventing solids. Detailed scope, units, provenance and
+engineering limitations stay in collapsed details rather than being repeated
+in every status message. Light-result availability updates when the 2D study
+publishes or clears results.
+
 ## Integration
 
 Mount the feature on `#planner3d`, load `planner-3d.css`, and load the **classic**

@@ -370,6 +370,7 @@
           </details><p id="env-obstacle-error" class="env-error" role="alert" hidden></p>
         </section>
         <section id="env-weather-section" class="env-panel" aria-labelledby="env-weather-heading"><h3 id="env-weather-heading">Weather source</h3>
+          <p id="env-weather-location" class="env-help"></p>
           <p class="env-help">Import locally; no file or coordinates leave the browser. Source data is included in project exports and opt-in local project saves.</p>
           <label for="env-weather-file">EPW or weather JSON (up to 20 MB)</label><input id="env-weather-file" type="file" accept=".epw,.json,text/plain,application/json">
           <div class="env-actions"><button id="env-weather-template" type="button">JSON format example</button><button id="env-weather-clear" type="button">Clear weather</button></div>
@@ -377,13 +378,14 @@
           <label for="env-weather-kind">Classification from source evidence</label><select id="env-weather-kind">
             <option value="unclassified">Not confirmed</option><option value="historical">Historical observations</option><option value="reanalysis">Historical reanalysis</option><option value="tmy">Synthetic typical year (TMY)</option><option value="forecast">Forecast</option><option value="scenario">Hypothetical scenario</option>
           </select><button id="env-weather-classify" type="button">Save classification</button>
-          <details class="env-details"><summary>Optional online historical weather</summary>
+          <details class="env-details"><summary>Fetch weather for this location</summary>
             <p>Open-Meteo sends the coordinates and dates below to its servers; requests may be logged. ERA5 is gridded reanalysis, not a house sensor. Free API access is non-commercial and quota-limited; data requires attribution.</p>
             <p><a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer">Provider terms</a> · <a href="https://open-meteo.com/en/docs/historical-weather-api" target="_blank" rel="noopener noreferrer">Data documentation</a></p>
             <form id="env-fetch-form"><div class="env-fields"><div>${input('env-weather-start','First local date','date','','required')}</div><div>${input('env-weather-end','Last local date (inclusive)','date','','required')}</div></div>
+              <button id="env-weather-recent" type="button">Use recent week</button>
               <p id="env-request-summary" class="env-help"></p>
               <label class="env-check"><input id="env-fetch-consent" type="checkbox">I accept the provider terms and consent to sending this site's coordinates and dates for this request.</label>
-              <div class="env-actions"><button id="env-fetch" class="env-primary" type="submit">Fetch ERA5 history</button><button id="env-fetch-cancel" type="button" disabled>Cancel request</button></div>
+              <div class="env-actions"><button id="env-fetch" class="env-primary" type="submit">Fetch weather for this location</button><button id="env-fetch-cancel" type="button" disabled>Cancel request</button></div>
             </form><p class="env-help">One 1–366-day request; no API keys, auto-fetch, retries or slider requests. At least six days of publication delay. Import/offline mode remains available after errors.</p>
           </details><p id="env-weather-status" class="env-status" role="status"></p><p id="env-weather-error" class="env-error" role="alert" hidden></p>
         </section>
@@ -683,6 +685,10 @@
       by('env-weather-clear').disabled=!available;by('env-weather-classify').disabled=!available;
       by('env-weather-kind').disabled=!available;by('env-export-weather').disabled=!available;
       by('env-use-record').disabled=!available;by('env-record-index').max=available?weather.records.length:1;
+      const provenance=project.environment?.siteProvenance;
+      const recorded=provenance&&provenance.latitude===project.site.latitude&&provenance.longitude===project.site.longitude;
+      const locationLabel=recorded?(provenance.method==='device'?'detected location':'saved coordinates'):'unconfirmed project coordinates';
+      by('env-weather-location').textContent=`Using ${locationLabel}: ${nice(project.site.latitude,5)}, ${nice(project.site.longitude,5)}. Fetch reads the current project location; no coordinate re-entry is needed.`;
       by('env-request-summary').textContent=`Request location: ${nice(project.site.latitude,5)}, ${nice(project.site.longitude,5)}. Inclusive local dates use ${project.site.timeZone} and are converted to UTC before requesting ERA5.`;
       if(!available){
         by('env-weather-summary').innerHTML='<p class="env-empty">No weather loaded. Astronomy, geometry and manual scenarios still work offline.</p>';
@@ -1201,6 +1207,15 @@
         setStatus('env-weather-status',`Classification saved as ${kind}; timestamps and source records were not remapped.`);
       });
       bindClick('env-fetch-cancel','env-weather-error',()=>cancelWeather());
+      bindClick('env-weather-recent','env-weather-error',()=>{
+        if(typeof Sun?.dateAt!=='function')throw new Error('The local time-zone adapter is unavailable. Choose historical dates manually.');
+        const end=Sun.dateAt(new Date(Date.now()-7*DAY),planner.getProject().site.timeZone);
+        const start=new Date(dateParts(end).getTime()-6*DAY).toISOString().slice(0,10);
+        syncForm('env-fetch-form',{'env-weather-start':start,'env-weather-end':end},true);
+        by('env-fetch-consent').checked=false;
+        onInput({target:by('env-weather-start')});
+        setStatus('env-weather-status','Selected seven historical days, ending seven days ago to allow publication. Review the dates and consent, then fetch; these are not current conditions.');
+      });
       bindForm('env-fetch-form','env-weather-error',async()=>{
         needData();requireAcknowledgement('env-fetch-consent','Consent is required for this specific online request. Local file import works without it.');
         if(by('env-site-form').dataset.dirty)throw new Error('Save or review your unsaved site edits before sending coordinates. The request uses the saved project site.');

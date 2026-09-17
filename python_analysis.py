@@ -1,15 +1,19 @@
-"""Bounded, local property calculations; no project authority, I/O or remote engines."""
+"""Local property calculations and a separate explicitly consented weather lookup."""
 
 from __future__ import annotations
 
 import importlib
+import json
 import math
 import re
 import threading
 from datetime import date, datetime, time, timedelta, timezone
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
+from time import monotonic
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import requests
 
 
 INSTALL_COMMAND = r".\.venv\Scripts\python.exe -m pip install -r requirements-analysis.txt"
@@ -17,6 +21,8 @@ LAUNCH_COMMAND = r".\.venv\Scripts\python.exe -B app.py"
 MAX_PAYLOAD_BYTES = 8192
 MAX_PATH_SAMPLES = 313
 REFERENCE_ATMOSPHERE = {"altitudeM": 0.0, "pressurePa": 101325.0, "temperatureC": 15.0}
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+WEATHER_RESPONSE_BYTES = 32768
 _PSYCHRO_LOCK = threading.Lock()
 
 
@@ -168,6 +174,140 @@ def calculate_density(data):
             "One constant scenario density; no indoor moisture transport, temperature or comfort prediction.",
         ],
     }
+
+
+def _now_utc():
+    return datetime.now(timezone.utc)
+
+
+def _weather_failure(message, code="weather_invalid_response", status=502):
+    return AnalysisError(message + " Previous weather and airflow inputs were not replaced.", code, status)
+
+
+def _read_current_weather(latitude, longitude):
+    params = {
+        "latitude": latitude, "longitude": longitude,
+        "current": "temperature_2m,relative_humidity_2m,surface_pressure",
+        "temperature_unit": "celsius", "timeformat": "unixtime", "timezone": "GMT", "forecast_days": 1,
+    }
+    deadline = monotonic() + 10
+    try:
+        with requests.Session() as session:
+            # Do not forward ambient netrc credentials, proxy settings or browser cookies.
+            session.trust_env = False
+            with session.get(OPEN_METEO_URL, params=params, timeout=(3.05, 6), stream=True,
+                             allow_redirects=False, headers={"Accept": "application/json", "Accept-Encoding": "identity"}) as response:
+                if response.status_code == 429:
+                    raise _weather_failure("Open-Meteo's request limit was reached. Try again later.", "weather_rate_limited", 429)
+                if response.status_code != 200:
+                    raise _weather_failure("Open-Meteo is unavailable or redirected the request. Try again later.", "weather_unavailable")
+                if response.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
+                    raise _weather_failure("Open-Meteo did not return JSON weather data.")
+                if response.headers.get("Content-Encoding", "identity").lower() != "identity":
+                    raise _weather_failure("Open-Meteo returned an unsupported compressed response.")
+                body = bytearray()
+                # Small uncompressed responses: check the elapsed budget even if
+                # a provider drips bytes too slowly to fill a large read buffer.
+                for chunk in response.iter_content(chunk_size=1):
+                    if monotonic() > deadline:
+                        raise requests.Timeout
+                    body.extend(chunk)
+                    if len(body) > WEATHER_RESPONSE_BYTES:
+                        raise _weather_failure("Open-Meteo's response exceeded the small current-weather limit.")
+                return json.loads(body)
+    except requests.Timeout:
+        raise _weather_failure("Open-Meteo timed out. Try again later.", "weather_timeout", 504) from None
+    except requests.RequestException:
+        raise _weather_failure("Open-Meteo could not be reached. Check connectivity and try again.", "weather_unavailable") from None
+    except AnalysisError:
+        raise
+    except (ValueError, RecursionError):
+        raise _weather_failure("Open-Meteo returned invalid JSON weather data.") from None
+
+
+def calculate_current_weather_density(data):
+    """Only this endpoint performs a fixed-provider network lookup; no file/cache writes."""
+    _object(data, {"latitude", "longitude", "acknowledgeOpenMeteo"})
+    latitude = _number(data.get("latitude"), "latitude", -90, 90)
+    longitude = _number(data.get("longitude"), "longitude", -180, 180)
+    if data.get("acknowledgeOpenMeteo") is not True:
+        raise AnalysisError("Explicitly acknowledge sending the saved site coordinates to Open-Meteo.",
+                            "external_lookup_not_acknowledged")
+    # Do not disclose coordinates if the local calculation dependency is unavailable.
+    _dependencies("psychrolib")
+    raw = _read_current_weather(latitude, longitude)
+    try:
+        if not isinstance(raw, dict) or raw.get("error"):
+            raise ValueError
+        current, units = raw.get("current"), raw.get("current_units")
+        expected = {"time": "unixtime", "interval": "seconds", "temperature_2m": "°C",
+                    "relative_humidity_2m": "%", "surface_pressure": "hPa"}
+        if not isinstance(current, dict) or not isinstance(units, dict) or any(units.get(key) != unit for key, unit in expected.items()):
+            raise ValueError
+        if raw.get("utc_offset_seconds") != 0:
+            raise ValueError
+        epoch = _number(current.get("time"), "current.time", -2208988800, 4133980799)
+        interval = _number(current.get("interval"), "current.interval", 1, 3600)
+        if epoch != int(epoch) or interval != int(interval):
+            raise ValueError
+        timestamp = datetime.fromtimestamp(epoch, timezone.utc)
+        now = _now_utc()
+        if not -3600 <= (now - timestamp).total_seconds() <= 10800:
+            raise _weather_failure("Open-Meteo's returned timestamp is not current. Try again later.", "weather_stale")
+        temperature = _number(current.get("temperature_2m"), "temperature_2m", -100, 200)
+        rh = _number(current.get("relative_humidity_2m"), "relative_humidity_2m", 0, 100)
+        # Never substitute pressure_msl or a standard-atmosphere density.
+        pressure = _number(current.get("surface_pressure"), "surface_pressure", 10, 1200) * 100
+
+        def optional(name, low, high):
+            return None if raw.get(name) is None else _number(raw[name], name, low, high)
+
+        grid_latitude = optional("latitude", -90, 90)
+        grid_longitude = optional("longitude", -180, 180)
+        elevation = optional("elevation", -500, 9000)
+    except AnalysisError as exc:
+        if exc.code == "weather_stale":
+            raise
+        raise _weather_failure("Open-Meteo did not supply complete, valid temperature, RH, surface-pressure or timestamp evidence.") from None
+    except (ValueError, TypeError, OverflowError, OSError):
+        raise _weather_failure("Open-Meteo returned missing values, unsupported units or invalid current-weather metadata.") from None
+    label = "Open-Meteo current model sample"
+    time_basis = "Modelled instant in UTC; intervalSeconds is the provider update interval, not an interval-end historical record."
+    record = {"timestamp": _utc(timestamp), "intervalSeconds": int(interval),
+              "temperatureC": temperature, "rhPct": rh, "pressurePa": pressure, "missing": []}
+    weather = {
+        "id": f"open-meteo-current:{latitude},{longitude}:{int(epoch)}",
+        "kind": "current-model", "requestedSite": {"latitude": latitude, "longitude": longitude},
+        "latitude": grid_latitude, "longitude": grid_longitude, "fetchedAtUTC": _utc(now),
+        "timestampMeaning": time_basis, "records": [record],
+        "units": {"temperatureC": "C", "rhPct": "%", "pressurePa": "Pa"},
+        "source": {
+            "label": label, "provider": "Open-Meteo", "format": "Open-Meteo current",
+            "elevationM": elevation, "temperatureReferenceHeightM": 2,
+            "model": "Provider best-match weather models; exact model/run not returned",
+            "pressureMeaning": "Modelled surface pressure; not sea-level-reduced pressure_msl",
+            "attribution": "Open-Meteo.com and its upstream weather providers",
+            "license": "Weather data: CC BY 4.0. Free API: non-commercial use, subject to quotas and provider terms.",
+            "documentation": "https://open-meteo.com/en/docs",
+            "termsURL": "https://open-meteo.com/en/terms",
+        },
+    }
+    source = {"kind": "weather-record", "label": label, "weatherId": weather["id"],
+              "recordTimestamp": record["timestamp"], "timeBasis": time_basis}
+    try:
+        result = calculate_density({"temperatureC": temperature, "rhPct": rh, "pressurePa": pressure, "source": source})
+    except AnalysisError as exc:
+        if exc.status == 503:
+            raise
+        raise _weather_failure("Open-Meteo supplied an unsupported moist-air state for the local density calculation.") from None
+    result["weather"] = weather
+    result["assumptions"] += [
+        "Explicit user-requested Open-Meteo current model sample, not measured on site or historical weather.",
+        "Only the saved site coordinates and fixed weather parameters were sent to Open-Meteo; no project geometry or imported files.",
+        "The fetched sample is session-only and must not replace an imported EPW/JSON dataset.",
+        f"Requested site {latitude:g}, {longitude:g}; returned grid {grid_latitude}, {grid_longitude}; model elevation {elevation} m above sea level.",
+    ]
+    return result
 
 
 def _day_boundary(day, zone):

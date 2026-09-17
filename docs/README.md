@@ -67,6 +67,9 @@ layouts in the GHMC/HMDA context.
   sun/ventilation/lighting coverage, and moisture/mold limitations.
 - [Environment workspace](environment-analysis.md): weather, shadows, materials,
   wind proposals, explicit numerical experiments and expert exports.
+- [Working local Python calculations](python-analysis.md): PsychroLib density,
+  explicit location-weather retrieval and pvlib solar-position/path charts,
+  including service setup, data ownership and output limits.
 - [Airflow workbench](airflow-workbench.md): explicit room/opening scenarios,
   [numerical meanings](airflow-visualizer.md), [cancellable local workers](airflow-worker.md)
   and [opening-linked arrows with table alternatives](airflow-display.md).

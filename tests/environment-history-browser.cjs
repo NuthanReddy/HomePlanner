@@ -290,7 +290,11 @@ module.exports=async function environmentHistory(browser,url){
     await page.evaluate(()=>{
       for(const [id,value] of Object.entries({dunit:'1',pEW:'22',pNS:'22',livingCount:'1',bedCount:'0',
         kitchenCount:'0',bathCount:'0',poojaCount:'0',liftCount:'0',stairCount:'0',balconyCount:'0'}))
-        document.getElementById(id).value=value;
+      {
+        const input=document.getElementById(id);
+        if(input.hasAttribute('data-room-setting'))HomePlannerRoomInputs.writeCommitted(input,value);
+        else input.value=value;
+      }
       render();HomePlanner.acceptLegacy();HomePlannerWorkspace.navigate('environment/models');
       document.querySelectorAll('#env-models-section details').forEach(details=>{details.open=true;});
     });

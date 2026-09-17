@@ -4,15 +4,16 @@
 **Scope:** the reviewed checkout, the [existing roadmap](building-performance-roadmap.md),
 the [persisted research](research/building-performance.md) and the supplied
 Three.js / Blender / Python-engine proposals. The user subsequently approved
-the R0 fixes, which are now implemented below. R1 and later engine/interop
-capabilities remain planned. Original source-line references describe the
+the R0 fixes and a second review with working local Python utilities, implemented
+below. Whole-building engine/interop capabilities remain planned. Original source-line references describe the
 pre-fix review snapshot; current API contracts are in the linked feature docs.
 
 ## R0 remediation completed
 
 The following fixes are in the working tree. Three.js, the shared project,
 local-first storage and the existing native study meanings are retained.
-No external simulation engines or optional Python libraries were installed.
+The initial R0 work installed no external engines or optional Python libraries.
+The subsequently approved PsychroLib/pvlib utilities are recorded separately below.
 
 | Original issue | Implemented correction |
 | --- | --- |
@@ -49,6 +50,45 @@ See [editor contracts](editor-workspace.md),
 The original findings below remain an audit trail, not a list of still-open
 R0 defects. This completion is not an external-engine, engineering, regulatory
 or scientific-validation claim.
+
+## Second review and working-tool follow-up completed
+
+The follow-up found and corrected additional paths which the first review did
+not cover:
+
+| Reproduced issue / approved addition | Delivered behavior |
+| --- | --- |
+| Clearing a quantity erased rooms and IDs while typing | Numeric room settings are owned drafts. Apply/Enter validates the whole pending batch and makes one edit; blur does not commit. Save/JSON use committed values, and conflicting saved inputs require explicit review. |
+| New defaults silently pinned retained furniture or promoted unknown direction | Restoration preserves pin/head metadata and explicit absence. Relocation warnings do not change pinning. New furniture can round-trip through grouped Apply, Undo and Redo without weakening exact snapshot guards. |
+| Solar/wind displays survived Undo or changed weather | Saved displays match their actual inputs and weather content, including same-ID changes, Clear/Undo, discarded drafts and monthly publication. Restoration does not rerun calculations. |
+| Touch compatibility events committed a draft before Cancel | Navigation parking now spans touch-generated mouse/focus events; Cancel retains the original geometry and pending value. |
+| Surviving full-wall apertures lost annotation/dimension anchors | Opening-entity anchors no longer require masonry when their canonical aperture survives. Actual removed-wall anchors and missing openings remain unresolved. |
+| Deleting an object lost keyboard focus | Successful confirmed deletion restores the persistent inspector heading; failure and Cancel retain their correct focus targets. |
+| Staircases looked like rooms with automatic doors and oversized passage locks | New stairs use an open profile and a schematic flight/landing/UP symbol. Entry clearance is bounded; the side guide is advisory, unfilled and selected-only. Existing enclosed stairs can explicitly switch through their properties with Undo and unchanged footprints. Authored opening sources remain recoverable. |
+| “Intent” switches mostly produced warnings | 3D now has clear Show-layer labels, actual record counts, disabled empty layers and working setup links. Short status stays above the drawing; qualifications and exact metadata are collapsed. Clearing light results removes stale meshes while retaining visibility preference. |
+| Python libraries were only referenced | Real local PsychroLib air-density and pvlib solar-position/day-path endpoints and routed UI cards are installed and working. The existing browser/Three.js tools remain. |
+| Density required manual physics inputs despite location/weather | The density card uses imported weather, familiar manual inputs, or an explicitly disclosed Open-Meteo location-weather action. Fetched samples remain session-only and do not replace imported data; late responses cannot overwrite later edits. |
+
+The running service is the existing Flask application with
+`requirements-analysis.txt`, not a new cloud/API/database stack. See
+[working Python calculations](python-analysis.md). This utility slice does
+not implement EnergyPlus, Radiance, PV yield, a coupled thermal/CFD solver or
+mold growth. The supplied simulator link remains an interaction reference,
+not copied or validated solver code.
+
+**Follow-up evidence:** 1,530 Node tests passed with no failures and the same
+one optional original-fixture skip; 21 Python analysis tests and 77 existing
+property-service tests passed. Production browser cases exercised programme
+drafts/Apply/Undo/JSON, real Python results, layer links, stair switching and
+symbols, solar/wind restoration, existing cross-page flows and desktop/mobile
+movement. Eight native mouse/touch interaction cases and the unstaged direct
+2D/3D action suite passed. A live location-weather request at the public
+synthetic point 0°,0° returned model weather and real PsychroLib density;
+no user site or private project was used for that check.
+
+For an older saved staircase, select it and choose **Open staircase** in its
+Enclosure properties to remove the generated enclosure/door reversibly.
+Old enclosure intent is not silently overwritten on loading a backup.
 
 ## Architecture recommendation
 
@@ -111,7 +151,7 @@ geometry for a user's active house.
 | Materials and thermal scenarios | `building-physics.js`, `environment-ui.js` | **Assembly descriptors and sensible RC scenarios.** No automatic whole-building weather/HVAC/moisture coupling, annual equipment consumption or equipment recommendation. |
 | Weather | `environment-data.js` parses EPW/JSON/provider data with units, interval and missing-value metadata | **Existing normalized inputs.** Engine runs additionally need original weather bytes, complete release-specific weather QA and explicit calendar/site policy. |
 | Drawings/reports | `planner-drawing-export.js:228`; `planner-package.js:50-81,439` | **Existing SVG/PDF/PNG and coordinated evidence packages.** Reuse fixed paper scale, continuation pages and manifests. These are not GLB, IFC or engine exports. |
-| Python runtime | `app.py:1-22,121-194`; `requirements.txt:1-10` | **Optional Flask property-report/OCR service.** No EnergyPlus, Radiance, pvlib, comfort, Blender or generic simulation job integration is present. Existing report jobs are not a simulation worker platform. |
+| Python runtime | `app.py`, `python_analysis.py`, `requirements-analysis.txt`, `planner-python-analysis.js` | **Working optional local utilities.** PsychroLib density, explicit location-weather retrieval and pvlib solar position/path accompany the property-report service. Whole-building energy, Radiance, comfort, Blender and generic engine jobs are not added. |
 | Blender / GLB / IFC | No such application adapters or `performance` implementation directory were found | **Proposed.** Start with optional visual assets/export; semantic IFC conversion and arbitrary mesh recovery are separate, later capabilities. |
 | Mold and moisture | Current sensible-only thermal scope and the [persisted humidity review](research/building-humidity-mold-risk.md) | **Not implemented.** Psychrometric properties, surface condensation and dynamic mold-index prediction require separate input/model gates. |
 | Specialist calculation references | All 12 packages contain `calculations.md`, `python-tools.md` and executable reference scripts | **Completed reference enrichment.** Equations/examples and local checks do not install or validate the documented optional engine stack. |

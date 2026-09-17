@@ -72,6 +72,7 @@ Useful integration/test selectors:
 - `#hp-editor-selected-kind`, `#hp-editor-selected-id`
 - `#hp-editor-object-select`
 - `#hp-editor-floor-select`, `#hp-editor-floor-name`, `#hp-editor-floor-height`
+- `#hp-editor-stair-enclosure` (staircase room selections only)
 - `#hp-editor-floor-allowance`
 - `[data-hp-editor-field="x"]`, `"y"`, `"w"`, `"h"`, `"headLocal"`, `"pinned"`,
   `"hinge"`, `"swing"`, `"widthM"`, `"sillM"`, `"headM"`, `"heightM"`,
@@ -122,6 +123,8 @@ opening is excluded from active scene apertures but retained in the project.
   alone does not execute geometry commands. Pointer navigation to an object,
   floor, toolbar action or workspace parks the draft instead of committing it
   merely because focus moved; shared request methods also retain pending inputs.
+  Compatibility mouse focus events emitted after a touch `pointerup` use the
+  same guard. Keyboard commits and ordinary field-to-field blur remain available.
   Escape discards a field draft.
 - Empty, incomplete, non-finite, unit-bearing and out-of-range numbers are
   rejected before command execution. There is no implicit zero or clamping.
@@ -140,13 +143,18 @@ Controls use native buttons, labels, fieldsets and decimal-input-mode text
 fields with strict numeric validation, visible focus
 rings, local error feedback and live status messages. Confirmation panels are
 in-app groups, not browser dialogs. Their Cancel button or Escape cancels the
-pending action. No document-wide arrow/Delete or SVG pointer handlers are added.
+pending action and returns focus to the available trigger. Successful deletion
+returns focus to the persistent inspector heading even when a synchronous scene
+refresh has already removed Confirm and the selected object's controls.
+Failed/stale confirmations remain available for review or Cancel; a new
+confirmation is not dismissed by completion of an older one.
+No document-wide arrow/Delete or SVG pointer handlers are added.
 
 ### Pending inputs and conflict review
 
 Every editable inspector field uses the existing `HomePlannerDrafts` registry,
 scoped by **project / floor / collection / entity**. Room and furniture
-coordinates, bed direction/pin, door/window properties and floor name/height
+coordinates, stair enclosure, bed direction/pin, door/window properties and floor name/height
 retain independent field drafts. Wall connection, retained-end trim, new-door
 and new-window forms have separate scoped entries even on the same wall.
 Typing or staging is not an authored project revision.
@@ -220,6 +228,23 @@ Room-sector preferences are suggestion-only: kitchen SE, bedrooms NE/NW and
 bathrooms South/West do not add hard snapping or travel-path checks to manual
 moves. Room position preferences are separate from a bed's actual head
 polarity, which still supports all four stored directions.
+
+### Staircase enclosure
+
+Only staircase room selections offer **Open staircase / Enclosed stairwell**.
+An absent `stairEnclosure` displays the legacy enclosed state without writing a
+default into the project. An explicit selection sends
+`{type:'update-room', id, rect:currentRect, stairEnclosure:value}`, with `value`
+equal to `'open'` or `'enclosed'`, through the bridge as one reversible edit;
+rendering does not change geometry.
+The field uses the existing project/floor/room draft scope and source guards.
+The bridge receiver must persist the per-room enclosure; the selector never
+writes legacy request or saved-layout records directly.
+
+Open mode omits automatic perimeter walls and the room door. Existing custom
+opening records and metadata stay saved and may become unresolved; the selector
+warns users to review their hosts. This is schematic enclosure intent, not
+engineered stair, clearance or construction approval.
 
 ### Beds
 
@@ -424,6 +449,22 @@ inactive floors, camera retention and lifecycle cleanup. Local vendored Three.js
 raycasts additionally cover balcony selection in floor-local and registered
 site frames at rotated headings. Node DOM doubles are not native-input,
 assistive-technology or real-GPU browser validation.
+
+The focused native interaction runner serves production files unchanged on an
+ephemeral loopback port and closes its disposable browser contexts afterward:
+
+```powershell
+node tests\planner-editor-interaction-browser.cjs
+```
+
+Set `HOMEPLANNER_PLAYWRIGHT_MODULE` to an existing Playwright or Playwright Core
+installation; no install step is needed. The optional
+`HOMEPLANNER_BROWSER_CHANNEL` selects an installed browser (default `chrome`).
+The runner uses trusted mouse clicks and native touch taps, verifies the
+touch-pointerup/compatibility-mousedown ordering, retained drafts after Cancel,
+subsequent keyboard/ordinary-blur commits, real room/opening deletion focus,
+Undo and failed source-review focus. It does not synthesize DOM pointer order,
+replace production scripts, or use the user's live project/profile.
 
 The direct-action slice adds:
 

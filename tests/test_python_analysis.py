@@ -5,7 +5,7 @@ import math
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 from app import create_app
@@ -169,6 +169,20 @@ class AnalysisAPIGuards(unittest.TestCase):
                     self.assertEqual(response.status_code, 400, response.json)
             dependencies.assert_not_called()
 
+    def test_weather_lookup_requires_explicit_coordinate_disclosure_and_no_arbitrary_url(self):
+        valid = {"latitude": 0, "longitude": 0, "acknowledgeOpenMeteo": True}
+        with patch.object(analysis.requests, "Session") as network:
+            with patch.object(analysis, "_dependencies", side_effect=analysis.AnalysisError("Missing", "dependency_unavailable", 503)):
+                for invalid in ({}, {**valid, "acknowledgeOpenMeteo": False}, {**valid, "acknowledgeOpenMeteo": 1},
+                                {**valid, "latitude": 91}, {**valid, "longitude": None},
+                                {**valid, "url": "https://unapproved.example/"}, {**valid, "project": {"id": "private"}}):
+                    response = self.client.post("/api/analysis/current-weather-density", json=invalid)
+                    self.assertEqual(response.status_code, 400)
+                self.assertEqual(self.client.post("/api/analysis/current-weather-density", json=valid).status_code, 503)
+                self.assertEqual(self.client.post("/api/analysis/current-weather-density", json=valid,
+                                                 headers={"Origin": "https://external.example"}).status_code, 403)
+            network.assert_not_called()
+
 
 class InstalledCalculations(unittest.TestCase):
     @classmethod
@@ -301,6 +315,128 @@ class InstalledCalculations(unittest.TestCase):
                 self.assertEqual(analysis.calculate_density(DENSITY)["status"], "ok")
                 self.assertEqual(analysis.calculate_solar(SOLAR)["status"], "ok")
                 network.assert_not_called()
+
+
+class CurrentWeatherDensityTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        try:
+            cls.psychro, _ = analysis._dependencies("psychrolib")
+        except analysis.AnalysisError:
+            raise unittest.SkipTest("Install requirements-analysis.txt for real optional-engine tests.") from None
+
+    def setUp(self):
+        self.now = datetime(2026, 9, 17, 16, 30, tzinfo=timezone.utc)
+        self.input = {"latitude": 0.0, "longitude": 0.0, "acknowledgeOpenMeteo": True}
+        self.raw = {
+            "latitude": 0.01, "longitude": 0.01, "elevation": 500, "utc_offset_seconds": 0,
+            "current_units": {"time": "unixtime", "interval": "seconds", "temperature_2m": "°C",
+                              "relative_humidity_2m": "%", "surface_pressure": "hPa"},
+            "current": {"time": int(self.now.timestamp()), "interval": 900, "temperature_2m": 25,
+                        "relative_humidity_2m": 0, "surface_pressure": 950},
+        }
+        self.network_patch = patch.object(analysis.requests, "Session")
+        self.factory = self.network_patch.start()
+        self.addCleanup(self.network_patch.stop)
+        self.session = self.factory.return_value.__enter__.return_value
+        self.response = self.session.get.return_value.__enter__.return_value
+        self.response.status_code = 200
+        self.response.headers = {"Content-Type": "application/json; charset=utf-8"}
+        clock = patch.object(analysis, "_now_utc", return_value=self.now)
+        clock.start(); self.addCleanup(clock.stop)
+        self.service = Mock()
+        self.client = create_app({"TESTING": True}, service=self.service).test_client()
+
+    def run_weather(self, raw=None):
+        self.response.iter_content.return_value = [json.dumps(raw if raw is not None else self.raw).encode("utf-8")]
+        return self.client.post("/api/analysis/current-weather-density", json=self.input)
+
+    def test_fixed_current_api_explicit_units_and_real_density_without_project_or_file_data(self):
+        before = copy.deepcopy(self.raw)
+        with patch.object(self.psychro, "GetMoistAirDensity", wraps=self.psychro.GetMoistAirDensity) as density:
+            response = self.run_weather()
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(density.call_count, 1)
+        result = response.json
+        self.assertEqual(result["engine"]["name"], "PsychroLib")
+        self.assertAlmostEqual(result["output"]["densityKgM3"], 1.110051985167255)
+        self.assertEqual(result["inputs"]["pressurePa"], 95000)
+        self.assertEqual(result["inputs"]["rhPct"], 0)
+        self.assertEqual(result["weather"]["requestedSite"], {"latitude": 0.0, "longitude": 0.0})
+        self.assertEqual(result["weather"]["latitude"], .01)
+        self.assertEqual(result["weather"]["source"]["elevationM"], 500)
+        self.assertEqual(result["weather"]["records"][0]["intervalSeconds"], 900)
+        self.assertNotIn("durationSeconds", result["weather"]["records"][0])
+        self.assertIn("Modelled instant", result["inputs"]["source"]["timeBasis"])
+        args, kwargs = self.session.get.call_args
+        self.assertEqual(args, (analysis.OPEN_METEO_URL,))
+        self.assertEqual(kwargs["params"], {"latitude": 0.0, "longitude": 0.0,
+            "current": "temperature_2m,relative_humidity_2m,surface_pressure", "temperature_unit": "celsius",
+            "timeformat": "unixtime", "timezone": "GMT", "forecast_days": 1})
+        self.assertEqual(kwargs["timeout"], (3.05, 6))
+        self.assertFalse(kwargs["allow_redirects"]); self.assertTrue(kwargs["stream"])
+        self.assertEqual(kwargs["headers"]["Accept-Encoding"], "identity")
+        self.assertFalse(self.session.trust_env)
+        self.assertEqual(self.raw, before)
+        self.assertEqual(self.service.mock_calls, [])
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_missing_elevation_remains_unknown_and_humid_air_is_not_dry_constant(self):
+        self.raw["elevation"] = None
+        self.raw["current"]["relative_humidity_2m"] = 80
+        result = self.run_weather().json
+        self.assertEqual(result["status"], "ok")
+        self.assertIsNone(result["weather"]["source"]["elevationM"])
+        self.assertLess(result["output"]["densityKgM3"], 1.110051985167255)
+        self.assertIn("not measured", " ".join(result["assumptions"]))
+
+    def test_incomplete_units_values_pressure_msl_and_stale_model_times_fail_without_fallback(self):
+        invalid = []
+        for key, value in (("surface_pressure", None), ("relative_humidity_2m", None), ("temperature_2m", "25"),
+                           ("surface_pressure", 95000), ("relative_humidity_2m", 101), ("time", None)):
+            raw = copy.deepcopy(self.raw); raw["current"][key] = value; invalid.append(raw)
+        raw = copy.deepcopy(self.raw)
+        del raw["current"]["surface_pressure"]; raw["current"]["pressure_msl"] = 1013.25; invalid.append(raw)
+        raw = copy.deepcopy(self.raw); raw["current_units"]["surface_pressure"] = "Pa"; invalid.append(raw)
+        raw = copy.deepcopy(self.raw); raw["current_units"] = {}; invalid.append(raw)
+        raw = copy.deepcopy(self.raw); raw["current"]["time"] -= 4 * 3600; invalid.append(raw)
+        raw = copy.deepcopy(self.raw); raw["current"]["time"] += 2 * 3600; invalid.append(raw)
+        raw = copy.deepcopy(self.raw); raw["current"].update(temperature_2m=200, relative_humidity_2m=100); invalid.append(raw)
+        with patch.object(self.psychro, "GetMoistAirDensity", wraps=self.psychro.GetMoistAirDensity) as density:
+            for raw in invalid:
+                with self.subTest(raw=raw):
+                    response = self.run_weather(raw)
+                    self.assertEqual(response.status_code, 502, response.json)
+                    self.assertNotIn("output", response.json)
+                    self.assertNotIn("weather", response.json)
+            density.assert_not_called()
+
+    def test_redirect_rate_limit_timeout_network_and_large_invalid_responses_are_bounded_and_redacted(self):
+        for status, expected in ((301, 502), (429, 429), (500, 502)):
+            self.response.status_code = status
+            response = self.run_weather()
+            self.assertEqual(response.status_code, expected)
+            self.assertNotIn("output", response.json)
+        self.response.status_code = 200
+        for error, expected in ((analysis.requests.Timeout(r"private C:\secret"), 504),
+                                (analysis.requests.ConnectionError("private network detail"), 502)):
+            self.session.get.side_effect = error
+            response = self.run_weather()
+            self.assertEqual(response.status_code, expected)
+            self.assertNotIn("private", response.get_data(as_text=True))
+        self.session.get.side_effect = None
+        for body in (b"x" * (analysis.WEATHER_RESPONSE_BYTES + 1), b"not-json"):
+            self.response.iter_content.return_value = [body]
+            response = self.client.post("/api/analysis/current-weather-density", json=self.input)
+            self.assertEqual(response.status_code, 502)
+            self.assertNotIn("output", response.json)
+        self.response.headers = {"Content-Type": "text/html"}
+        self.assertEqual(self.run_weather().status_code, 502)
+        self.response.headers = {"Content-Type": "application/json", "Content-Encoding": "gzip"}
+        self.assertEqual(self.run_weather().status_code, 502)
+        self.response.headers = {"Content-Type": "application/json"}
+        with patch.object(analysis, "monotonic", side_effect=[0, 11]):
+            self.assertEqual(self.run_weather().status_code, 504)
 
 
 if __name__ == "__main__":

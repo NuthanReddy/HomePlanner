@@ -48,6 +48,20 @@ placement; input-field Escape keeps its ordinary field behavior.
 
 ## Packing and editing
 
+Room quantities and numeric programme/default-size fields are unapplied drafts
+while typing, including blank or incomplete values. **Apply** or Enter validates
+the pending batch and records one project edit; leaving a field does not apply
+it. **Discard** keeps the saved values. Drafts retain their project/floor owner,
+and changed saved values require explicit review. JSON export and browser Save
+contain committed values, not unfinished text.
+
+Use `HomePlannerRoomInputs.readCommitted/readNumber/readCount` for committed
+numeric settings and `writeCommitted` for deliberate legacy actions. Direct
+`input.value` is the displayed draft, not the project's accepted programme.
+Quantity/default-size edits within an unchanged floor envelope preserve existing
+room/furniture placement. Wall/corridor changes still change the available
+physical envelope and need layout review.
+
 The automatic planner uses deterministic rectangle packing with scoring for:
 
 - Fit and non-overlap between ordinary rooms and between service reservations.
@@ -68,6 +82,9 @@ newly freed space does not silently spawn previously missing starter furniture,
 and a new room does not reset existing component dimensions. Conflicting saved
 items remain visible for relocation rather than being replaced by catalogue
 defaults.
+Restoration also preserves omitted pin/head-direction metadata; a retained
+item needing relocation is not silently pinned or assigned a confirmed head
+direction.
 
 A drag shows a temporary
 footprint and validates its **destination**, not a collision-free travel path.
@@ -97,22 +114,29 @@ room remains visible in the schedule with zero usable area and a warning.
 
 New/suggested staircase blocks put their long side parallel to the road/frontage
 (the local X direction). Existing manual orientations are not forcibly changed.
+New staircase requests use an **open staircase** profile: the plan draws
+schematic flights, tread marks, a landing and an UP direction, not an automatic
+room door or generated masonry enclosure. The symbol is not a measured riser/
+tread schedule. Older saved enclosures are retained until explicitly changed
+in the stair properties; changing the enclosure preserves the footprint and
+other rooms. Authored door sources are retained for review if their host is
+removed, rather than silently deleted.
+
 The staircase palette supplies an **Along-stair passage width** in feet, default
-3 ft as an explicit design assumption, not a certified minimum. A dashed 2D
-clearance strip is placed alongside the long edge where it fits, without moving
-other rooms. It remains part of the current floor area and is not counted twice.
-Furniture cannot be newly placed in the strip; affected existing furniture remains
-available for relocation. A strip crossing a room boundary is marked for review:
-it does not silently remove that partition, create floor area or certify an escape
-route. A width of zero disables the guide.
+3 ft as an explicit design assumption, not a certified minimum. Selecting a
+stair shows an unfilled advisory side guide and a bounded clearance at its
+entry end. The side guide is not another room, does not deduct area and does
+not exclude furniture or lock a whole circulation flex-space. A crossing room
+boundary still needs review; no partition is silently removed to form a corridor.
+A width of zero disables the requested guides.
 
 New lift proposals prefer a position beside the staircase's shared access
 passage, with a passage-facing edge, rather than occupying the path in front of
 the stairs. Stairs are proposed before lifts when both are added together.
 Adding a lift to an existing plan keeps the stair, other rooms and their
-dimensions fixed. The full wall-inclusive lift footprint must stay clear of
-the along-stair guide and any existing staircase entrance passage during
-placement, movement and resizing. A blocked destination is rejected without
+dimensions fixed. The full lift footprint must stay clear of the bounded
+stair landing approach during placement, movement and resizing, not an entire
+generic surrounding passage/flex rectangle. A blocked destination is rejected without
 shifting the passage or changing the saved geometry. Adjacency is a proposal
 preference, not a fixed corridor snap; users can still choose another valid
 interior position. This does not verify a lift landing, door clear width or

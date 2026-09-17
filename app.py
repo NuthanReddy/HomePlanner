@@ -16,6 +16,7 @@ from prohibited_properties.store import CacheError, ReportStore
 from telangana_prohibited_properties import TelanganaPortal
 from python_analysis import (
     AnalysisError, MAX_PAYLOAD_BYTES, calculate_density, calculate_solar, capabilities,
+    calculate_current_weather_density,
 )
 
 
@@ -123,6 +124,10 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
     def index():
         return send_file(ROOT.joinpath("index.html"))
 
+    @app.get("/user-guide.html")
+    def user_guide():
+        return send_file(ROOT.joinpath("user-guide.html"))
+
     @app.get("/prohibited-properties")
     def prohibited_workspace():
         return redirect("/?workspace=prohibited")
@@ -154,6 +159,10 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
     @app.post("/api/analysis/air-density")
     def analysis_density():
         return run_analysis(calculate_density)
+
+    @app.post("/api/analysis/current-weather-density")
+    def analysis_current_weather_density():
+        return run_analysis(calculate_current_weather_density)
 
     @app.post("/api/analysis/solar-position")
     def analysis_solar():

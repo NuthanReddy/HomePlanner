@@ -348,6 +348,25 @@ Width overrides are anchored at the original aperture start. `hinged` and
 footprints; missing legacy polarity is marked `headDirectionAssumed` and
 diagnosed, rather than pretending a rotation boolean establishes the head end.
 
+### Stair enclosure and plan symbol
+
+Stair requests may explicitly carry `stairEnclosure: 'open' | 'enclosed'`
+and `stairEntryEdge: 'N' | 'E' | 'S' | 'W'`; these values are exposed on the
+scene room when supplied. Absent enclosure data keeps the legacy behavior,
+not a silent migration of a saved stairwell. New Room Planner stair requests
+default to open; saved per-room settings override that default.
+
+An open stair retains its complete planning reservation and host-area deduction,
+but does not generate a masonry room perimeter or an automatic access door.
+External walls and independent structural objects are not removed. Existing
+authored opening records stay saved and become unresolved if their host no
+longer exists; restoring the enclosure can resolve them again.
+
+The floor-plan flight/landing/UP glyph is explicitly schematic. It does not
+supply a measured tread/riser schedule, floor penetration, load path or a
+closed thermal/pressure zone. The side guide is advisory; only the bounded
+entry approach participates in the requested clearance exclusion.
+
 ### Direct wall and opening commands
 
 The shared inspector accepts selections from either view; commands always

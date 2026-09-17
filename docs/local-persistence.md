@@ -100,6 +100,13 @@ save its own current project after this tab deletes a copy.
 
 ## Browser integration
 
+Numeric Room Planner inputs use `planner-room-inputs.js`, loaded before inline
+room initialization. The bridge captures committed values even while the UI
+shows blank/incomplete drafts. Apply/Enter uses one guarded
+`update-room-controls` transaction; Discard and conflict review use the shared
+draft registry. Pending room inputs remain outside project JSON and saved
+browser copies until applied, but are included in pending-input/unload warnings.
+
 The coordinator owns these additions to `index.html`:
 
 ```html

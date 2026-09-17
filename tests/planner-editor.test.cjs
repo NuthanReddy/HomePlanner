@@ -116,6 +116,19 @@ test('rectangle editing rejects zero dimensions, corrupt source geometry and uns
   assert.throws(() => editor.rectCommand('room', null, 'x', '2'), /no longer/);
 });
 
+test('stair enclosure uses update-room with the exact current footprint and only explicit enum values', () => {
+  const staircase = deepFreeze({ id: 'floor-one:stairs', type: 'staircase', rect: { x: 1.12375, y: 2.375, w: 1.7, h: 3.9 } });
+  for (const value of ['open', 'enclosed']) {
+    const command = editor.stairEnclosureCommand(staircase, value);
+    assert.deepEqual(command, { type: 'update-room', id: staircase.id, rect: staircase.rect, stairEnclosure: value });
+    assert.notEqual(command.rect, staircase.rect);
+  }
+  assert.equal(Object.hasOwn(staircase, 'stairEnclosure'), false);
+  for (const value of ['', null, undefined, true, 'OPEN'])
+    assert.throws(() => editor.stairEnclosureCommand(staircase, value), /staircase room/);
+  assert.throws(() => editor.stairEnclosureCommand({ ...staircase, type: 'lift' }, 'open'), /staircase room/);
+});
+
 for (const [direction, expected] of Object.entries({ N: [0, 90, 180, 270], E: [90, 180, 270, 0],
   S: [180, 270, 0, 90], W: [270, 0, 90, 180] })) {
   test(`actual ${direction} bed head is retained across all four road headings`, () => {

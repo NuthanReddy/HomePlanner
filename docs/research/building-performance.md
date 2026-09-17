@@ -20,8 +20,24 @@ than reproduce the third-party articles.
 | [Free Home Energy Audit Simulator: Free DIY Energy Assessment Calculator](https://simulations4all.com/simulations/home-energy-audit-simulator) | Household energy use, envelope/system improvements, savings estimates and retrofit comparisons. | [Research notes](./home-energy-audit-simulator.md) |
 | [Free Gym CO2 & Humidity Build-Up Simulator](https://simulations4all.com/simulations/gym-co2-humidity-buildup-simulator) | Time-varying occupancy/activity, CO2 generation, moisture generation and ventilation. | [Research notes](./gym-co2-humidity.md) |
 
-All references are published by **Simulations4All**. The supplied "Free"
+The catalogue above is published by **Simulations4All**. The supplied "Free"
 labels are retained as titles, not independently verified availability claims.
+
+## Additional interaction reference
+
+On **17 September 2026**, the user supplied
+[Airflow + Thermal Simulator](https://totallaw1.github.io/airflow-simulator/).
+An isolated browser inspection found direct wall/door/window/fan tools,
+indoor/outdoor temperature controls, explicit Run/Reset, and temperature,
+velocity, pressure and smoke display modes. This is useful interaction
+reference for immediate graphical feedback instead of text-only switches.
+
+The page attributes its fluid method to Stable Fluids. That statement and its
+automatic cooling advice were not independently benchmarked here; animated
+colour or a method name is not evidence of calibrated room performance.
+HomePlanner should keep its actual edited project as the source, distinguish
+quantities and use independently implemented/validated methods rather than
+copying this page or substituting its example room.
 
 ## Review checklist
 

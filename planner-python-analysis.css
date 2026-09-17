@@ -13,6 +13,8 @@
 .hp-python-analysis h3 { margin: 0 0 6px; font-size: 1rem; }
 .hp-python-analysis p { margin: 8px 0; overflow-wrap: anywhere; }
 .hp-python-help, .hp-python-status { font-size: .82rem; line-height: 1.5; color: var(--dim, #59636e); }
+.hp-python-weather-retrieval { border-bottom: 1px solid var(--line, #d0d7de); padding: 8px 0; margin-bottom: 10px; }
+.hp-python-weather-retrieval button { white-space: normal; text-align: left; }
 .hp-python-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 10px; align-items: start; }
 .hp-python-analysis label { display: flex; flex-direction: column; gap: 5px; font-size: .82rem; min-width: 0; }
 .hp-python-analysis input, .hp-python-analysis select, .hp-python-analysis button {

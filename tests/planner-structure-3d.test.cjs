@@ -168,6 +168,7 @@ function domHarness(webgl = true) {
       this.clientWidth = 800; this.clientHeight = 600; this.classList = { add() {}, toggle() {} };
     }
     set innerHTML(html) {
+      this.html = html;
       for (const match of html.matchAll(/<[^>]+data-hp3d="([^"]+)"[^>]*>/g)) {
         const el = new Element('element'); el.dataset.hp3d = match[1];
         el.checked = /\schecked(?:\s|>)/.test(match[0]); el.hidden = /\shidden(?:\s|>)/.test(match[0]);

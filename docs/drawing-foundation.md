@@ -168,12 +168,18 @@ scene IDs, not source IDs or labels. Entity anchors resolve to:
 
 - Room/furniture rectangle centre at floor elevation (not a guessed furniture
   height); obstacle volume centre using its project-relative base.
-- Opening aperture centre at wall base + sill + half opening height.
+- Opening aperture centre at wall base + sill + half opening height. A surviving
+  canonical window/hinged/sliding opening keeps that entity reference when its
+  full-width/full-height aperture leaves no masonry (`wall.removed`). This does
+  not restore material or change the authored anchor.
 - Fixture/service-node authored anchor; stair midpoint; mean of structural intent
   anchors. This is a reference position, not generated discipline geometry.
 
-Anchor values are never rewritten during resolution. Missing floors/entities,
-removed walls, aperture voids, out-of-bounds wall offsets/heights, cyclic/deep host dependencies,
+Anchor values are never rewritten during resolution. Actual wall anchors still
+reject removed masonry and aperture voids. Ordinary openings made unresolved by
+partition removal do not become valid entity hosts, and a full-height passage
+does not gain the canonical door/window exception. Missing floors/entities,
+out-of-bounds wall offsets/heights, cyclic/deep host dependencies,
 unknown positions and missing geometry remain repairable authored records.
 They do not snap to another host. A resolved position does **not** imply that
 dimensions, structural members or service systems have been engineered.
@@ -181,6 +187,11 @@ Null member sizes, fixture sizes, pipe diameters, inverts and slopes remain null
 Structural records are conceptual intent, not slab polygons or load-bearing designs;
 the optional structural projection produces only explicitly sized simple geometry.
 stairs do not generate treads; routes do not generate solved pipe geometry.
+
+`tests\planner-projection-openings.test.cjs` checks canonical window, hinged-door
+and sliding-door annotation/dimension anchors through full-height edits and
+Undo/Redo using the real model, bridge and site projection. It separately keeps
+removed-masonry wall anchors and partition-removal cases unresolved.
 
 Host resolution caches each authored host at each of the 64 permitted dependency
 depths per build. Shared/branching dependencies therefore evaluate at most 64

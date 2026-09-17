@@ -2,6 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 
 test('manual layouts are restored directly rather than regenerated before restoration',()=>{
@@ -31,6 +32,25 @@ test('layout JSON buttons reuse the complete-project persistence request flow',(
   assert.doesNotMatch(init,/JSON\.stringify|createObjectURL/);
 });
 
+test('restoring furniture preserves unknown direction and omitted default pin metadata',()=>{
+  const source=html.match(/function roomRestoreFurnitureFlags\([^]*?\n\}/)[0];
+  const original={id:'bed',x:1,y:2,w:1.5,h:2};
+  const project={legacy:{context:{plan:{furniture:[original]}}}};
+  const api=vm.createContext({HomePlanner:{getProject:()=>project}});
+  vm.runInContext(source,api);
+  const candidate={...original,headLocal:'S',pinned:true},saved={pinned:false};
+  api.roomRestoreFurnitureFlags(candidate,saved);
+  assert.equal(Object.hasOwn(candidate,'headLocal'),false);
+  assert.equal(Object.hasOwn(candidate,'pinned'),false);
+  assert.deepEqual(candidate,original);
+  assert.deepEqual(saved,{pinned:false});
+  api.roomRestoreFurnitureFlags(candidate,{headLocal:'S',pinned:true});
+  assert.equal(candidate.headLocal,'S');assert.equal(candidate.pinned,true);
+  original.pinned=true;original.headLocal='S';
+  api.roomRestoreFurnitureFlags(candidate,{pinned:false});
+  assert.equal(candidate.pinned,false);assert.equal(candidate.headLocal,'S');
+});
+
 async function browserSmoke(browser,url){
   const context=await browser.newContext({viewport:{width:1440,height:1050}});
   const page=await context.newPage(),errors=[];
@@ -46,7 +66,11 @@ async function browserSmoke(browser,url){
       document.getElementById('face').value='N';buildRoadInputs();
       for(const [id,value] of Object.entries({dunit:'1',pEW:'30',pNS:'30',livingCount:'1',bedCount:'2',
         kitchenCount:'1',bathCount:'0',poojaCount:'0',liftCount:'0',stairCount:'1',balconyCount:'0'}))
-        document.getElementById(id).value=value;
+      {
+        const input=document.getElementById(id);
+        if(input.hasAttribute('data-room-setting'))HomePlannerRoomInputs.writeCommitted(input,value);
+        else input.value=value;
+      }
       render();HomePlanner.acceptLegacy();
       const original=roomPackProgram;
       window.__repackCalls=0;

@@ -134,8 +134,7 @@ function documentFixture() {
   };
 }
 
-function plannerFixture() {
-  const project = createFixture('multiple-floors').project;
+function plannerFixture(project = createFixture('multiple-floors').project) {
   project.legacy.context.g.balconies = [{ id: 'balcony-3', label: 'Balcony 3', x: .1, y: 2, w: .6, h: 1, attachedRoomId: 'living' }];
   project.floors[0].legacy = copy(project.legacy);
   let legacy = copy(project.legacy), nextId = 1, failNext = '';
@@ -146,9 +145,12 @@ function plannerFixture() {
       const plan = legacy.context.plan;
       if (command.type === 'update-room') {
         const room = plan.placed.find(room => room.req.id === entity.sourceId), prior = room.carpet;
-        room.module = { x: room.module.x + command.rect.x - prior.x, y: room.module.y + command.rect.y - prior.y,
-          w: room.module.w + command.rect.w - prior.w, h: room.module.h + command.rect.h - prior.h };
-        room.carpet = copy(command.rect);
+        if (Object.keys(command.rect).some(key => command.rect[key] !== prior[key])) {
+          room.module = { x: room.module.x + command.rect.x - prior.x, y: room.module.y + command.rect.y - prior.y,
+            w: room.module.w + command.rect.w - prior.w, h: room.module.h + command.rect.h - prior.h };
+          room.carpet = copy(command.rect);
+        }
+        if (Object.hasOwn(command, 'stairEnclosure')) room.req.stairEnclosure = command.stairEnclosure;
       } else if (command.type === 'delete-furniture') plan.furniture = plan.furniture.filter(item => item.id !== entity.sourceId);
       else {
         const item = plan.furniture.find(item => item.id === entity.sourceId);
@@ -407,6 +409,66 @@ test('bed direction, explicit false pin and opening handing use the same scoped 
     swing.dispatch('change');
     assert.equal(editor.getPendingDrafts().some(entry => entry.collection === 'doors'), false);
     assert.equal(editor.getPendingDrafts().find(entry => entry.collection === 'furniture').draft.fields.pinned.raw, false);
+  } finally { h.dispose(); }
+});
+
+test('stair enclosure uses scoped drafts and real controller/model history with an enclosure-aware fixture adapter', () => {
+  const project = createFixture('multiple-floors').project;
+  const request = project.legacy.context.plan.placed.find(room => room.req.id === 'bedroom').req;
+  request.type = 'staircase'; request.label = 'Synthetic staircase';
+  delete request.stairEnclosure;
+  const initial = Model.buildScene(project.legacy.context, project), id = 'ground:bedroom';
+  const host = initial.walls.find(wall => wall.roomIds.includes(id)
+    && !initial.openings.some(opening => opening.wallId === wall.id));
+  assert.ok(host);
+  const custom = {
+    id: 'kept-stair-opening', kind: 'window', type: 'window', custom: true, roomId: 'bedroom',
+    wallId: host.id, offsetM: .2, widthM: .3, sillM: .5, heightM: .3, openFraction: 0,
+    metadata: { reference: 'Retain supplied source metadata' }
+  };
+  project.legacy.context.plan.customOpenings.push(custom);
+  const h = plannerFixture(project), { planner, editor, dom } = h;
+  try {
+    h.select('room', 'ground:living');
+    assert.equal(dom.by('hp-editor-stair-enclosure'), null, 'Ordinary rooms do not receive an enclosure selector.');
+    h.select('room', id);
+    const before = planner.exportProject(), beforeScene = planner.getScene();
+    const original = beforeScene.rooms.find(room => room.id === id), revision = planner.getProject().revision;
+    assert.equal(dom.by('hp-editor-stair-enclosure').value, 'enclosed');
+    editor.render(); editor.render();
+    assert.equal(planner.exportProject(), before, 'Displaying the legacy enclosed default does not backfill it.');
+    assert.equal(Object.hasOwn(original, 'stairEnclosure'), false);
+    h.fill('hp-editor-room-x', '-');
+    h.fill('hp-editor-stair-enclosure', 'open');
+    assert.equal(editor.getPendingDrafts().find(entry => entry.entityId === id).draft.fields.stairEnclosure.raw, 'open');
+    h.select('room', 'ground:living'); h.select('room', id);
+    const enclosure = dom.by('hp-editor-stair-enclosure');
+    assert.equal(enclosure.value, 'open');
+    h.fail('Synthetic enclosure rejection');
+    enclosure.dispatch('change');
+    assert.equal(planner.exportProject(), before);
+    assert.equal(enclosure.value, 'open');
+    assert.match(dom.by('hp-editor-inspector-error').textContent, /Synthetic enclosure rejection/);
+    dom.action('apply-field-draft', enclosure.parentElement).click();
+    assert.deepEqual(h.commands.at(-1), { type: 'update-room', id, rect: original.rect, stairEnclosure: 'open' });
+    assert.equal(planner.getProject().revision, revision + 1);
+    const updated = planner.getScene().rooms.find(room => room.id === id);
+    assert.equal(updated.stairEnclosure, 'open');
+    assert.deepEqual(updated.rect, original.rect);
+    assert.deepEqual(updated.module, original.module);
+    assert.deepEqual(planner.getScene().rooms.filter(room => room.id !== id).map(room => room.rect),
+      beforeScene.rooms.filter(room => room.id !== id).map(room => room.rect));
+    assert.deepEqual(planner.getProject().legacy.context.plan.customOpenings, [custom]);
+    const pending = editor.getPendingDrafts().find(entry => entry.entityId === id).draft.fields;
+    assert.equal(pending.x.raw, '-');
+    assert.equal(pending.stairEnclosure, undefined, 'Successful enclosure commit removes only its own field draft.');
+    assert.match(enclosure.parentElement.textContent, /Custom openings stay saved but may need host review/);
+    planner.undo(); h.select('room', id);
+    assert.equal(Object.hasOwn(planner.getScene().rooms.find(room => room.id === id), 'stairEnclosure'), false);
+    assert.equal(dom.by('hp-editor-stair-enclosure').value, 'enclosed');
+    assert.deepEqual(planner.getProject().legacy.context.plan.customOpenings, [custom]);
+    planner.redo(); h.select('room', id);
+    assert.equal(dom.by('hp-editor-stair-enclosure').value, 'open');
   } finally { h.dispose(); }
 });
 

@@ -41,7 +41,7 @@
     return {
       kind: 'weather-record', label: short(weather.source?.label || 'Imported weather record'),
       weatherId: short(weather.id || 'unidentified-weather'), recordTimestamp: row.timestamp,
-      durationSeconds: row.durationSeconds,
+      ...(row.durationSeconds === undefined ? {} : { durationSeconds: row.durationSeconds }),
       timeBasis: short(weather.timestampMeaning || 'UTC interval end; source temperature/pressure/RH timing retained'),
     };
   }
@@ -99,7 +99,7 @@
             temperatureC: '', rhPct: '', pressureHpa: '', sourceNote: '' },
           solarInputs: { mode: hasWeather ? 'weather' : 'manual', recordIndex: '1',
             altitudeM: '', temperatureC: '', pressureHpa: '', acknowledgeReferenceAtmosphere: false, sampleMinutes: '15' },
-          density: emptyResult(), solar: emptyResult(),
+          density: emptyResult(), solar: emptyResult(), currentWeather: null,
         });
       }
       return sessions.get(project.id);
@@ -114,13 +114,15 @@
       Object.assign(data[kind], { status, message, result: null, key: null, applied: false });
     }
     function capture(kind, project = planner.getProject()) {
-      const data = session(project), form = data[`${kind}Inputs`], weather = getWeather(project);
-      const row = form.mode === 'weather' ? pickedWeather(weather, form.recordIndex) : null;
+      const data = session(project), form = data[`${kind}Inputs`];
+      const weather = kind === 'density' && form.mode === 'current' ? data.currentWeather : getWeather(project);
+      const row = form.mode === 'current' ? weather?.records?.[0] || null
+        : form.mode === 'weather' ? pickedWeather(weather, form.recordIndex) : null;
       const airflowController = kind === 'density' ? getAirflow() : null;
       const airflow = airflowController?.getState?.() || null;
       const solar = kind === 'solar' ? getSolarInput(project) || {} : null;
       const evidence = { projectId: project.id, site: siteEvidence(project), form,
-        weather: form.mode === 'weather' ? weatherEvidence(weather, row, kind) : null,
+        weather: ['weather', 'current'].includes(form.mode) ? weatherEvidence(weather, row, kind) : null,
         airflow: airflow ? { projectId: airflow.projectId, selectedScenarioId: airflow.selectedScenarioId, draft: airflow.draft } : null,
         solar };
       return { project, data, form, weather, row, airflow, airflowController, solar, key: canonical(evidence) };
@@ -165,11 +167,13 @@
         projectId: project.id, ...copy(data),
         weatherCount: weather?.records?.length || 0,
         weatherLabel: short(weather?.source?.label || 'Imported weather'),
-        densityWeather: copy(pickedWeather(weather, data.densityInputs.recordIndex)),
+        densityWeather: copy(data.densityInputs.mode === 'current' ? data.currentWeather?.records?.[0]
+          : pickedWeather(weather, data.densityInputs.recordIndex)),
         solarWeather: copy(pickedWeather(weather, data.solarInputs.recordIndex)),
         solarInput: copy(getSolarInput(project) || {}),
         solarAtmosphere: atmosphere(capture('solar', project)),
         airflowReady: !!getAirflow()?.setDraft,
+        savedSite: copy(siteEvidence(project)),
       };
     }
     function notify() {
@@ -187,17 +191,20 @@
       invalidate(kind, data); notify();
     }
     function densityPayload(captured) {
-      const { form, weather, row } = captured;
-      if (form.mode === 'weather' && !row) throw inputError('Import weather in Site or choose Manual inputs. Select an available record number.');
-      const temperatureC = form.mode === 'weather' ? weatherValue(row, 'temperatureC') : numeric(form.temperatureC);
-      const rhPct = form.mode === 'weather' ? weatherValue(row, 'rhPct') : numeric(form.rhPct);
+      const { form, weather, row, project } = captured, fromWeather = ['weather', 'current'].includes(form.mode);
+      if (fromWeather && !row) throw inputError('Select an imported record, explicitly get weather, or choose Manual inputs.');
+      if (form.mode === 'current' && (weather.requestedSite?.latitude !== project.site?.latitude ||
+          weather.requestedSite?.longitude !== project.site?.longitude))
+        throw inputError('The saved location changed. Get weather for this location again, or choose imported/manual inputs.');
+      const temperatureC = fromWeather ? weatherValue(row, 'temperatureC') : numeric(form.temperatureC);
+      const rhPct = fromWeather ? weatherValue(row, 'rhPct') : numeric(form.rhPct);
       const pressure = numeric(form.pressureHpa);
-      const pressurePa = form.mode === 'weather' ? weatherValue(row, 'pressurePa') : pressure === null ? null : pressure * 100;
+      const pressurePa = fromWeather ? weatherValue(row, 'pressurePa') : pressure === null ? null : pressure * 100;
       requireNumber(temperatureC, 'Temperature (°C)', -100, 200);
       requireNumber(rhPct, 'Relative humidity (%)', 0, 100);
       requireNumber(pressurePa, 'Absolute pressure (Pa)', 1000, 120000);
       return { temperatureC, rhPct, pressurePa,
-        source: form.mode === 'weather' ? weatherSource(weather, row)
+        source: fromWeather ? weatherSource(weather, row)
           : { kind: 'manual', label: short(form.sourceNote) || 'Manually supplied scenario; not measured indoor conditions' } };
     }
     function atmosphere(captured) {
@@ -265,7 +272,18 @@
       }
       return value;
     }
-    async function requestCalculation(kind, payload, token) {
+    function validateCurrentWeather(value, input, captured) {
+      const weather = value?.weather, row = weather?.records?.[0];
+      if (weather?.kind !== 'current-model' || weather.source?.provider !== 'Open-Meteo' ||
+          weather.requestedSite?.latitude !== input.latitude || weather.requestedSite?.longitude !== input.longitude ||
+          weather.records?.length !== 1 || !row || !Number.isFinite(Date.parse(row.timestamp)) ||
+          !finite(row.intervalSeconds) || row.intervalSeconds <= 0 || row.intervalSeconds > 3600 ||
+          weather.units?.temperatureC !== 'C' || weather.units?.rhPct !== '%' || weather.units?.pressurePa !== 'Pa')
+        throw inputError('The weather service returned incomplete or mismatched model data. Previous inputs retained.', 'invalid_response');
+      const payload = densityPayload({ ...captured, weather, row, form: { ...captured.form, mode: 'current' } });
+      return validateResponse('density', value, payload);
+    }
+    async function requestCalculation(kind, payload, token, endpoint, validate) {
       if (!localService(runtime)) throw inputError(SERVICE_HELP, 'service_unavailable');
       const fetcher = options.fetch || runtime.fetch?.bind(runtime);
       if (!fetcher) throw inputError(SERVICE_HELP, 'service_unavailable');
@@ -281,7 +299,7 @@
       const operation = (async () => {
         let response;
         try {
-          response = await fetcher(`/api/analysis/${kind === 'density' ? 'air-density' : 'solar-position'}`, {
+          response = await fetcher(`/api/analysis/${endpoint || (kind === 'density' ? 'air-density' : 'solar-position')}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
             cache: 'no-store', body: JSON.stringify(payload), signal: abort?.signal,
           });
@@ -294,11 +312,13 @@
           if (value.error?.code === 'dependency_unavailable')
             throw inputError(`Calculation library unavailable. Run ${INSTALL}, then restart with ${LAUNCH}.`, 'service_unavailable');
           // Do not render arbitrary HTML, proxy failures or Python tracebacks from a service.
-          const safeCodes = ['invalid_input', 'reference_acknowledgement_required', 'analysis_busy', 'calculation_failed'];
+          const safeCodes = ['invalid_input', 'reference_acknowledgement_required', 'analysis_busy', 'calculation_failed',
+            'external_lookup_not_acknowledged', 'weather_rate_limited', 'weather_unavailable', 'weather_invalid_response',
+            'weather_timeout', 'weather_stale'];
           throw inputError(safeCodes.includes(value.error?.code) ? short(value.error.message, 420)
             : 'Local service rejected this request. Check the inputs and service, then retry.');
         }
-        return validateResponse(kind, value, payload);
+        return validate ? validate(value, payload) : validateResponse(kind, value, payload);
       })();
       try { return await Promise.race([operation, cancelled, timeout]); }
       finally {
@@ -306,18 +326,26 @@
         if (jobs[kind]?.token === token) jobs[kind] = null;
       }
     }
-    async function calculate(kind, applyDensity) {
+    async function calculate(kind, applyDensity, fetchWeather = false) {
       if (disposed || !sync()) return null;
       let captured = capture(kind), data = captured.data;
-      invalidate(kind, data, 'Calculating locally…', 'pending');
+      invalidate(kind, data, fetchWeather
+        ? 'Requesting Open-Meteo model weather for the saved site, then calculating density locally…'
+        : 'Calculating locally…', 'pending');
       const token = generations[kind];
       data[kind].key = captured.key; notify();
       try {
         if (!localService(runtime)) throw inputError(SERVICE_HELP, 'service_unavailable');
         if (kind === 'density' && applyDensity && (!getAirflow()?.setDraft || captured.airflow?.projectId !== captured.project.id))
           throw inputError('Open the Airflow workbench to create the current project’s scenario, then calculate & use density.');
-        const payload = kind === 'density' ? densityPayload(captured) : solarPayload(captured);
-        const result = await requestCalculation(kind, payload, token);
+        const payload = fetchWeather ? {
+          latitude: requireNumber(captured.project.site?.latitude, 'Saved site latitude', -90, 90),
+          longitude: requireNumber(captured.project.site?.longitude, 'Saved site longitude', -180, 180),
+          acknowledgeOpenMeteo: true,
+        } : kind === 'density' ? densityPayload(captured) : solarPayload(captured);
+        const result = await requestCalculation(kind, payload, token,
+          fetchWeather ? 'current-weather-density' : undefined,
+          fetchWeather ? (value, input) => validateCurrentWeather(value, input, captured) : undefined);
         if (disposed || token !== generations[kind]) return null;
         if (capture(kind).key !== captured.key ||
             kind === 'density' && captured.airflowController !== getAirflow()) {
@@ -327,9 +355,12 @@
         if (kind === 'density' && applyDensity) {
           const controller = getAirflow(), current = controller.getState();
           const source = result.inputs.source;
+          const location = (result.weather || (captured.form.mode === 'current' ? captured.weather : null))?.requestedSite;
           const note = `${result.engine.name} ${result.engine.version}; ${source.label}; ` +
             `${result.inputs.temperatureC} °C, ${result.inputs.rhPct}% RH, ${result.inputs.pressurePa} Pa absolute` +
-            `${source.recordTimestamp ? `; record ${source.recordTimestamp}` : ''}. Weather/scenario estimate, not measured indoor density.`;
+            `${source.recordTimestamp ? `; record ${source.recordTimestamp}` : ''}` +
+            `${location ? `; saved site ${location.latitude}, ${location.longitude}; Open-Meteo model, not on-site measurement` : ''}` +
+            '. Weather/scenario estimate, not measured indoor density.';
           applying = true;
           let draft;
           try { draft = controller.setDraft({ densityKgM3: result.output.densityKgM3,
@@ -337,11 +368,14 @@
           finally { applying = false; }
           if (!draft || draft.densityKgM3 !== result.output.densityKgM3)
             throw inputError('Density was calculated but the current airflow draft rejected the update. Review that workbench and retry.');
-          applied = true; captured = capture(kind);
+          applied = true;
+          if (fetchWeather) { data.currentWeather = copy(result.weather); data.densityInputs.mode = 'current'; }
+          captured = capture(kind);
         }
         Object.assign(data[kind], { status: 'current', key: captured.key, result, applied,
           message: kind === 'density' ? applied
-            ? 'Estimate applied to the current airflow scenario draft. Run airflow separately.'
+            ? fetchWeather ? 'Open-Meteo model sample retained for this session; density applied to the airflow draft. Imported weather is unchanged.'
+              : 'Estimate applied to the current airflow scenario draft. Run airflow separately.'
             : 'Density estimate calculated; the airflow draft was not changed.'
             : 'Python solar position and daily path calculated. Existing SunCalc plots are unchanged.' });
         notify(); return copy(result);
@@ -365,6 +399,7 @@
         notify();
       },
       calculateDensity({ apply = true } = {}) { return calculate('density', apply); },
+      getWeatherForLocation() { return calculate('density', true, true); },
       calculateSolar() { return calculate('solar', false); },
       cancel(kind) {
         if (!['density', 'solar'].includes(kind) || disposed) return;
@@ -439,6 +474,16 @@
       card.append(element('p', kind === 'density'
         ? 'Use imported weather or supplied conditions. Calculate & use updates only this airflow scenario draft.'
         : 'Use the selected Sun Path site and clock. pvlib runs locally only when requested.', 'hp-python-help'));
+      let getWeatherButton = null, disclosure = null;
+      if (kind === 'density') {
+        const retrieval = element('div', '', 'hp-python-weather-retrieval');
+        getWeatherButton = element('button', 'Get weather for this location — Open-Meteo');
+        getWeatherButton.id = 'hp-python-density-get-weather'; getWeatherButton.type = 'button';
+        disclosure = element('p', '', 'hp-python-help'); disclosure.id = 'hp-python-weather-disclosure';
+        getWeatherButton.setAttribute('aria-describedby', disclosure.id);
+        getWeatherButton.addEventListener('click', () => { void controller.getWeatherForLocation(); });
+        retrieval.append(getWeatherButton, disclosure); card.append(retrieval);
+      }
       const selected = element('p', '', 'hp-python-help'); if (kind === 'solar') card.append(selected);
       const inputs = element('div', '', 'hp-python-fields');
       const modeLabel = element('label', 'Conditions'), mode = element('select');
@@ -447,6 +492,9 @@
         ['manual', kind === 'density' ? 'Manual temperature, pressure & RH' : 'Manual / reference conditions']]) {
         const option = element('option', label); option.value = value; mode.append(option);
       }
+      if (kind === 'density') {
+        const option = element('option', 'Fetched Open-Meteo sample (session only)'); option.value = 'current'; mode.append(option);
+      }
       mode.addEventListener('change', () => controller[kind === 'density' ? 'setDensityInputs' : 'setSolarInputs']({ mode: mode.value }));
       modeLabel.append(mode); inputs.append(modeLabel);
       const weatherBox = element('div', '', 'hp-python-weather');
@@ -454,6 +502,8 @@
       recordIndex.min = '1'; recordIndex.step = '1';
       const weatherSummary = element('p', '', 'hp-python-help'); weatherBox.append(weatherSummary);
       inputs.append(weatherBox);
+      const currentSummary = element('p', '', 'hp-python-help');
+      if (kind === 'density') inputs.append(currentSummary);
       const manual = element('div', '', 'hp-python-fields');
       const fields = { mode, recordIndex };
       fields.temperatureC = field(manual, 'Air temperature (°C)', 'temperatureC', kind);
@@ -469,6 +519,9 @@
         fields.sampleMinutes.min = '5'; fields.sampleMinutes.max = '60'; fields.sampleMinutes.step = '1';
       }
       const provenance = element('pre');
+      if (kind === 'density') advanced.append(element('p',
+        'Open-Meteo weather data: CC BY 4.0. Free API: non-commercial use with quotas and terms at https://open-meteo.com/en/terms. ' +
+        'Current model data are not on-site measurements or historical weather.', 'hp-python-help'));
       advanced.append(advancedBody, provenance); card.append(advanced);
       const atmosphereSummary = element('p', '', 'hp-python-help');
       const acknowledgeBox = element('div', '', 'hp-python-ack');
@@ -491,7 +544,7 @@
       const output = element('div', '', 'hp-python-output'); output.id = `hp-python-${kind}-output`;
       card.append(status, output); target.append(card); target.homePlannerPythonAnalysis = controller;
       panels[kind] = { card, fields, selected, weatherBox, weatherSummary, manual, provenance, atmosphereSummary,
-        acknowledgeBox, calculate, cancel, status, output, renderedResult: null };
+        acknowledgeBox, calculate, cancel, status, output, getWeatherButton, disclosure, currentSummary, renderedResult: null };
     }
     function render(state) {
       for (const [kind, panel] of Object.entries(panels)) {
@@ -502,11 +555,26 @@
         }
         panel.fields.recordIndex.max = String(state.weatherCount || 1);
         panel.fields.mode.querySelector('option[value="weather"]').disabled = !state.weatherCount;
-        panel.weatherBox.hidden = form.mode !== 'weather'; panel.manual.hidden = form.mode === 'weather';
+        panel.weatherBox.hidden = form.mode !== 'weather'; panel.manual.hidden = form.mode !== 'manual';
         const row = state[`${kind}Weather`];
         panel.weatherSummary.textContent = row ? `${state.weatherLabel} · ${form.recordIndex}/${state.weatherCount} · ${row.timestamp} (interval end). ` +
           `${nice(weatherValue(row, 'temperatureC'))} °C · ${nice(weatherValue(row, 'pressurePa'))} Pa` +
           (kind === 'density' ? ` · ${nice(weatherValue(row, 'rhPct'))}% RH` : '') : 'No selected record. Import in Site or choose Manual conditions.';
+        if (kind === 'density') {
+          const weather = state.currentWeather, sample = weather?.records?.[0], site = state.savedSite;
+          panel.fields.mode.querySelector('option[value="current"]').disabled = !weather;
+          panel.getWeatherButton.disabled = analysis.status === 'pending';
+          panel.disclosure.textContent = `Click sends the CURRENT SAVED site (${finite(site.latitude) ? site.latitude : 'latitude unknown'}, ` +
+            `${finite(site.longitude) ? site.longitude : 'longitude unknown'}) to Open-Meteo, then calculates and uses density in this airflow draft. ` +
+            'No geolocation; imported EPW/JSON and manual inputs are kept.';
+          panel.currentSummary.hidden = form.mode !== 'current';
+          panel.currentSummary.textContent = sample
+            ? `Open-Meteo model sample valid ${sample.timestamp}; fetched ${weather.fetchedAtUTC}. ` +
+              `${nice(sample.temperatureC)} °C · ${nice(sample.rhPct)}% RH · ${nice(sample.pressurePa)} Pa surface pressure (not sea-level pressure). ` +
+              `Returned grid ${nice(weather.latitude, 4)}, ${nice(weather.longitude, 4)}; model elevation ${nice(weather.source?.elevationM)} m above sea level. ` +
+              'Session-only sample, not measured at the house or historical weather.'
+            : 'No fetched sample. Get weather explicitly or keep using imported/manual conditions.';
+        }
         if (kind === 'solar') {
           const solar = state.solarInput, values = state.solarAtmosphere;
           panel.selected.textContent = `Sun Path draft: ${nice(solar.latitude, 4)}, ${nice(solar.longitude, 4)} · ` +
@@ -524,6 +592,7 @@
         panel.cancel.hidden = analysis.status !== 'pending';
         panel.provenance.textContent = analysis.result ? JSON.stringify({
           engine: analysis.result.engine, inputs: analysis.result.inputs, assumptions: analysis.result.assumptions,
+          ...(kind === 'density' && form.mode === 'current' ? { weather: state.currentWeather } : {}),
         }, null, 2) : 'No current calculation evidence. Inputs/results remain session drafts unless explicitly exported through the airflow workbench.';
         if (panel.renderedResult === analysis.result) continue;
         panel.renderedResult = analysis.result; panel.output.replaceChildren();

@@ -363,7 +363,8 @@ test('mounted default off, notification/current controller boundary, date change
     dom.setState(state(f.result));
     dom.nodes.lightStudy.checked = true; await dom.nodes.lightStudy.dispatch('change'); dom.flush();
     assert.ok(objects(renderer).length);
-    assert.match(dom.nodes['lightStudy-note'].textContent, /direct.*UTC.*dimensionless.*NOT LUX/);
+    assert.match(dom.nodes['lightStudy-note'].textContent, /not lux/);
+    assert.match(dom.nodes['lightStudy-status-detail'].textContent, /direct.*UTC.*dimensionless.*NOT LUX/);
     assert.ok(dom.host.html.indexOf('data-hp3d="lightStudy-details"') > dom.host.html.indexOf('data-hp3d="viewport"'));
     assert.match(dom.host.html, /<details[^>]+data-hp3d="lightStudy-details" hidden>/);
     dom.nodes['lightStudy-details'].open = true;
@@ -374,7 +375,7 @@ test('mounted default off, notification/current controller boundary, date change
     dom.setState(state(f.result, { intervalIndex: 1 }));
     await dom.document.dispatch('homeplanner:light-result', { detail: state(f.result) }); dom.flush();
     disposed();
-    assert.match(dom.nodes['lightStudy-note'].textContent, /01:30/);
+    assert.match(dom.nodes['lightStudy-status-detail'].textContent, /01:30/);
     assert.equal(renderer.world.children.find(o => o.type === 'Group'), architectural);
     assert.deepEqual([sun.intensity, sun.position.toArray(), sun.target.position.toArray(), sun.color.getHex()], illumination);
     assert.deepEqual(renderer.camera.position.toArray(), camera);
@@ -389,7 +390,7 @@ test('mounted default off, notification/current controller boundary, date change
     disposed = watch(objects(renderer));
     dom.setState(state(nextResult));
     await dom.document.dispatch('homeplanner:light-result', { detail: state(f.result) }); dom.flush(); disposed();
-    assert.match(dom.nodes['lightStudy-note'].textContent, /2026-09-16/);
+    assert.match(dom.nodes['lightStudy-status-detail'].textContent, /2026-09-16/);
     assert.deepEqual(renderer.camera.position.toArray(), camera);
     dom.setState(state(f.result));
     for (const detail of [{ ...state(f.result), stale: true }, state(null)]) {
@@ -403,6 +404,8 @@ test('mounted default off, notification/current controller boundary, date change
     dom.setState(state(null));
     await dom.document.dispatch('homeplanner:light-result', { detail: state(f.result) }); dom.flush();
     assert.equal(objects(renderer).length, 0, 'event cannot resurrect a result missing from the current controller');
+    assert.equal(dom.nodes.lightStudy.disabled, true);
+    assert.equal(dom.nodes.lightStudy.checked, true, 'Keep the chosen visibility preference while the result is unavailable');
     dom.setState(state(f.result));
     drawing = copy(f.drawing); drawing.scenes[1].walls[0].solidSections = [];
     await dom.document.dispatch('homeplanner:light-result', { detail: state(f.result) }); dom.flush();
@@ -433,6 +436,7 @@ test('missing foundation has recover-to-off path and legacy remains usable; curr
   const ui = View.mount(dom.host, f.planner, Model, { lightModel: {},
     loadEngine: async () => { loads++; return engine.engine; } });
   try {
+    dom.setState(state(f.result));
     dom.nodes.lightStudy.checked = true;
     await ui.open();
     assert.equal(loads, 0); assert.equal(ui.isOpen, false);

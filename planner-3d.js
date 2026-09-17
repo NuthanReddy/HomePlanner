@@ -839,6 +839,7 @@
     const bridge = () => suppliedBridge || root.HomePlanner;
     const model = () => suppliedModel || root.HomePlannerModel;
     const editor = () => options.editor || root.HomePlannerEditorInstance;
+    const layerEnabled = key => ui[key].checked && !ui[key].disabled;
     const permanentListeners = [];
     const listen = (target, event, fn, settings, cleanup = permanentListeners) => {
       target.addEventListener(event, fn, settings);
@@ -857,7 +858,6 @@
           : `No ${name} objects yet. Use the setup button to add them.`;
         ui[`${key}-setup`].textContent = `${counts[key] ? 'Edit' : 'Add'} ${name}`;
         if (!counts[key]) {
-          ui[key].checked = false;
           ui[`${key}-note`].hidden = true;
           ui[`${key}-off`].hidden = true;
         }
@@ -867,7 +867,6 @@
       ui['lightStudy-count'].textContent = light?.result ? '(saved result)' : '(not calculated)';
       ui.lightStudy.title = light?.result ? 'Display saved sunlight/sky-access evidence; not a lux calculation.'
         : 'No saved light result. Open the Light study to calculate one.';
-      if (!light?.result) ui.lightStudy.checked = false;
     }
     function updateActions() {
       const api = bridge(), inspector = editor();
@@ -916,7 +915,9 @@
     }
     function lightDetails(layer) {
       ui['lightStudy-note'].hidden = !ui.lightStudy.checked;
-      ui['lightStudy-note'].textContent = layer ? 'Sunlight/sky-access overlay, not lux. Current-data status and values are in the details below.' : '';
+      ui['lightStudy-note'].textContent = layer?.objects?.length
+        ? 'Sunlight/sky-access overlay, not lux. Current-data status and values are in the details below.'
+        : ui.lightStudy.checked ? 'Light results unavailable. Open the Light study to calculate or review them.' : '';
       ui['lightStudy-status-detail'].textContent = layer?.label || '';
       ui['lightStudy-details'].hidden = !layer;
       ui['lightStudy-schedule'].textContent = layer ?
@@ -924,7 +925,7 @@
     }
     function refreshLight() {
       const r = runtime;
-      if (!r?.content || !ui.lightStudy.checked || destroyed) return;
+      if (!r?.content || destroyed) return;
       const previous = r.content.lightStudy;
       previous?.objects.forEach(object => {
         r.content.group.remove(object);
@@ -932,6 +933,7 @@
       });
       delete r.content.lightStudy;
       lightDetails(null);
+      if (!layerEnabled('lightStudy')) { requestRender(); return; }
       try {
         const project = bridge().getProject(), drawing = bridge().getDrawingScene();
         const data = lightSnapshot(drawing, project);
@@ -951,26 +953,26 @@
       const project = api.getProject();
       updateLayerControls(project);
       let scenes, structure, services, drainage, lightData;
-      if (ui.structure.checked || ui.services.checked || ui.drainage.checked || ui.lightStudy.checked) {
+      if (['structure', 'services', 'drainage', 'lightStudy'].some(layerEnabled)) {
         if (typeof api.getDrawingScene !== 'function') throw new Error('3D intent needs getDrawingScene() and registered site geometry. Continue in 2D.');
         const drawing = api.getDrawingScene();
         requireSiteScenes(drawing?.scenes, project);
-        if (ui.structure.checked) {
+        if (layerEnabled('structure')) {
           const structuralModel = options.structureModel || root.HomePlannerStructure;
           if (typeof structuralModel?.build !== 'function') throw new Error('Load planner-structure.js to inspect structural intent. Continue in 2D.');
           structure = structuralModel.build(drawing);
         }
-        if (ui.services.checked) {
+        if (layerEnabled('services')) {
           const servicesModel = options.servicesModel || root.HomePlannerServices;
           if (typeof servicesModel?.build !== 'function') throw new Error('Load planner-services.js to inspect plumbing intent. Continue in 2D.');
           services = servicesModel.build(drawing, { systems: ['water', 'waste'] });
         }
-        if (ui.drainage.checked) {
+        if (layerEnabled('drainage')) {
           const drainageModel = options.drainageModel || root.HomePlannerDrainage;
           if (typeof drainageModel?.build !== 'function') throw new Error('Load planner-drainage.js to inspect drainage intent. Continue in 2D.');
           drainage = drainageModel.build(drawing, { systems: ['waste', 'rain'] });
         }
-        if (ui.lightStudy.checked) lightData = lightSnapshot(drawing, project);
+        if (layerEnabled('lightStudy')) lightData = lightSnapshot(drawing, project);
         scenes = drawing.scenes;
       } else scenes = api.getScenes();
       if (!Array.isArray(scenes)) throw new Error('The shared planner did not provide its storey scenes.');
@@ -1043,10 +1045,10 @@
         const data = snapshot();
         const content = buildContent(r.THREE, data.scenes, data.project, model(), {
           activeOnly: ui.active.checked, cutaway: ui.cutaway.checked,
-          structuralIntent: ui.structure.checked, structure: data.structure,
-          plumbingIntent: ui.services.checked, services: data.services,
-          drainageIntent: ui.drainage.checked, drainage: data.drainage,
-          lightStudy: ui.lightStudy.checked, lightData: data.lightData
+          structuralIntent: layerEnabled('structure'), structure: data.structure,
+          plumbingIntent: layerEnabled('services'), services: data.services,
+          drainageIntent: layerEnabled('drainage'), drainage: data.drainage,
+          lightStudy: layerEnabled('lightStudy'), lightData: data.lightData
         });
         if (r.content) {
           r.world.remove(r.content.group);

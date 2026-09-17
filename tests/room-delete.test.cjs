@@ -82,7 +82,11 @@ async function browserSmoke(browser,url){
     await page.evaluate(()=>{
       document.getElementById('face').value='N';buildRoadInputs();
       for(const [id,value] of Object.entries({dunit:'1',pEW:'22',pNS:'22',livingCount:'1',bedCount:'3',
-        kitchenCount:'0',bathCount:'0',liftCount:'0',stairCount:'0'}))document.getElementById(id).value=value;
+        kitchenCount:'0',bathCount:'0',liftCount:'0',stairCount:'0'})){
+        const input=document.getElementById(id);
+        if(input.hasAttribute('data-room-setting'))HomePlannerRoomInputs.writeCommitted(input,value);
+        else input.value=value;
+      }
       render();HomePlanner.acceptLegacy();
       const floorId=HomePlanner.getProject().activeFloorId;
       HomePlanner.execute({type:'upsert-authored',collection:'annotations',

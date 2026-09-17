@@ -27,6 +27,11 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
 - `planner-bridge.js`: `HomePlanner.getProject`, `getScene`, `getScenes`,
   `getDrawingScene`, `execute`; `planner-projection.js`:
   `HomePlannerProjection.projectScene`, `siteToWorld`.
+- `python_analysis.py`, `planner-python-analysis.js`: an optional explicit pvlib
+  position/day-path card, not a replacement for the live SunCalc diagrams.
+  Read [Python calculation inputs and provenance](../../../docs/python-analysis.md);
+  keep geometric/apparent elevation, atmospheric references and UTC elapsed
+  path time distinct. No shade, PV yield or energy follows from this utility.
 - Read [sun path](../../../docs/sun-path.md),
   [physics](../../../docs/building-physics.md),
   [environment](../../../docs/environment-analysis.md),

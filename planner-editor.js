@@ -112,6 +112,12 @@
     return { type: `update-${kind}`, id: entity.id, rect };
   }
 
+  function stairEnclosureCommand(entity, value) {
+    if (entity?.type !== 'staircase' || !['open', 'enclosed'].includes(value))
+      throw new Error('Choose Open staircase or Enclosed stairwell for a staircase room.');
+    return { ...rectCommand('room', entity, 'x', entity.rect?.x), stairEnclosure: value };
+  }
+
   function headBearing(headLocal, headingDeg) {
     if (!Object.prototype.hasOwnProperty.call(DIRECTIONS, headLocal) || !Number.isFinite(headingDeg)) {
       return null;
@@ -513,12 +519,16 @@
     historyControls(inspector);
     historyControls(tools);
 
+    function restoreConfirmationFocus(owner, pending) {
+      const trigger = pending?.trigger;
+      focus(trigger?.isConnected && !trigger.disabled && !trigger.hidden ? trigger : owner.heading);
+    }
     function cancelConfirmation(owner, restoreFocus) {
       const pending = owner.pending;
       if (!pending) return;
       owner.pending = null;
       owner.confirmation.replaceChildren();
-      if (restoreFocus) focus(pending.trigger && pending.trigger.isConnected ? pending.trigger : owner.heading);
+      if (restoreFocus) restoreConfirmationFocus(owner, pending);
     }
     function confirmationIsCurrent(pending, state) {
       return !!pending && pending.projectId === state.project.id && pending.revision === state.project.revision
@@ -542,9 +552,11 @@
       const actions = element('div', 'hp-editor-actions', undefined, group);
       const approve = button(actions, options.label, 'confirm', () => {
         run(owner, () => {
-          if (!confirmationIsCurrent(owner.pending, snapshot())) throw new Error('The plan changed. Review this action again before confirming.');
+          const pending = owner.pending;
+          if (!confirmationIsCurrent(pending, snapshot())) throw new Error('The plan changed. Review this action again before confirming.');
           options.execute();
-          cancelConfirmation(owner, true);
+          if (owner.pending === pending) cancelConfirmation(owner, false);
+          if (!owner.pending) restoreConfirmationFocus(owner, pending);
         }, options.success);
       });
       approve.classList.add('hp-editor-caution-button');
@@ -866,6 +878,20 @@
         text(pinnedState, ctx.entity.pinned === true ? 'Pinned · manual' : ctx.entity.pinned === false ? 'Unpinned · automatic eligible' : 'Pin state not recorded');
         pinned.update(ctx.entity.pinned, ctx);
       });
+    }
+
+    function staircaseFields(parent, key, fields) {
+      const staircase = group(parent, 'Staircase enclosure');
+      const enclosure = field(inspector, staircase, {
+        id: 'hp-editor-stair-enclosure', key: 'stairEnclosure', label: 'Enclosure',
+        options: [{ value: 'open', label: 'Open staircase' }, { value: 'enclosed', label: 'Enclosed stairwell' }],
+        help: 'Open mode omits automatic walls and room door. Custom openings stay saved but may need host review. Schematic intent only.',
+        commit: value => {
+          const ctx = selectedContext(key);
+          executeChanged(stairEnclosureCommand(ctx.entity, value), ctx.entity);
+        }
+      });
+      fields.push(ctx => enclosure.update(ctx.entity.stairEnclosure === undefined ? 'enclosed' : ctx.entity.stairEnclosure, ctx));
     }
 
     function openingFields(parent, kind, key, fields, firstContext) {
@@ -1451,6 +1477,7 @@
       const kind = ctx.selection.kind;
       if (kind === 'room' || kind === 'furniture') rectFields(selectionFields, kind, key, updates);
       if (kind === 'room') {
+        if (ctx.entity.type === 'staircase') staircaseFields(selectionFields, key, updates);
         const roomType = readout(selectionFields, 'Room type');
         updates.push(state => text(roomType, state.entity.type || 'Not recorded'));
         const usableArea=readout(selectionFields,'Usable floor area');
@@ -1857,6 +1884,9 @@
     document.addEventListener('pointerdown', pointerdown, true);
     document.addEventListener('pointerup', clearPointer, true);
     document.addEventListener('pointercancel', clearPointer, true);
+    // Touch compatibility mouse events can focus controls after pointerup.
+    document.addEventListener('mousedown', pointerdown, true);
+    document.addEventListener('mouseup', clearPointer, true);
     document.addEventListener('keydown', clearPointer, true);
     render();
     return {
@@ -1869,6 +1899,8 @@
         document.removeEventListener('pointerdown', pointerdown, true);
         document.removeEventListener('pointerup', clearPointer, true);
         document.removeEventListener('pointercancel', clearPointer, true);
+        document.removeEventListener('mousedown', pointerdown, true);
+        document.removeEventListener('mouseup', clearPointer, true);
         document.removeEventListener('keydown', clearPointer, true);
         if (!drafts.scopes().length) {
           drafts.dispose();
@@ -1879,7 +1911,7 @@
   }
 
   return {
-    init, numberValue, selectionEntity, selectionFloor, selectionActions, rectCommand, headBearing, bedHeadCommand, openingCommand,
+    init, numberValue, selectionEntity, selectionFloor, selectionActions, rectCommand, stairEnclosureCommand, headBearing, bedHeadCommand, openingCommand,
     wallLength, retainedSpan, wallOpeningCommand, wallTrimCommand, addOpeningCommand, floorElevation, floorPatchCommand, deleteFloorCommand,
     floorAllowanceNotice, isTextEntry, historyShortcut
   };

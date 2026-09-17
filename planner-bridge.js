@@ -3,6 +3,7 @@
   const clone=value=>JSON.parse(JSON.stringify(value));
   const FLOOR_FIELDS=['wallEdits','doorEdits','windowEdits','furnitureEdits','obstacles','electrical'];
   const SharedModel=typeof module==='object'&&module.exports?require('./planner-model.js'):root.HomePlannerModel;
+  const RoomInputs=typeof module==='object'&&module.exports?require('./planner-room-inputs.js'):root.HomePlannerRoomInputs;
   const Projection=typeof module==='object'&&module.exports?require('./planner-projection.js'):root.HomePlannerProjection;
   const freshId=prefix=>`${prefix}-${root.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
   function freeze(value){
@@ -107,6 +108,7 @@
 
   function createController(adapter,Model){
     let project=Model.createProject(),selection=null,busy=false,gesture=null;
+    let roomControlsForward=false;
     let history=[],future=[],listeners=new Set(),cachedProject=null,cachedScenes=null;
     const observerErrors=[];
     const jsonKey=Model.stableStringify||SharedModel.stableStringify;
@@ -197,8 +199,23 @@
     }
     function assertRestoredDocument(expected,actual){
       if(jsonKey(expected)===jsonKey(actual))return;
-      const error=new Error('The layout adapter changed the replacement snapshot. The previous project, selection and history were kept; use a compatible backup instead of accepting a reconstructed layout.');
+      const firstDifference=(a,b,path='')=>{
+        if(a===b)return null;
+        if(a&&b&&typeof a==='object'&&typeof b==='object'&&Array.isArray(a)===Array.isArray(b)){
+          for(const key of new Set([...Object.keys(a),...Object.keys(b)])){
+            const next=`${path}/${key.replaceAll('~','~0').replaceAll('/','~1')}`;
+            if(!Object.prototype.hasOwnProperty.call(a,key)||!Object.prototype.hasOwnProperty.call(b,key))return next;
+            const difference=firstDifference(a[key],b[key],next);
+            if(difference)return difference;
+          }
+          return null;
+        }
+        return path||'/';
+      };
+      const changedPath=firstDifference(expected,actual);
+      const error=new Error(`The layout adapter changed the replacement snapshot${changedPath?` at ${changedPath}`:''}. The previous project, selection and history were kept; use a compatible backup instead of accepting a reconstructed layout.`);
       error.code='RestoredSnapshotChangedError';
+      error.changedPath=changedPath;
       throw error;
     }
     function showObserverErrors(){
@@ -235,11 +252,12 @@
         project.building.wallHeightM=project.legacy.context.cfg.ceilingHeight;
       syncActive(project);invalidate();
     }
-    function commit(label,work,{restore=false,render=true,remember=true,verify=null}={}){
+    function commit(label,work,{restore=false,render=true,remember=true,verify=null,roomControls=false}={}){
       if(busy)throw new Error('A project edit is already in progress.');
       const before=project,beforeSelection=selection,beforeProjectCache=cachedProject,beforeSceneCache=cachedScenes;
       busy=true;project=clone(project);invalidate();
       try{
+        roomControlsForward=roomControls;
         work(project);
         syncActive(project);
         invalidate();
@@ -260,10 +278,11 @@
         getScenes();
         if(remember){history.push({label,project:before});if(history.length>40)history.shift();future=[];}
       }catch(error){
+        roomControlsForward=false;
         project=before;selection=beforeSelection;invalidate();
         adapter.restore(clone(before.legacy));adapter.render();
         throw error;
-      }finally{busy=false;}
+      }finally{roomControlsForward=false;busy=false;}
       emit(restore?'restore':'change');
       return getProject();
     }
@@ -312,9 +331,79 @@
         sill<other.sillM+other.heightM-1e-7&&sill+height>other.sillM+1e-7))
         throw new Error('The opening would overlap another opening or a removed part of the wall.');
     }
+    function getRoomControlSpecifications(){
+      if(!RoomInputs||typeof adapter.roomControlSpecifications!=='function')
+        throw new Error('Room input staging is unavailable. Load planner-room-inputs.js and bind the room numeric controls before the bridge.');
+      const specs=adapter.roomControlSpecifications();
+      if(!Array.isArray(specs))throw new Error('The room input adapter did not supply its numeric constraints.');
+      specs.forEach(RoomInputs.validateSpecification);
+      return freeze(clone(specs));
+    }
+    function updateRoomControls(command){
+      if(busy||gesture)throw new Error('Finish the current layout gesture or project edit before applying room inputs.');
+      const specs=getRoomControlSpecifications();
+      const validate=()=>{
+        if(command.projectId!==project.id||command.floorId!==project.activeFloorId)
+          throw new Error('The room drafts belong to a different project or floor. Return to their owner before applying.');
+        const values=RoomInputs.validatePatch(command.patch,specs,project.legacy.controls);
+        if(!command.expected||typeof command.expected!=='object'||Array.isArray(command.expected)||
+          Object.keys(command.expected).length!==Object.keys(values).length)
+          throw new Error('Room input application requires the saved base value for every supplied field.');
+        for(const id of Object.keys(values)){
+          if(typeof command.expected[id]!=='string'||project.legacy.controls[id]?.value!==command.expected[id])
+            throw new Error('Saved room values changed. Review or discard the retained drafts before applying again.');
+        }
+        return values;
+      };
+      validate();
+      acceptLegacy();
+      const values=validate(),before=project,beforeScene=getScene();
+      const changes=Object.fromEntries(Object.entries(values).filter(([id,value])=>
+        RoomInputs.numeric(before.legacy.controls[id].value,id)!==value));
+      if(!Object.keys(changes).length)return getProject();
+      if(typeof adapter.applyRoomControls!=='function')throw new Error('The layout adapter cannot apply room numeric controls.');
+      const physicalBounds=['frontCorr','backCorr','sideCorr','externalWallThickness','internalWallThickness'];
+      return commit('update-room-controls',doc=>{
+        for(const [id,value] of Object.entries(changes))
+          doc.legacy.controls[id]={...doc.legacy.controls[id],value:String(value)};
+        if(Object.prototype.hasOwnProperty.call(changes,'ceilingHeight'))
+          doc.building.wallHeightM=changes.ceilingHeight*.3048;
+        syncActive(doc);invalidate();
+        adapter.applyRoomControls(changes);
+      },{roomControls:true,verify:()=>{
+        for(const [id,value] of Object.entries(changes))
+          if(RoomInputs.numeric(project.legacy.controls[id]?.value,id)!==value)
+            throw new Error('The layout adapter did not retain the exact applied room values. The edit was rolled back.');
+        if(!beforeScene||Object.keys(changes).some(id=>physicalBounds.includes(id)))return;
+        const after=getScene(),decreased=new Set(Object.entries(changes)
+          .filter(([id,value])=>RoomInputs.COUNT_TYPES[id]&&value<RoomInputs.numeric(before.legacy.controls[id].value,id))
+          .map(([id])=>RoomInputs.COUNT_TYPES[id]));
+        if(!after)throw new Error('Applying room inputs lost the active layout. The previous project was kept.');
+        for(const room of beforeScene.rooms){
+          const next=after.rooms.find(item=>item.id===room.id);
+          if(!next&&!decreased.has(room.type)||next&&(!sameRect(room.rect,next.rect)||!sameRect(room.module,next.module)))
+            throw new Error('Applying room inputs would re-layout existing rooms. The edit was rolled back; retain the incremental programme-preservation hook.');
+        }
+        for(const item of beforeScene.furniture){
+          if(!after.rooms.some(room=>room.id===item.roomId))continue;
+          const next=after.furniture.find(value=>value.id===item.id);
+          if(!next||!sameRect(item.rect,next.rect)||['roomId','headLocal','pinned'].some(key=>item[key]!==next[key]))
+            throw new Error('Applying room defaults would replace or move existing furniture. The edit was rolled back.');
+        }
+        if(after.furniture.some(item=>beforeScene.rooms.some(room=>room.id===item.roomId)&&
+          !beforeScene.furniture.some(prior=>prior.id===item.id)))
+          throw new Error('Applying room defaults would add furniture to an existing room. The edit was rolled back.');
+        for(const balcony of beforeScene.balconies||[]){
+          const next=(after.balconies||[]).find(item=>item.id===balcony.id);
+          if(!next&&!decreased.has('balcony')||next&&!sameRect(balcony.rect,next.rect))
+            throw new Error('Applying room inputs would replace or move another balcony. The edit was rolled back.');
+        }
+      }});
+    }
     function execute(command){
       if(!command||typeof command.type!=='string')throw new Error('Choose a valid editor action.');
       assertJSON(command);
+      if(command.type==='update-room-controls')return updateRoomControls(command);
       acceptLegacy();
       const type=command.type;
       const patch=(value,label)=>{
@@ -336,6 +425,16 @@
         'delete-furniture':'furniture','update-door':'door','update-window':'window','delete-opening':'opening',
         'open-wall':'wall','restore-wall':'wall','trim-wall':'wall'};
       const entity=entityTypes[type]?find(entityTypes[type],command.id):null;
+      const stairEnclosure=Object.prototype.hasOwnProperty.call(command,'stairEnclosure');
+      if(stairEnclosure){
+        if(type!=='update-room'||entity?.type!=='staircase')
+          throw new Error('Stair enclosure can be changed only on a selected staircase.');
+        if(!['open','enclosed'].includes(command.stairEnclosure))
+          throw new Error('Choose an open or enclosed staircase.');
+        if(entity.stairEnclosure===command.stairEnclosure&&
+          (command.rect===undefined||['x','y','w','h'].every(key=>command.rect?.[key]===entity.rect[key])))
+          return getProject();
+      }
       const beforeLayout=entity||type==='add-window'||type==='add-door'?getScene():null;
       let added=null,deletedBalcony=null,deletedOpening=null;
       return commit(type,doc=>{
@@ -516,6 +615,14 @@
           adapter.edit(command,entity,doc);
         }else throw new Error('This editor action is not supported.');
       },{restore,render,verify:()=>{
+        if(stairEnclosure){
+          const stair=getScene()?.rooms.find(room=>room.id===entity.id);
+          if(!stair||stair.stairEnclosure!==command.stairEnclosure)
+            throw new Error('The staircase enclosure was not retained by the layout adapter. The edit was rolled back.');
+          if((command.rect===undefined||['x','y','w','h'].every(key=>command.rect?.[key]===entity.rect[key]))&&
+            ['rect','module','reservationFootprint'].some(key=>!sameRect(stair[key],entity[key])))
+            throw new Error('Changing the staircase enclosure altered its reserved footprint. The edit was rolled back.');
+        }
         if(beforeLayout){
           assertRoomLayout(beforeLayout,getScene(),{
             changedId:type==='update-room'?entity.id:null,removedId:type==='delete-room'?entity.id:null
@@ -628,6 +735,8 @@
     }
     const api={
       getProject,getScene,getScenes,getSelection:()=>selection,execute,
+      getRoomControlSpecifications,
+      isApplyingRoomControls:()=>busy&&roomControlsForward,
       getObserverErrors:()=>Object.freeze(observerErrors.slice()),
       getDrawingScene:()=>Projection.build(getProject()),
       createSnapshot:options=>Projection.snapshot(getProject(),options),
@@ -682,7 +791,13 @@
   }
   const controls=()=>[...document.querySelectorAll('#page-optimizer input[id],#page-optimizer select[id],#page-rooms input[id],#page-rooms select[id]')]
     .filter(el=>!el.closest('#plannerInspector,#plannerProjectTools,#plannerPersistence,#planner3d'));
-  const readControls=()=>Object.fromEntries(controls().map(el=>[el.id,el.type==='checkbox'?{checked:el.checked}:{value:el.value}]));
+  const setting=el=>!!el&&(RoomInputs?.isSetting(el)||el.hasAttribute?.('data-room-setting'));
+  const numericInputs=()=>{
+    if(!RoomInputs)throw new Error('Load planner-room-inputs.js before binding numeric room settings and planner-bridge.js.');
+    return RoomInputs;
+  };
+  const readControls=()=>Object.fromEntries(controls().map(el=>[el.id,el.type==='checkbox'?{checked:el.checked}:
+    {value:setting(el)?numericInputs().readCommitted(el):el.value}]));
   const initialControls=readControls();
   let controller,scheduled=false,pendingRoomChoices=null,pendingZoom=null;
   const openingSources=new WeakMap();
@@ -769,8 +884,11 @@
         else if(typeof state.value==='string'){
           if(el.tagName==='SELECT'&&![...el.options].some(option=>option.value===state.value))
             throw new Error(`The saved choice for ${el.id} is unavailable.`);
-          el.value=state.value;
-          if(state.value&&el.value==='')throw new Error(`The saved value for ${el.id} is invalid.`);
+          if(setting(el))numericInputs().writeCommitted(el,state.value);
+          else{
+            el.value=state.value;
+            if(state.value&&el.value==='')throw new Error(`The saved value for ${el.id} is invalid.`);
+          }
         }else throw new Error(`The saved value for ${el.id} is invalid.`);
       });
       roomManualLayouts.clear();
@@ -800,6 +918,16 @@
       if(!ctx)throw new Error('There is no valid layout to reset.');
       roomManualLayouts.delete(ctx.signature);
     },
+    roomControlSpecifications(){return numericInputs().specifications(document);},
+    applyRoomControls(values){
+      const inputs=numericInputs(),ctx=root.__roomPlanner;
+      if(ctx)roomSaveManualLayout(ctx);
+      for(const [id,value] of Object.entries(values)){
+        const input=document.getElementById(id);
+        if(!setting(input))throw new Error(`Room setting ${id} is not bound to its committed input projection.`);
+        inputs.writeCommitted(input,value);
+      }
+    },
     prepareOpeningDeletion(){
       const ctx=root.__roomPlanner;
       if(!ctx)throw new Error('Generate a valid floor layout before removing openings.');
@@ -821,7 +949,7 @@
       const ctx=root.__roomPlanner,input=document.getElementById('balconyCount');
       if(!ctx||!ctx.g.balconies.some(item=>item.id===entity.sourceId))
         throw new Error('The selected balcony is no longer on this floor.');
-      const count=input?.valueAsNumber;
+      const count=setting(input)?numericInputs().readNumber(input):input?.valueAsNumber;
       if(!Number.isSafeInteger(count)||count<1)throw new Error('The balcony quantity is inconsistent. Reopen this floor before deleting.');
       roomStableIds('balcony',count);
       const identities=roomIdentityState.balcony,index=identities.ids.indexOf(entity.sourceId);
@@ -832,12 +960,18 @@
       saved.openings=saved.openings.filter(item=>item.balconyId!==entity.sourceId);
       saved.wallOpenings=saved.wallOpenings.filter(item=>item.balconyId!==entity.sourceId);
       saved.preserveRooms=true;
-      identities.ids.splice(index,1);input.value=String(count-1);
+      identities.ids.splice(index,1);
+      if(setting(input))numericInputs().writeCommitted(input,count-1);
+      else input.value=String(count-1);
       const cfg=roomPlannerConfig();
       makeRoomRequests(cfg);
       roomManualLayouts.set(roomPlanSignature(ctx.plate,cfg),saved);
     },
-    setCeiling(height){document.getElementById('ceilingHeight').value=String(finite(height,'Wall height',true)/.3048);},
+    setCeiling(height){
+      const input=document.getElementById('ceilingHeight'),value=finite(height,'Wall height',true)/.3048;
+      if(setting(input))numericInputs().writeCommitted(input,value);
+      else input.value=String(value);
+    },
     restoreWall(wall){
       const ctx=root.__roomPlanner;if(!ctx)return false;
       const before=(ctx.plan.wallOpenings||[]).length;
@@ -854,9 +988,15 @@
       if(command.type==='update-room'){
         const room=ctx.plan.placed.find(item=>item.req.id===entity.sourceId);
         if(!room)throw new Error('The room is no longer available.');
-        const rect=command.rect;
+        const enclosure=Object.prototype.hasOwnProperty.call(command,'stairEnclosure');
+        if(enclosure&&(room.req.type!=='staircase'||!['open','enclosed'].includes(command.stairEnclosure)))
+          throw new Error('Choose an open or enclosed style for a staircase only.');
+        const rect=command.rect===undefined&&enclosure?entity.rect:command.rect;
         for(const key of ['x','y','w','h'])finite(rect?.[key],key,key==='w'||key==='h');
-        if(!roomCommitManual(ctx,room,rect,false,false))throw new Error(ctx.editError);
+        if(enclosure)room.req={...room.req,stairEnclosure:command.stairEnclosure};
+        if(!enclosure||['x','y','w','h'].some(key=>rect[key]!==entity.rect[key])){
+          if(!roomCommitManual(ctx,room,rect,false,false))throw new Error(ctx.editError);
+        }
       }else{
         const item=roomFindEditable(ctx,entity.sourceId);
         if(!item||item.kind!=='furniture')throw new Error('The component is no longer available.');
@@ -902,6 +1042,7 @@
   };
   controller=createController(adapter,Model);
   root.HomePlanner=controller;
+  if(RoomInputs&&document.querySelector('[data-room-setting]'))RoomInputs.connect(controller,document);
   const sceneForRender=controller.sceneForRender;
   controller.sceneForRender=(plate,g,plan,cfg)=>sceneForRender(plate,g,sourcePlan(plan),cfg);
   function renderContext(g,plan,cfg){

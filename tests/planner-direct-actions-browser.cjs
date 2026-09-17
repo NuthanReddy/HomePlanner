@@ -56,7 +56,11 @@ async function run() {
       document.getElementById('face').value = 'N'; buildRoadInputs();
       for (const [id, value] of Object.entries({ dunit: '1', pEW: '24', pNS: '24', livingCount: '1',
         bedCount: '1', kitchenCount: '1', bathCount: '0', poojaCount: '0', liftCount: '0',
-        stairCount: '1', balconyCount: '3' })) document.getElementById(id).value = value;
+        stairCount: '1', balconyCount: '3' })) {
+        const input = document.getElementById(id);
+        if (input.hasAttribute('data-room-setting')) HomePlannerRoomInputs.writeCommitted(input, value);
+        else input.value = value;
+      }
       render();
       let ctx = window.__roomPlanner;
       roomSaveManualLayout(ctx);

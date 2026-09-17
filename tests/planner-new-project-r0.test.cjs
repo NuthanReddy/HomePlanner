@@ -139,7 +139,7 @@ module.exports.browserSmoke = async function browserSmoke(page) {
     HomePlanner.execute({ type: 'update-site', patch: { latitude: 19.5 } });
     HomePlanner.execute({ type: 'add-floor', copyFromId: HomePlanner.getProject().activeFloorId });
     for (const [id, value] of Object.entries({ bedCount: '2', kitchenCount: '0', bathCount: '1', livingCount: '1' }))
-      document.getElementById(id).value = value;
+      HomePlannerRoomInputs.writeCommitted(id, value);
     render(); HomePlanner.acceptLegacy();
     const previous = HomePlanner.getProject();
     const next = HomePlanner.newProject();

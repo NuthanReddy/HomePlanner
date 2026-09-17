@@ -15,7 +15,11 @@ module.exports=async function serviceAccessSmoke(browser,url,{width=1440}={}){
       document.getElementById('face').value='E';buildRoadInputs();
       for(const [id,value] of Object.entries({dunit:'1',pEW:'30',pNS:'30',livingCount:'0',bedCount:'1',
         kitchenCount:'1',bathCount:'0',poojaCount:'0',liftCount:'0',stairCount:'1',balconyCount:'0'}))
-        document.getElementById(id).value=value;
+      {
+        const input=document.getElementById(id);
+        if(input.hasAttribute('data-room-setting'))HomePlannerRoomInputs.writeCommitted(input,value);
+        else input.value=value;
+      }
       render();
       const ctx=window.__roomPlanner,c=ctx.g.core,half=INT_WALL/2;
       roomSaveManualLayout(ctx);

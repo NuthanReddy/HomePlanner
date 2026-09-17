@@ -20,6 +20,11 @@ is retained under **Technical command**, not shown as the primary explanation.
 
 ## Integration
 
+Python-backed calculations require `.\.venv\Scripts\python.exe -B app.py`, not
+a static file server. The application also serves `user-guide.html`.
+The default port is 8000; set `HOMEPLANNER_PORT` before launch to retain an
+existing local origin and its browser project storage.
+
 Mount `#environmentWorkspace` in the Environment app page. Load
 `environment-ui.css` and, in dependency order:
 
@@ -294,6 +299,14 @@ wind at 10 m is not measured façade or occupant wind.
 
 The online form:
 
+- **Fetch weather for this location** reads `planner.getProject().site` when
+  submitted. **Detect current location** updates that shared site in one command,
+  so a later weather request uses the newly detected coordinates, not Hyderabad
+  defaults or a copied coordinate field. The weather panel identifies the
+  detected/saved location; unsaved manual site edits must be resolved first.
+- **Use recent week** selects seven local calendar dates ending seven days ago
+  to allow publication, without fetching. It clears consent for the changed
+  request. Custom historical dates and local file imports remain available.
 - Requires a visible, specific consent checkbox and an explicit **Fetch** action.
   Consent is not persisted as general permission.
 - Derives UTC bounds from inclusive **site-local dates** via `HomeSun.resolveLocal`,
@@ -316,8 +329,9 @@ The online form:
 
 Open-Meteo's free API is non-commercial, quota-limited and subject to its separate
 terms; its weather data use CC BY 4.0 attribution. A public website is not proof
-of free-service eligibility. Coordinates may appear in provider logs. No real
-site coordinates were sent during implementation/testing.
+of free-service eligibility. Coordinates may appear in provider logs.
+Automated runtime-location tests use synthetic coordinates and intercepted
+responses, not device positions or live weather requests.
 
 ## Wind rose and window proposals
 

@@ -137,7 +137,7 @@
         if(!entity)return failed('missing-host',ref);
         if(ref.entityKind==='opening'){
           const wall=scene.walls.find(item=>item.id===entity.wallId);
-          if(!wall||wall.removed)return failed('removed-host',ref);
+          if(!wall||(wall.removed&&!['window','hinged','sliding'].includes(entity.kind)))return failed('removed-host',ref);
           return resolved({...Model.wallPoint(wall,entity.offsetM+entity.widthM/2),
             z:wall.baseM+entity.sillM+entity.heightM/2},scene);
         }

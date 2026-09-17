@@ -139,6 +139,50 @@ window.fixture = {before:JSON.stringify(project),project,listeners};
     assert.equal(reference.inputs.temperatureC, 15);
     assert.deepEqual(reference.inputs.referenceFields, ['altitudeM', 'pressurePa', 'temperatureC']);
 
+    // Mock the provider retrieval transport; never call the live weather endpoint.
+    // The existing local density endpoint still runs the installed PsychroLib.
+    const mockedCurrentWeather = async route => {
+      const input = route.request().postDataJSON();
+      assert.deepEqual(input, { latitude: 17.385, longitude: 78.4867, acknowledgeOpenMeteo: true });
+      const timestamp = '2026-09-17T16:30:00Z', label = 'Open-Meteo current model sample (synthetic test)';
+      const weather = {
+        id: 'isolated-current-weather', kind: 'current-model',
+        requestedSite: { latitude: input.latitude, longitude: input.longitude },
+        latitude: 17.375, longitude: 78.5, fetchedAtUTC: timestamp,
+        timestampMeaning: 'Modelled instant in UTC; provider update interval, not historical interval-end data.',
+        source: { provider: 'Open-Meteo', label, elevationM: 530 },
+        units: { temperatureC: 'C', rhPct: '%', pressurePa: 'Pa' },
+        records: [{ timestamp, intervalSeconds: 900, temperatureC: 25, rhPct: 80, pressurePa: 95000, missing: [] }],
+      };
+      const response = await context.request.post(`${base}/api/analysis/air-density`, { data: {
+        temperatureC: 25, rhPct: 80, pressurePa: 95000, source: {
+          kind: 'weather-record', label, weatherId: weather.id, recordTimestamp: timestamp, timeBasis: weather.timestampMeaning,
+        },
+      } });
+      assert.equal(response.status(), 200);
+      const density = await response.json();
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...density, weather }) });
+    };
+    await page.route('**/api/analysis/current-weather-density', mockedCurrentWeather);
+    assert.match(await page.locator('#hp-python-weather-disclosure').innerText(), /CURRENT SAVED.*17\.385.*78\.4867.*Open-Meteo/);
+    await page.locator('#hp-python-density-get-weather').click();
+    await page.waitForFunction(() => document.querySelector('#python-density-analysis .hp-python-analysis').dataset.state === 'current');
+    assert.equal(await page.locator('#hp-python-density-mode').inputValue(), 'current');
+    assert.match(await page.locator('#python-density-analysis').innerText(), /530\.00 m above sea level/);
+    assert.match(await page.locator('#python-density-analysis').innerText(), /not measured at the house or historical weather/);
+    assert.equal(await page.evaluate(() => JSON.stringify(fixture.project) === fixture.before), true);
+    const retainedDensity = await page.evaluate(() => airflow.getState().draft.densityKgM3);
+    const retainedWeather = await page.evaluate(() => JSON.stringify(document.getElementById('python-density-analysis').homePlannerPythonAnalysis.getState().currentWeather));
+    await page.unroute('**/api/analysis/current-weather-density', mockedCurrentWeather);
+    await page.route('**/api/analysis/current-weather-density', route => route.fulfill({
+      status: 502, contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'weather_unavailable', message: 'Open-Meteo unavailable for synthetic test. Previous inputs retained.' } }),
+    }));
+    await page.locator('#hp-python-density-get-weather').click();
+    await page.waitForFunction(() => document.querySelector('#python-density-analysis .hp-python-analysis').dataset.state === 'failed');
+    assert.equal(await page.evaluate(() => airflow.getState().draft.densityKgM3), retainedDensity);
+    assert.equal(await page.evaluate(() => JSON.stringify(document.getElementById('python-density-analysis').homePlannerPythonAnalysis.getState().currentWeather)), retainedWeather);
+
     await page.setViewportSize({ width: 390, height: 844 });
     const layout = await page.evaluate(() => ({
       width: document.documentElement.scrollWidth, viewport: innerWidth,
@@ -153,13 +197,15 @@ window.fixture = {before:JSON.stringify(project),project,listeners};
     await page.locator('#hp-python-density-calculate').click();
     await page.waitForFunction(() => document.querySelector('#python-density-analysis .hp-python-analysis').dataset.state === 'unavailable');
     assert.match(await page.locator('#hp-python-density-status').innerText(), /\\\.venv\\Scripts\\python\.exe -B app\.py/);
-    assert.equal(await page.evaluate(() => airflow.getState().draft.densityKgM3), 1.271);
+    assert.equal(await page.evaluate(() => airflow.getState().draft.densityKgM3), retainedDensity);
     assert.equal(await page.evaluate(() => JSON.stringify(fixture.project) === fixture.before), true);
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ status: 'passed', densityDryKgM3: dry.output.densityKgM3,
       densityHumidKgM3: humid.output.densityKgM3, psychrolib: dry.engine.version, pvlib: initialSolar.engine.version,
       cases: ['no automatic requests', 'normalized 0%/humid weather', 'real airflow controller draft', 'stale edit guard',
-        'solar midday/night', '23/25 hour civil days', 'explicit reference acknowledgement', 'mobile/native labels', 'static-service guidance'],
+        'solar midday/night', '23/25 hour civil days', 'explicit reference acknowledgement',
+        'explicit current retrieval with mocked provider and real density', 'failed retrieval preserves sample/imports/drafts',
+        'mobile/native labels', 'static-service guidance'],
       apiRequests: requests.length, pageErrors: errors.length }, null, 2));
   } finally { await context.close(); await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

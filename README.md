@@ -12,10 +12,11 @@ and the shared active-floor toolbar remain available throughout. See
 | Tool (within its project destination) | Capabilities |
 |---|---|
 | Plot Planner | Setbacks, selectable G+n floor counts, explicit non-compliant setback scenarios, plot splitting and indicative costs. Regulatory sources stay on this page. |
-| Room Planner | Independent floors, destination-based room movement, movable lift/stair reservations deducted from usable area, selected-room deletion with Undo, full-tile placement with separate settings arrows, shared wall/opening geometry and optional stacked 3D. |
+| Room Planner | Independent floors, Apply/Enter numeric-setting drafts, destination-based movement, movable lift/stair reservations, schematic open-stair plans, shared 2D/3D object actions, Undo and complete-project JSON controls. |
 | Sun Path (Environment) | Local SunCalc angles, daylight/twilight/golden-hour summary, monthly and seasonal paths, same-clock-time curves, 1 ft pole-shadow length, neighbour-blocked roof/exterior-wall sunlight hours, coordinate detection on request and CSV export. Exploratory overrides apply to the project only on explicit request. |
 | Environment | Local weather import, opt-in historical-weather fetch, geometric shadows, layer comparisons, wind proposals and explicitly supplied reduced-model experiments. |
-| Airflow (Environment) | Room/opening pressure scenarios, signed opening arrows, residual/pressure tables, cancellation, scenario comparison and local JSON/CSV/SVG evidence. Explicit density, free area, Cd and forcing; not CFD or room airspeed. |
+| Airflow (Environment) | Room/opening pressure scenarios, signed opening arrows, optional depth-averaged potential-flow fields, residuals, cancellation and local evidence. Optional Python air-density calculation from supplied or explicitly requested location weather; not validated CFD or measured occupant airspeed. |
+| Python calculations (optional local service) | Real PsychroLib air density and pvlib solar position/day-path charts. Explicit Open-Meteo weather retrieval keeps imports intact. No automatic requests or whole-building energy/CFD engine. |
 | Light (Environment) | Room workplane direct-sun masks, presence/transmitted-equivalent hours, normalized cosine-weighted sky access, scenarios, local evidence and opt-in 3D cells. Real electrical-point intent remains a separate non-emitting layer. Not lux, daylight factor or lighting adequacy. |
 | Electrical | Per-floor points, wall/surface anchors, unknown-height states and ergonomic/professional-review guidance. |
 | Drainage (Design) | Separate sanitary/storm intent, supplied ground/finished-floor/invert levels, explicit discharge destinations, geometric fall/clearance review, plans/profiles, PDF/SVG/PNG and opt-in 3D centerlines. Not hydraulic sizing, safe discharge or construction approval. |
@@ -25,7 +26,7 @@ and the shared active-floor toolbar remain available throughout. See
 ## Run locally
 
 Open [`index.html`](index.html) with the accompanying scripts, stylesheets and
-`vendor` folder. There is no application build or dependency-install step.
+`vendor` folder. The basic browser application has no build or dependency-install step.
 The 2D tools, local data imports and numerical scenarios can operate offline.
 
 Room airflow and light studies need HTTP/HTTPS and local Web Workers; they do not
@@ -39,6 +40,24 @@ py -3 -m http.server --bind 127.0.0.1 8000
 
 Open `http://127.0.0.1:8000/`. Double-click 2D remains available when 3D is
 unavailable. Browser location detection may also require HTTPS or localhost.
+
+### Working Python density and solar calculations
+
+Use the Flask application rather than the static server for these optional tools:
+reuse the existing Python 3.11+ virtual environment, or create it once with
+`py -m venv .venv` for a new checkout.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-analysis.txt
+.\.venv\Scripts\python.exe -B app.py
+```
+
+At `http://127.0.0.1:8000/`, **Environment > Airflow** provides density from
+weather or familiar temperature/pressure/RH inputs; **Sun Path** includes the
+Python solar chart. **Get weather for this location** explicitly sends the
+saved coordinates to Open-Meteo; nothing fetches on page load. See
+[Python calculations](docs/python-analysis.md) for units, provenance and limits.
+Keep a project JSON backup before changing origin or browser profile.
 
 ### Prohibited-property reports
 

@@ -255,7 +255,7 @@ class PropertyAPITests(unittest.TestCase):
         with closing(self.client.get("/api/prohibited/download", query_string={**PARAMS, "format": "pdf"})) as pdf:
             self.assertTrue(pdf.data.startswith(b"%PDF"))
             self.assertEqual(pdf.mimetype, "application/pdf")
-        for asset in ["/", "/prohibited-properties.js"]:
+        for asset in ["/", "/user-guide.html", "/planner-guide.js", "/planner-guide.css", "/prohibited-properties.js"]:
             with closing(self.client.get(asset)) as response:
                 self.assertEqual(response.status_code, 200)
         for path in ["/app.py", "/.git/config", "/.env", "/requirements.txt", "/../Website/requirements.txt"]:

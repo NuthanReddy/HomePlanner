@@ -40,6 +40,10 @@ old documents and an explicit preservation/rollback policy.
 3. Make authored edits through the existing coordinator. One completed gesture
    or compound operation produces one revision/history entry; previews,
    selection and navigation are not authored changes.
+   Numeric room controls use `HomePlannerRoomInputs`: read committed values
+   through its readers, not raw `input.value`. Apply/Enter commits the owned
+   pending batch; capture, JSON, navigation and unrelated edits must not absorb
+   unfinished room-setting text.
 4. Validate a candidate before replacing state. A failed command restores the
    exact prior authored geometry and references, not a regenerated approximation.
 5. Keep `floor` (buildable plate), `plot` (property boundary), `building` and

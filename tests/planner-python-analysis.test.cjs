@@ -54,6 +54,19 @@ function solarResponse(request) {
       day: { durationHours: 24, sampleCount: path.length, sampleMinutes: request.input.sampleMinutes } },
     engine: { name: 'pvlib', version: '0.15.2' }, assumptions: ['Synthetic response for UI lifecycle tests.'] };
 }
+function currentWeatherResponse(request, density = 1.11) {
+  const timestamp = '2026-09-17T16:30:00Z', label = 'Open-Meteo current model sample';
+  const weather = { id: 'synthetic-current-model', kind: 'current-model',
+    requestedSite: { latitude: request.input.latitude, longitude: request.input.longitude },
+    latitude: request.input.latitude, longitude: request.input.longitude, fetchedAtUTC: timestamp,
+    timestampMeaning: 'Modelled instant in UTC; provider update interval, not historical interval-end data.',
+    source: { provider: 'Open-Meteo', label, elevationM: 500 },
+    units: { temperatureC: 'C', rhPct: '%', pressurePa: 'Pa' },
+    records: [{ timestamp, intervalSeconds: 900, temperatureC: 25, rhPct: 0, pressurePa: 95000, missing: [] }] };
+  const inputs = { temperatureC: 25, rhPct: 0, pressurePa: 95000,
+    source: { kind: 'weather-record', label, weatherId: weather.id, recordTimestamp: timestamp, timeBasis: weather.timestampMeaning } };
+  return { ...densityResponse({ input: inputs }, density), weather };
+}
 
 test('construction, sync and unrelated selection do not fetch, calculate, discover or edit', () => {
   const { ui, requests, edits, mutate, dispose } = setup();
@@ -303,4 +316,95 @@ test('solar chart plots actual returned geometric/apparent/night values with acc
   assert.doesNotMatch(svg, /<script>/);
   result.output.path[1].apparentElevationDeg = 50;
   assert.notEqual(UI.solarChart(result), svg, 'chart geometry comes from returned numerical samples');
+});
+
+test('one explicit weather action sends only CURRENT SAVED coordinates, computes/uses density and preserves imports/manual drafts', async () => {
+  const { ui, airflow, requests, planner, setSolar, dispose } = setup();
+  ui.setDensityInputs({ mode: 'manual', recordIndex: '2', temperatureC: '31', rhPct: '55', pressureHpa: '999', sourceNote: 'Keep this draft' });
+  setSolar({ latitude: 50, longitude: 12 });
+  const before = planner.getProject(), pending = ui.getWeatherForLocation(), request = requests[0];
+  assert.equal(request.path, '/api/analysis/current-weather-density');
+  assert.deepEqual(request.input, { latitude: 17.385, longitude: 78.4867, acknowledgeOpenMeteo: true });
+  assert.equal(ui.getState().currentWeather, null);
+  reply(request, currentWeatherResponse(request)); assert.ok(await pending);
+  assert.equal(airflow.getState().draft.densityKgM3, 1.11);
+  assert.match(airflow.getState().draft.sources.densityKgM3, /Open-Meteo.*saved site 17\.385, 78\.4867.*not on-site/);
+  const state = ui.getState();
+  assert.equal(state.densityInputs.mode, 'current');
+  assert.equal(state.densityInputs.temperatureC, '31'); assert.equal(state.densityInputs.sourceNote, 'Keep this draft');
+  assert.equal(state.densityInputs.recordIndex, '2');
+  assert.equal(state.currentWeather.records[0].rhPct, 0);
+  assert.deepEqual(planner.getProject(), before);
+  assert.match(state.density.message, /Imported weather is unchanged/);
+  ui.setDensityInputs({ mode: 'weather' });
+  assert.equal(ui.getState().densityWeather.temperatureC, 26, 'the existing selected imported row was retained');
+  ui.setDensityInputs({ mode: 'current' });
+  const cached = ui.calculateDensity();
+  assert.equal(requests[1].path, '/api/analysis/air-density', 'using a fetched sample again is purely local');
+  reply(requests[1], densityResponse(requests[1])); await cached;
+  assert.deepEqual(planner.getProject(), before); dispose();
+});
+
+test('a failed explicit weather refresh preserves the previous session sample and all accepted/manual/imported data', async () => {
+  const { ui, airflow, requests, planner, dispose } = setup();
+  const first = ui.getWeatherForLocation(); reply(requests[0], currentWeatherResponse(requests[0])); await first;
+  const before = ui.getState(), projectBefore = planner.getProject(), draftBefore = airflow.getState().draft;
+  const failed = ui.getWeatherForLocation();
+  reply(requests[1], { error: { code: 'weather_unavailable', message: 'Open-Meteo could not be reached. Previous weather and airflow inputs were not replaced.' } }, 502);
+  assert.equal(await failed, null);
+  assert.equal(ui.getState().density.status, 'failed');
+  assert.match(ui.getState().density.message, /Open-Meteo/);
+  assert.deepEqual(ui.getState().currentWeather, before.currentWeather);
+  assert.deepEqual(ui.getState().densityInputs, before.densityInputs);
+  assert.deepEqual(airflow.getState().draft, draftBefore);
+  assert.deepEqual(planner.getProject(), projectBefore); dispose();
+});
+
+test('weather retrieval rejects later site/project/scenario/typing changes without replacing any sample or density', async () => {
+  const changes = [
+    instance => instance.mutate(project => { project.site.latitude = 12; }),
+    instance => instance.mutate(project => { project.id = 'different-owner'; }),
+    instance => instance.airflow.addScenario('A later scenario'),
+    instance => instance.ui.setDensityInputs({ temperatureC: '41' }),
+    instance => instance.ui.notifyDensityDraftInput(),
+  ];
+  for (const change of changes) {
+    const instance = setup(), pending = instance.ui.getWeatherForLocation(), request = instance.requests[0];
+    change(instance);
+    reply(request, currentWeatherResponse(request));
+    assert.equal(await pending, null);
+    assert.equal(instance.ui.getState().currentWeather, null);
+    assert.equal(instance.airflow.getState().draft.densityKgM3, null);
+    assert.equal(request.options.signal.aborted, true);
+    instance.dispose();
+  }
+});
+
+test('latest weather response wins, current-site mismatch requires a fresh explicit lookup, and mismatched replies fail', async () => {
+  const { ui, airflow, requests, mutate, dispose } = setup();
+  const first = ui.getWeatherForLocation(), second = ui.getWeatherForLocation();
+  reply(requests[1], currentWeatherResponse(requests[1], 1.08)); assert.ok(await second);
+  reply(requests[0], currentWeatherResponse(requests[0], 1.2)); assert.equal(await first, null);
+  assert.equal(airflow.getState().draft.densityKgM3, 1.08);
+  const before = copy(ui.getState().currentWeather);
+  mutate(project => { project.site.longitude = 79; });
+  await ui.calculateDensity();
+  assert.equal(requests.length, 2, 'retained sample is not silently reused for a different saved site');
+  assert.match(ui.getState().density.message, /saved location changed/i);
+  assert.deepEqual(ui.getState().currentWeather, before);
+  const third = ui.getWeatherForLocation(), wrong = currentWeatherResponse(requests[2]);
+  wrong.weather.requestedSite.longitude = 80;
+  reply(requests[2], wrong); assert.equal(await third, null);
+  assert.equal(ui.getState().density.status, 'failed');
+  assert.deepEqual(ui.getState().currentWeather, before);
+  assert.equal(airflow.getState().draft.densityKgM3, 1.08); dispose();
+});
+
+test('weather retrieval never happens on mount/navigation, and file mode is explicitly unavailable', async () => {
+  const local = setup({ weather: false });
+  local.ui.sync(); local.setSolar({ date: '2026-09-17' });
+  assert.equal(local.requests.length, 0); assert.equal(local.ui.getState().currentWeather, null); local.dispose();
+  const file = setup({ protocol: 'file:' });
+  await file.ui.getWeatherForLocation();
+  assert.equal(file.requests.length, 0); assert.equal(file.ui.getState().density.status, 'unavailable'); file.dispose();
 });

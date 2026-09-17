@@ -27,7 +27,7 @@ function load(){
   for(const name of ['deriveRoomGeometry','roomRectInside','roomIntersects','roomCarpetModule',
     'roomIntersectionRect','roomIntersectionArea','roomMoveCandidate','roomResizeCandidate',
     'roomOccupiedBounds','roomPlacementConflict','roomModuleInside','roomModuleClear',
-    'roomServiceKeepClear','roomServicePlacementRank','roomSharedOpening',
+    'roomServiceKeepClear','roomServicePlacementRank','roomStairEntryEdge','roomStairApproach','roomSharedOpening',
     'roomPruneFree','roomSubtractFree','roomScoreLess','roomPackAttempt',
     'roomUsableArea','roomReservationCuts','roomReservationHostOpenings','roomStairPassage','roomFlexSpaces','roomRecalculatePlan',
     'roomEditableError','roomCommitManual','roomFurnitureClearances','roomApplyManualLayout',
@@ -154,7 +154,10 @@ test('an along-stair passage is adjacent, contained and not counted as additiona
   close(passage.rect.w,footprint.w);close(passage.rect.h,0.9144);
   assert.equal(api.roomIntersects(passage.rect,footprint),false);
   close(layout.carpetArea,100-host.reservedAreaM2+6);
-  assert.ok(api.roomFurnitureClearances(layout,host,'bed').some(rect=>api.roomIntersects(rect,passage.rect)));
+  assert.ok(!api.roomFurnitureClearances(layout,host,'bed').some(rect=>api.roomIntersects(rect,passage.rect)),
+    'The advisory side guide must not become a furniture exclusion strip');
+  assert.equal(layout.stairApproaches.length,1);
+  assert.ok(api.roomFurnitureClearances(layout,host,'bed').some(rect=>api.roomIntersects(rect,layout.stairApproaches[0].rect)));
 });
 
 test('a passage that cannot fit is reported without moving the staircase or other rooms',()=>{
@@ -166,21 +169,21 @@ test('a passage that cannot fit is reported without moving the staircase or othe
   assert.deepEqual(stair.carpet,before);
 });
 
-test('moving a lift cannot cover a staircase passage or silently shift the passage to the other side',()=>{
+test('moving a lift cannot cover the bounded landing approach',()=>{
   const api=load(),g=geometry(api);
   const stair=room(api,'stair-1','staircase',{x:6,y:5,w:3,h:2},true);
   const lift=room(api,'lift-1','lift',{x:12,y:11,w:1.5,h:1.7},true);
   stair.req.passageWidthM=0.9144;
   const layout=api.roomRecalculatePlan(plan([stair,lift]),g);
-  const passage=plain(layout.stairPassages[0]),before=plain(layout);
+  const passage=plain(layout.stairApproaches[0]),before=plain(layout);
   const context={g,plan:layout,cfg:{},signature:'blocked-passage'};
   const blocked={...lift.carpet,x:passage.rect.x+0.12,y:passage.rect.y+0.12};
   assert.equal(api.roomIntersects(api.roomOccupiedBounds({...lift,carpet:blocked,module:api.roomCarpetModule(blocked)}),
     api.roomOccupiedBounds(stair)),false,'The lift itself is beyond the staircase, not overlapping it');
-  assert.match(api.roomEditableError(context,item(lift),blocked),/block a staircase passage/);
+  assert.match(api.roomEditableError(context,item(lift),blocked),/block a stair landing approach/);
   assert.equal(api.roomCommitManual(context,lift,blocked,false,false),false);
   assert.deepEqual(plain(layout),before);
-  assert.deepEqual(plain(layout.stairPassages[0]),passage);
+  assert.deepEqual(plain(layout.stairApproaches[0]),passage);
 });
 
 test('a lift wall alone may not intrude into the passage even when its carpet remains clear',()=>{
@@ -188,16 +191,17 @@ test('a lift wall alone may not intrude into the passage even when its carpet re
   const stair=room(api,'stair-1','staircase',{x:6,y:5,w:3,h:2},true);
   stair.req.passageWidthM=0.9144;
   const lift=room(api,'lift-1','lift',{x:12,y:11,w:1.5,h:1.7},true);
-  const layout=api.roomRecalculatePlan(plan([stair,lift]),g),passage=layout.stairPassages[0].rect;
+  stair.req.stairEntryEdge='W';
+  const layout=api.roomRecalculatePlan(plan([stair,lift]),g),passage=layout.stairApproaches[0].rect;
   const blocked={x:passage.x-1.5-0.04,y:passage.y+0.2,w:1.5,h:1.7};
   assert.equal(api.roomIntersects(blocked,passage),false);
   const context={g,plan:layout,cfg:{}};
-  assert.match(api.roomEditableError(context,item(lift),blocked),/block a staircase passage/);
+  assert.match(api.roomEditableError(context,item(lift),blocked),/block a stair landing approach/);
   assert.equal(api.roomEditableError(context,item(lift),{...blocked,x:passage.x-1.5-0.12}),null,
     'Touching the passage edge with the full wall footprint is allowed');
 });
 
-test('the shared entrance passage in front of the staircase stays open, not just the along-stair guide',()=>{
+test('a generic circulation flex-space does not lock the entire room behind a staircase',()=>{
   const api=load(),g=geometry(api);
   const stair=room(api,'stair-1','staircase',{x:9,y:2,w:2,h:5},true);
   const lift=room(api,'lift-1','lift',{x:5,y:9,w:1.5,h:1.7},true);
@@ -206,7 +210,7 @@ test('the shared entrance passage in front of the staircase stays open, not just
   layout.circulation={accessByRoom:new Map([['stair-1',{targetType:'passage',target:access}]])};
   const before=plain(layout.placed),context={g,plan:layout,cfg:{}};
   const blocked={...lift.carpet,x:9,y:10};
-  assert.match(api.roomEditableError(context,item(lift),blocked),/block a staircase passage/);
+  assert.equal(api.roomEditableError(context,item(lift),blocked),null);
   assert.deepEqual(plain(layout.placed),before);
   assert.equal(api.roomEditableError(context,item(lift),lift.carpet),null,'The lift may stand beside the shared passage');
 });
@@ -214,23 +218,25 @@ test('the shared entrance passage in front of the staircase stays open, not just
 test('resizing a lift into the staircase access passage is rejected without altering dimensions',()=>{
   const api=load(),g=geometry(api);
   const stair=room(api,'stair-1','staircase',{x:9,y:2,w:2,h:5},true);
-  const lift=room(api,'lift-1','lift',{x:6.5,y:9,w:1.5,h:1.7},true);
+  stair.req.passageWidthM=0.9144;stair.req.stairEntryEdge='S';
+  const lift=room(api,'lift-1','lift',{x:6.5,y:7.3,w:1.5,h:1.7},true);
   const access={x:8.88,y:7.12,w:2.24,h:8.5};
   const layout=api.roomRecalculatePlan(plan([stair,lift]),g);
   layout.circulation={accessByRoom:new Map([['stair-1',{targetType:'passage',target:access}]])};
   const before=plain(lift.carpet),context={g,plan:layout,cfg:{},signature:'resize-passage'};
   const candidate=api.roomResizeCandidate(item(lift),lift.carpet,1,0,g,'E');
-  assert.match(api.roomEditableError(context,item(lift),candidate),/block a staircase passage/);
+  assert.match(api.roomEditableError(context,item(lift),candidate),/block a stair landing approach/);
   assert.equal(api.roomCommitManual(context,lift,candidate,false,false),false);
   assert.deepEqual(lift.carpet,before);
 });
 
-test('adding a lift prefers the side of the existing staircase passage without moving retained rooms',()=>{
+test('adding a lift prefers the side of the bounded stair entry without moving retained rooms',()=>{
   const api=load(),g=geometry(api);
   const host=room(api,'bed-1','bedroom',{x:2,y:3,w:6,h:10});
   const stair=room(api,'stair-1','staircase',{x:9,y:2,w:2,h:5},true);
+  stair.req.passageWidthM=0.9144;stair.req.stairEntryEdge='S';
   const kept=[host,stair],before=plain(kept);
-  const access={stairId:'stair-1',rect:{x:8.88,y:7.12,w:2.24,h:8.5},source:'existing-access'};
+  const access=api.roomStairApproach(stair,g);
   const req={id:'lift-1',type:'lift',label:'Lift 1',reserveFootprint:true,seq:1,priority:1,
     range:{minW:1.5,maxW:1.5,minD:1.7,maxD:1.7}};
   const result=api.roomPackAttempt(g,[req],'preferred','large',0,kept,[access]);
@@ -240,7 +246,7 @@ test('adding a lift prefers the side of the existing staircase passage without m
   assert.equal(api.roomIntersects(bounds,access.rect),false);
   assert.ok(api.roomSharedOpening(bounds,access.rect,0.9,0.68,0.001),
     'The lift must be alongside the shared passage, with enough facing edge for an opening');
-  close(bounds.y,access.rect.y);
+  assert.ok(bounds.y<access.rect.y+access.rect.h&&bounds.y+bounds.h>access.rect.y);
   assert.ok(Math.min(Math.abs(bounds.x+bounds.w-access.rect.x),Math.abs(bounds.x-access.rect.x-access.rect.w))<1e-7);
   assert.deepEqual(plain(kept),before);
   for(const retained of kept)

@@ -1,0 +1,56 @@
+.hp-python-analysis {
+  color: var(--txt, #1f2328);
+  border: 1px solid var(--line, #d0d7de);
+  border-radius: 10px;
+  background: var(--panel, #fff);
+  padding: 14px;
+  margin: 12px 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.hp-python-analysis *, .hp-python-analysis *::before, .hp-python-analysis *::after { box-sizing: border-box; }
+.hp-python-analysis [hidden] { display: none !important; }
+.hp-python-analysis h3 { margin: 0 0 6px; font-size: 1rem; }
+.hp-python-analysis p { margin: 8px 0; overflow-wrap: anywhere; }
+.hp-python-help, .hp-python-status { font-size: .82rem; line-height: 1.5; color: var(--dim, #59636e); }
+.hp-python-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 10px; align-items: start; }
+.hp-python-analysis label { display: flex; flex-direction: column; gap: 5px; font-size: .82rem; min-width: 0; }
+.hp-python-analysis input, .hp-python-analysis select, .hp-python-analysis button {
+  font: inherit;
+  color: inherit;
+  background: var(--panel2, #f6f8fa);
+  border: 1px solid var(--line, #d0d7de);
+  border-radius: 6px;
+  padding: 8px 10px;
+  min-height: 44px;
+  max-width: 100%;
+  min-width: 0;
+}
+.hp-python-analysis input { width: 100%; }
+.hp-python-analysis input[type="checkbox"] { width: 24px; flex: 0 0 24px; margin: 0; accent-color: var(--acc, #0969da); }
+.hp-python-ack label { flex-direction: row; align-items: center; line-height: 1.5; }
+.hp-python-ack { padding: 6px 0; }
+.hp-python-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.hp-python-analysis button { cursor: pointer; }
+.hp-python-toolbar button:first-child { background: var(--acc, #0969da); color: #fff; }
+.hp-python-analysis button:disabled { opacity: .6; cursor: progress; }
+.hp-python-analysis :focus-visible { outline: 3px solid var(--acc, #0969da); outline-offset: 3px; }
+.hp-python-analysis details { margin-top: 10px; min-width: 0; }
+.hp-python-analysis summary { cursor: pointer; min-height: 44px; padding: 12px 0; font-size: .85rem; }
+.hp-python-analysis pre { font-size: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow: auto; }
+.hp-python-analysis[data-state="failed"] .hp-python-status,
+.hp-python-analysis[data-state="unavailable"] .hp-python-status { color: var(--bad, #b42318); }
+.hp-python-output { min-width: 0; font-variant-numeric: tabular-nums; }
+.hp-python-chart svg { display: block; width: 100%; height: auto; max-height: 340px; overflow: visible; }
+.hp-python-chart text { fill: var(--dim, #59636e); font: 11px system-ui, sans-serif; }
+.hp-python-grid { stroke: var(--line, #d0d7de); stroke-width: .6; fill: none; }
+.hp-python-horizon { stroke: var(--txt, #1f2328); stroke-width: 1; fill: none; }
+.hp-python-geometric { stroke: var(--dim, #59636e); stroke-width: 2; stroke-dasharray: 5 3; fill: none; }
+.hp-python-apparent { stroke: var(--acc, #0969da); stroke-width: 1.5; fill: none; }
+.hp-python-marker { fill: var(--warn, #9a6700); stroke: var(--panel, #fff); }
+@media (max-width: 550px) {
+  .hp-python-fields { grid-template-columns: minmax(0, 1fr); }
+  .hp-python-analysis { padding: 12px; }
+  .hp-python-chart { overflow-x: auto; }
+  .hp-python-chart svg { min-width: 480px; }
+}

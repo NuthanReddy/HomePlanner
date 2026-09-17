@@ -296,7 +296,8 @@
     const coordinateLabels = [];
     for (const prefix of ['a', 'b']) for (const axis of ['x', 'y', 'z'])
       coordinateLabels.push(field(`${prefix}${axis}`, `${prefix.toUpperCase()} ${axis} (m)`));
-    const anchorSummary = el('pre', '', 'hp-view-anchors');
+    const anchorSummary = el('p', '', 'hp-view-anchors'), anchorDetails = el('details'), anchorRaw = el('pre');
+    anchorDetails.append(el('summary', 'Technical details — saved cut positions and identifiers'), anchorRaw);
     const actions = el('div', '', 'hp-view-actions');
     function button(label, action) {
       const node = el('button', label); node.type = 'button'; node.addEventListener('click', action); actions.append(node); return node;
@@ -353,7 +354,7 @@
     zoom.value = 'fit'; zoom.addEventListener('change', () => { previewHost.dataset.zoom = zoom.value; });
     zoomLabel.append(zoom); previewControls.append(zoomLabel);
     const retainedDrafts = el('div', '', 'hp-view-actions');
-    host.replaceChildren(el('h2', 'Saved elevations / sections'), help, guide, form, anchorSummary, retainedDrafts, tableRegion, previewControls, report, status, alert, previewHost);
+    host.replaceChildren(el('h2', 'Saved elevations / sections'), help, guide, form, anchorSummary, anchorDetails, retainedDrafts, tableRegion, previewControls, report, status, alert, previewHost);
     let floorKey, tableKey, retainedKey, pageCount = -1, previousPreview, previewURL;
     function render(state) {
       status.textContent = `${state.message} Project revision ${state.revision}.${state.dirty ? ' Pending unsaved input draft; project Save does not include it.' : ''}`;
@@ -375,7 +376,15 @@
       for (const [name, input] of Object.entries(fields)) if (input.value !== String(state.draft[name])) input.value = state.draft[name];
       fields.id.readOnly = !!state.selectedId; replacement.checked = state.draft.replaceAnchors; remove.disabled = !state.selectedId;
       coordinateLabels.forEach(label => { label.hidden = state.draft.kind !== 'section'; });
-      anchorSummary.textContent = state.anchorSummary.length ? `Existing saved cut anchors (unchanged unless explicitly replaced):\n${JSON.stringify(state.anchorSummary, null, 2)}` : 'No saved cut anchors.';
+      anchorSummary.textContent = state.anchorSummary.length ? state.anchorSummary.map((anchor, index) => {
+        const name = index === 0 ? 'A' : 'B';
+        if (!anchor) return `${name}: Position not supplied. Place or repair this cut endpoint before drawing the section.`;
+        const floor = state.floors.find(floor => floor.id === anchor.floorId)?.name || 'Unavailable floor';
+        return anchor.kind === 'point' ? `${name}: x ${anchor.point.x}, y ${anchor.point.y}, z ${anchor.point.z} m on ${floor} (floor-local).`
+          : `${name}: Attached to ${anchor.entityKind || anchor.kind} on ${floor}. Refresh to check the saved reference; repair the referenced object if unavailable.`;
+      }).join(' ') + ' Saved positions remain unchanged unless replacement is checked.' : 'No saved section cut. Elevations do not need cut endpoints.';
+      anchorDetails.hidden = !state.anchorSummary.length;
+      anchorRaw.textContent = JSON.stringify(state.anchorSummary, null, 2);
       const nextTableKey = JSON.stringify([state.views, state.floors]);
       if (nextTableKey !== tableKey) {
         body.replaceChildren(...state.views.map(item => {

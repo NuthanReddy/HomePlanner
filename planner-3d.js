@@ -41,6 +41,18 @@
   const validRect = r => r && ['x', 'y', 'w', 'h'].every(k => Number.isFinite(r[k])) &&
     r.w > EPS && r.h > EPS;
 
+  function layerCounts(project) {
+    if (!project || !Array.isArray(project.floors)) throw new Error('Layer inventory needs the current project floors.');
+    const authored = project.floors.map(floor => floor.authored || {});
+    const records = name => authored.flatMap(value => value[name] || []);
+    const services = [...records('serviceNodes'), ...records('serviceRoutes')];
+    return {
+      structure: records('structural').length,
+      services: records('fixtures').length + services.filter(item => ['water', 'waste'].includes(item.system)).length,
+      drainage: services.filter(item => ['waste', 'rain'].includes(item.system)).length
+    };
+  }
+
   function roomFloorRegions(room) {
     if (!Object.hasOwn(room, 'usableRegions')) return validRect(room.rect) ? [room.rect] : [];
     const regions = typeof module === 'object' && module.exports ? require('./planner-regions.js') : root.HomePlannerRegions;
@@ -721,25 +733,28 @@
       </div>
       <p class="hp3d-status" data-hp3d="status" role="status" aria-live="polite">3D is off. No graphics library or GPU context is loaded until you choose Open 3D. Plumbing engineering is not assessed.</p>
       <p class="hp3d-diagnostics" data-hp3d="structure-note" role="status" aria-live="polite" hidden></p>
-      <button type="button" data-hp3d="structure-off" hidden>Turn off structural intent</button>
+      <button type="button" data-hp3d="structure-off" hidden>Hide structure</button>
       <p class="hp3d-diagnostics" data-hp3d="services-note" role="status" aria-live="polite" hidden></p>
-      <button type="button" data-hp3d="services-off" hidden>Turn off plumbing intent</button>
+      <button type="button" data-hp3d="services-off" hidden>Hide plumbing</button>
       <p class="hp3d-diagnostics" data-hp3d="drainage-note" role="status" aria-live="polite" hidden></p>
-      <button type="button" data-hp3d="drainage-off" hidden>Turn off drainage intent</button>
+      <button type="button" data-hp3d="drainage-off" hidden>Hide drainage</button>
       <p class="hp3d-diagnostics" data-hp3d="lightStudy-note" role="status" aria-live="polite" hidden></p>
       <button type="button" data-hp3d="lightStudy-off" hidden>Turn off light study</button>
       <div data-hp3d="workspace" hidden>
         <div class="hp3d-toolbar" data-hp3d="toolbar">
           <label><input type="checkbox" data-hp3d="active"> Active floor only</label>
-          <label><input type="checkbox" data-hp3d="structure"> Structural intent</label>
-          <label><input type="checkbox" data-hp3d="services"> Plumbing intent</label>
-          <label><input type="checkbox" data-hp3d="drainage"> Drainage intent</label>
-          <label><input type="checkbox" data-hp3d="lightStudy"> Light study (computed 2D result)</label>
           <label><input type="checkbox" data-hp3d="cutaway" checked> Cutaway: hide roof / ceiling caps</label>
           <div class="hp3d-actions"><button type="button" data-hp3d="in" aria-label="Zoom in">Zoom +</button>
             <button type="button" data-hp3d="out" aria-label="Zoom out">Zoom −</button>
             <button type="button" data-hp3d="reset">Reset view</button></div>
         </div>
+        <div class="hp3d-layer-controls" role="group" aria-label="Show existing model layers">
+          <div><label><input type="checkbox" data-hp3d="structure"> Show structure <span data-hp3d="structure-count"></span></label><button type="button" data-hp3d="structure-setup">Open Structure</button></div>
+          <div><label><input type="checkbox" data-hp3d="services"> Show plumbing layout <span data-hp3d="services-count"></span></label><button type="button" data-hp3d="services-setup">Open Plumbing</button></div>
+          <div><label><input type="checkbox" data-hp3d="drainage"> Show drainage layout <span data-hp3d="drainage-count"></span></label><button type="button" data-hp3d="drainage-setup">Open Drainage</button></div>
+          <div><label><input type="checkbox" data-hp3d="lightStudy"> Show light results <span data-hp3d="lightStudy-count"></span></label><button type="button" data-hp3d="lightStudy-setup">Open Light study</button></div>
+        </div>
+        <p class="hp3d-help">These switches show existing models or results. Use the setup buttons to add missing objects or run a study.</p>
         <div class="hp3d-edit-toolbar hp3d-actions" data-hp3d="edit-toolbar" role="group" aria-label="Shared model actions on the active floor">
           <button type="button" data-hp3d="undo" disabled>Undo</button>
           <button type="button" data-hp3d="redo" disabled>Redo</button>
@@ -759,11 +774,13 @@
         </div>
           <details class="hp3d-assumptions" data-hp3d="services-details" hidden>
             <summary>Supplied plumbing dimensions &amp; identifiers</summary>
+            <p data-hp3d="services-scope-detail"></p>
             <p class="hp3d-dimension-schedule" data-hp3d="services-schedule" tabindex="0"
               role="region" aria-label="Supplied plumbing dimension schedule"></p>
           </details>
         <details class="hp3d-assumptions hp3d-light-study" data-hp3d="lightStudy-details" hidden>
           <summary>Light study: sensor values, coordinates &amp; electrical intent</summary>
+          <p data-hp3d="lightStudy-status-detail"></p>
           <p>${LIGHT_CAVEAT} Known zero is blue; positive values are amber with metric-scaled alpha.
             Numerical cells use the exact room/grid extent at the supplied project-relative workplane z.
             Numerical area-weighted midpoint averages require every cell value and area; unknowns are never omitted.
@@ -773,7 +790,7 @@
             role="region" aria-label="Exact light sensor and electrical inventory schedule"></p>
         </details>
         <details class="hp3d-assumptions" data-hp3d="drainage-details" hidden>
-          <summary>Drainage intent: supplied levels, discharge &amp; review metadata</summary>
+          <summary>Drainage layout: supplied levels and review details</summary>
           <p>${DRAINAGE_CAVEAT} Levels are project-relative metres, independently supplied; diameter is nominal mm.
             Access radius and clearance are supplied review distances in metres, not safe zones.
             Empty records do not establish a complete design. Cutaway retains centerlines; active-floor scope includes
@@ -782,7 +799,7 @@
             role="region" aria-label="Exact supplied drainage metadata schedule"></p>
         </details>
         <details class="hp3d-assumptions" data-hp3d="intent-findings">
-          <summary>Model warnings &amp; enabled intent coordination findings — engineering not assessed</summary>
+          <summary>Model warnings and coordination details</summary>
           <p class="hp3d-dimension-schedule" data-hp3d="intent-findings-list" tabindex="0"
             role="region" aria-label="Model and intent coordination findings"></p>
         </details>
@@ -796,7 +813,8 @@
         <p>Wall heights, storey elevations and roof thickness use project inputs, which may be defaults rather than surveyed values.
           Presentation slabs, including supplied balcony footprints, are assumed 0.14 m thick; furniture heights, door leaves, frames and glazing thickness are schematic.
           No stairs, structural members, terrain or construction assemblies are inferred.</p>
-        <p>Structural intent is off by default. When enabled, only complete authored coordination geometry is shown;
+        <p>${STRUCTURE_CAVEAT}</p>
+        <p>Structure is hidden by default. When enabled, only complete authored coordination geometry is shown;
           unknown extents are counted without invented volumes. Structural solids are not selectable here and do not cast
           or receive shadows; grids are nonphysical lines. Authored slabs are not roof caps and remain in cutaway.
           Structural engineering is not assessed; even engineer-provided provenance is an unverified claim.
@@ -827,9 +845,30 @@
       cleanup.push(() => target.removeEventListener(event, fn, settings));
     };
     const message = (text, error = false) => {
-      ui.status.textContent = `${text} Plumbing engineering is not assessed. Drainage engineering is not assessed.`;
+      ui.status.textContent = text;
       ui.status.classList.toggle('hp3d-error', error);
     };
+    function updateLayerControls(project) {
+      const counts = layerCounts(project);
+      for (const [key, name] of [['structure', 'structure'], ['services', 'plumbing'], ['drainage', 'drainage']]) {
+        ui[`${key}-count`].textContent = `(${counts[key]} records)`;
+        ui[key].disabled = counts[key] === 0;
+        ui[key].title = counts[key] ? 'Show the recorded layout; this does not run engineering calculations.'
+          : `No ${name} objects yet. Use the setup button to add them.`;
+        ui[`${key}-setup`].textContent = `${counts[key] ? 'Edit' : 'Add'} ${name}`;
+        if (!counts[key]) {
+          ui[key].checked = false;
+          ui[`${key}-note`].hidden = true;
+          ui[`${key}-off`].hidden = true;
+        }
+      }
+      const light = document.getElementById?.('workspaceLightStudy')?.homePlannerLight?.getState?.();
+      ui.lightStudy.disabled = !light?.result;
+      ui['lightStudy-count'].textContent = light?.result ? '(saved result)' : '(not calculated)';
+      ui.lightStudy.title = light?.result ? 'Display saved sunlight/sky-access evidence; not a lux calculation.'
+        : 'No saved light result. Open the Light study to calculate one.';
+      if (!light?.result) ui.lightStudy.checked = false;
+    }
     function updateActions() {
       const api = bridge(), inspector = editor();
       let state = {}, reason = '';
@@ -877,7 +916,8 @@
     }
     function lightDetails(layer) {
       ui['lightStudy-note'].hidden = !ui.lightStudy.checked;
-      ui['lightStudy-note'].textContent = layer?.label || '';
+      ui['lightStudy-note'].textContent = layer ? 'Sunlight/sky-access overlay, not lux. Current-data status and values are in the details below.' : '';
+      ui['lightStudy-status-detail'].textContent = layer?.label || '';
       ui['lightStudy-details'].hidden = !layer;
       ui['lightStudy-schedule'].textContent = layer ?
         [...layer.schedule, ...layer.averages].map(record => JSON.stringify(record)).join('\n') || 'No current sensor values available. Compute a study in 2D; 3D never runs analysis.' : '';
@@ -909,6 +949,7 @@
         throw new Error('The shared planner bridge is unavailable or lacks getScenes(). Keep planner-model.js and planner-bridge.js before planner-3d.js. The existing 2D planner remains available.');
       }
       const project = api.getProject();
+      updateLayerControls(project);
       let scenes, structure, services, drainage, lightData;
       if (ui.structure.checked || ui.services.checked || ui.drainage.checked || ui.lightStudy.checked) {
         if (typeof api.getDrawingScene !== 'function') throw new Error('3D intent needs getDrawingScene() and registered site geometry. Continue in 2D.');
@@ -1026,7 +1067,7 @@
         message(`Showing ${content.floors.length} storey${content.floors.length === 1 ? '' : 's'} · active floor: ${activeName}. Camera is retained after edits; Reset view fits the displayed geometry.`);
         if (content.structural) {
           const s = content.structural;
-          ui['structure-note'].textContent = `Structural intent: ${s.shown} of ${s.total} records in displayed floors; ${s.solids} solids, ${s.grids} nonphysical grid lines, ${s.missing} missing-geometry markers (count only; no volume guessed). ${s.findings.length} coordination findings across all floors (including the engineering caveat). ${STRUCTURE_CAVEAT}`;
+          ui['structure-note'].textContent = `Structure: ${s.solids} members and ${s.grids} grid lines shown; ${s.missing} records need positions or sizes. ${s.shown} of ${s.total} records are in the displayed floors.`;
         }
         if (content.plumbing) {
           const p = content.plumbing;
@@ -1034,17 +1075,16 @@
             `${e.floorId}/${e.id}: width ${e.widthM ?? 'unknown'}, depth ${e.depthM ?? 'unknown'}, height ${e.heightM ?? 'unknown'} m` :
             `${e.floorId}/${e.id}: diameter ${e.diameterMm ?? 'unknown'} mm`).join('\n');
           ui['services-schedule'].textContent = schedule || 'No supplied plumbing records.';
-          ui['services-note'].textContent = `Plumbing intent: ${p.shown} of ${p.total} records; ${p.routes} routes, ${p.segments} known consecutive centerline segments, ${p.gaps} unknown segment gaps, ${p.points} node points, ${p.solids} explicit fixture boxes, ${p.missing} missing-geometry markers (count only; inspect in 2D). ${
-            ui.active.checked ? `Active-floor scope includes owned or endpoint-touching routes in full, including ${p.foreignRoutes} foreign-floor spans/routes and ${p.foreignNodes} foreign endpoint nodes; fixtures are active-floor only. Other routes and nodes are omitted, not absent.` :
-              'All registered floors included.'} ${p.findings.length} findings across all floors (not just this subset). ${PLUMBING_CAVEAT} Supplied dimensions and identifiers are available below the preview.`;
+          ui['services-note'].textContent = `Plumbing: ${p.routes} routes, ${p.segments} segments, ${p.points} nodes and ${p.solids} fixture boxes; ${p.missing} records need geometry and ${p.gaps} gaps need review. No hydraulic flow is calculated.`;
+          ui['services-scope-detail'].textContent = `${ui.active.checked
+            ? `Active-floor scope includes owned or endpoint-touching routes in full, including ${p.foreignRoutes} foreign-floor spans/routes and ${p.foreignNodes} foreign endpoint nodes. Other routes are omitted, not absent.`
+            : 'All registered floors are included.'} ${p.findings.length} findings across all floors. ${PLUMBING_CAVEAT}`;
         }
         ui['services-details'].hidden = !content.plumbing;
         ui['drainage-details'].hidden = !content.drainage;
         if (content.drainage) {
           const d = content.drainage;
-          ui['drainage-note'].textContent = `Drainage intent: ${d.shown} of ${d.total} records; ${d.segments} known consecutive centerline segments, ${d.gaps} unknown segment gaps, ${d.points} node points, ${d.missing} missing-geometry records. ${
-            ui.active.checked ? `${d.foreignRoutes} foreign-floor routes and ${d.foreignNodes} foreign endpoint nodes included in full; unrelated networks omitted. ` : ''}${
-            content.plumbing ? 'Shared sanitary geometry is drawn once with plumbing. ' : ''}Drainage engineering is not assessed. Exact metadata and coordination findings are collapsed below the canvas.`;
+          ui['drainage-note'].textContent = `Drainage: ${d.segments} segments and ${d.points} nodes; ${d.missing} records need geometry and ${d.gaps} gaps need review. Layout only; supplied levels and findings are below.`;
           ui['drainage-schedule'].textContent = d.schedule.map(e => JSON.stringify(e)).join('\n') ||
             'No drainage records in this scope. This does not establish a complete or assessed design.';
         } else ui['drainage-schedule'].textContent = '';
@@ -1113,11 +1153,11 @@
       ui.open.setAttribute('aria-expanded', 'false');
       host.removeAttribute('aria-busy');
       ui['structure-off'].hidden = !ui.structure.checked;
-      if (ui.structure.checked) ui['structure-note'].textContent = `Structural intent is not displayed. ${STRUCTURE_CAVEAT}`;
+      if (ui.structure.checked) ui['structure-note'].textContent = 'Structure is not displayed while 3D is closed.';
       ui['services-off'].hidden = !ui.services.checked;
-      if (ui.services.checked) ui['services-note'].textContent = `Plumbing intent is not displayed. ${PLUMBING_CAVEAT}`;
+      if (ui.services.checked) ui['services-note'].textContent = 'Plumbing is not displayed while 3D is closed.';
       ui['drainage-off'].hidden = !ui.drainage.checked;
-      if (ui.drainage.checked) ui['drainage-note'].textContent = 'Drainage intent is not displayed. Drainage engineering is not assessed.';
+      if (ui.drainage.checked) ui['drainage-note'].textContent = 'Drainage is not displayed while 3D is closed.';
       ui['drainage-schedule'].textContent = '';
       ui['drainage-details'].hidden = true;
       ui['lightStudy-off'].hidden = !ui.lightStudy.checked;
@@ -1303,6 +1343,7 @@
       if (destroyed) return;
       // Events are notifications, never a replacement for the current 2D controller.
       lightInvalidated = event.detail?.stale === true || event.detail?.result == null;
+      updateLayerControls(bridge().getProject());
       refreshLight();
     });
     listen(ui.lightStudy, 'change', () => {
@@ -1317,36 +1358,36 @@
     });
     listen(ui.structure, 'change', () => {
       ui['structure-note'].hidden = !ui.structure.checked;
-      ui['structure-note'].textContent = ui.structure.checked ? STRUCTURE_CAVEAT : '';
+      ui['structure-note'].textContent = ui.structure.checked ? 'Showing structural objects…' : '';
       rebuild();
     });
     listen(ui['structure-off'], 'click', () => {
       ui.structure.checked = false;
       ui['structure-off'].hidden = ui['structure-note'].hidden = true;
       ui['structure-note'].textContent = '';
-      message('Structural intent is off. Open 3D to inspect the remaining enabled layers; with all intent layers off the legacy schematic preview is used. 2D is unchanged.');
+      message('Structure hidden. The project is unchanged.');
     });
     listen(ui.services, 'change', () => {
       ui['services-note'].hidden = !ui.services.checked;
-      ui['services-note'].textContent = ui.services.checked ? PLUMBING_CAVEAT : '';
+      ui['services-note'].textContent = ui.services.checked ? 'Showing plumbing layout…' : '';
       rebuild();
     });
     listen(ui['services-off'], 'click', () => {
       ui.services.checked = false;
       ui['services-off'].hidden = ui['services-note'].hidden = true;
       ui['services-note'].textContent = '';
-      message('Plumbing intent is off. Open 3D to inspect the remaining enabled layers; with all intent layers off the legacy schematic preview is used. 2D is unchanged.');
+      message('Plumbing layout hidden. The project is unchanged.');
     });
     listen(ui.drainage, 'change', () => {
       ui['drainage-note'].hidden = !ui.drainage.checked;
-      ui['drainage-note'].textContent = ui.drainage.checked ? 'Drainage engineering is not assessed. Refreshing intent…' : '';
+      ui['drainage-note'].textContent = ui.drainage.checked ? 'Showing drainage layout…' : '';
       rebuild();
     });
     listen(ui['drainage-off'], 'click', () => {
       ui.drainage.checked = false;
       ui['drainage-off'].hidden = ui['drainage-note'].hidden = true;
       ui['drainage-note'].textContent = '';
-      message('Drainage intent is off. Open 3D to inspect remaining enabled layers. 2D is unchanged.');
+      message('Drainage layout hidden. The project is unchanged.');
     });
     listen(ui.cutaway, 'change', () => {
       runtime?.content?.roofs.forEach(roof => { roof.visible = !ui.cutaway.checked; });
@@ -1355,6 +1396,16 @@
     listen(ui.reset, 'click', resetView);
     listen(ui.in, 'click', () => zoom(0.8));
     listen(ui.out, 'click', () => zoom(1.25));
+    for (const [key, route] of [['structure', 'design/structure'], ['services', 'design/plumbing'],
+      ['drainage', 'design/drainage'], ['lightStudy', 'environment/light']]) {
+      listen(ui[`${key}-setup`], 'click', () => {
+        if (typeof root.HomePlannerWorkspace?.navigate !== 'function') {
+          message('Workbench navigation is unavailable. Use the main Design or Environment navigation.', true);
+          return;
+        }
+        root.HomePlannerWorkspace.navigate(route);
+      });
+    }
     const controller = {
       open, close, resetView,
       get isOpen() { return phase === 'open'; },
@@ -1370,6 +1421,6 @@
     return controller;
   }
 
-  return { THREE_VERSION, PREVIEW, toThree, wallGrid, wallSurfaceData, bedPillows, doorLeaf,
+  return { THREE_VERSION, PREVIEW, toThree, wallGrid, wallSurfaceData, bedPillows, doorLeaf, layerCounts,
     buildContent, buildLight, currentLight, disposeObject, resolveSun, mount };
 });

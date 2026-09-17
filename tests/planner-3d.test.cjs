@@ -13,6 +13,18 @@ const freeze = value => {
   return value;
 };
 
+test('layer inventory counts authored records without inventing missing geometry or running analysis', () => {
+  const project = freeze({ floors: [
+    { authored: { structural: [{ id: 'column', heightM: null }], fixtures: [{ id: 'basin' }],
+      serviceNodes: [{ id: 'cold', system: 'water' }, { id: 'waste', system: 'waste' }],
+      serviceRoutes: [{ id: 'storm', system: 'rain' }] } },
+    { id: 'empty' }
+  ] });
+  assert.deepEqual(View.layerCounts(project), { structure: 1, services: 3, drainage: 2 });
+  assert.deepEqual(View.layerCounts({ floors: [{}] }), { structure: 0, services: 0, drainage: 0 });
+  assert.throws(() => View.layerCounts(null), /current project floors/);
+});
+
 function fixture() {
   return {
     scene: {

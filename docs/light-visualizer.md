@@ -90,11 +90,47 @@ The existing whole-house `sun-exposure.js` study is unchanged.
   compare; changed sensor density requires convergence evaluation, not paired
   sensor subtraction.
 
+### Explicit sky-only studies
+
+`direct: {enabled: false}` requests only the time-independent sky-access
+calculation. It requires `sky.enabled: true`, `samples: []`, and a null or absent
+`period`; retained intervals or a retained period are rejected, never silently
+discarded. No location, date, time or solar horizon cutoff is required.
+`minSunAltitudeDeg` may be absent/null, but if supplied must still be strictly
+between 0 and 90 degrees. Explicit workplanes, numerical sky quadrature,
+window optics and physical context retain their existing contracts.
+Omitting `direct` preserves legacy direct-sun behavior and required period and
+horizon controls; normalization never inserts an enablement choice.
+
+For a floor-level whole-house map, callers explicitly provide `heightM: 0` for
+each actual inventory room, without editing geometry or guessing a workplane
+height. The shared receiver kernel includes all registered physical floors.
+An explicit `ideal-clear` window assumption must remain prominently labeled.
+Unknown neighbors or roof context still produce null primary sky values and
+finite, explicitly labeled supplied-model-only fractions, not a claim of clear
+surroundings, complete physical evidence or lux.
+
+Sky-only results have `direct.status: "disabled"`, `direct.complete: false`,
+no masks and null direct hour fields, including all sensor subtotals. Ray budgets
+include no direct rays; interval progress stays zero while actual sky rays are
+counted. Overall `complete` can become true after finalization when all requested
+sky work and physical context are complete; this never means direct hours were
+computed. Early finalization and cancellation preserve incomplete sky evidence.
+The full config fingerprint includes explicit direct enablement. Comparison
+rejects mixed enablement with `different-direct-metric-enablement`; two complete
+sky-only studies compare sky fractions only, with null hour deltas.
+The dedicated runner validates completion against requested sky evidence rather
+than requiring direct completion. It rejects disabled-direct responses containing
+direct rays, masks, interval progress or numeric hour totals/subtotals. Tests
+exercise both known and unknown context through the actual worker script in an
+isolated worker thread, as well as deterministic browser-protocol fixtures.
+
 ## Complete configuration shape
 
 This is an explicit **analytical example**, not recommended operating/design
 inputs. Required fields may be absent/null in a repairable draft, but execution
-requires them. `id`, `label`, `site`, and `roofContext` are optional.
+requires them except for the sky-only solar controls above.
+`id`, `label`, `site`, `roofContext`, and `direct` are optional.
 
 ```js
 {

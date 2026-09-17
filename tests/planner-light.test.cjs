@@ -57,6 +57,87 @@ function finiteFrozen(v){
   if(v&&typeof v==='object'){assert.ok(Object.isFrozen(v));Object.values(v).forEach(finiteFrozen);}
   else if(typeof v==='number')assert.ok(Number.isFinite(v));else assert.notEqual(typeof v,'undefined');
 }
+const skyOnlyConfig=(extra={})=>config({direct:{enabled:false},period:null,samples:[],minSunAltitudeDeg:null,...extra});
+function disabledHours(result){
+  assert.equal(result.direct.status,'disabled');assert.equal(result.direct.complete,false);
+  assert.deepEqual(result.direct.masks,[]);
+  for(const [key,value] of Object.entries(result.direct))if(key.endsWith('Hours'))assert.equal(value,null,key);
+  assert.equal(result.direct.sensorResults.length,result.sensors.length);
+  for(const sensor of result.direct.sensorResults)
+    for(const [key,value] of Object.entries(sensor))if(key.endsWith('Hours'))assert.equal(value,null,key);
+}
+test('explicit sky-only uses real floor-level cells without time, location or horizon and never invents hours',()=>{
+  const drawing=scene(),c=skyOnlyConfig();
+  drawing.scenes[0].floorElevationM=4;
+  c.workplanes[0].heightM=0;
+  const before=JSON.stringify({drawing,c}),result=L.run(drawing,c);
+  assert.equal(result.status,'complete');assert.equal(result.complete,true);
+  assert.equal(result.computationalComplete,true);assert.equal(result.sky.status,'complete');
+  near(access(result),1);assert.equal(result.sensors[0].point.z,4);
+  assert.equal(result.sampling.directRays,0);assert.equal(result.sampling.totalRays,result.sampling.skyRays);
+  assert.equal(result.progress.totalIntervals,0);assert.equal(result.progress.completedIntervals,0);
+  assert.equal(result.progress.processedRays,result.sampling.skyRays);assert.ok(result.progress.processedRays>0);
+  disabledHours(result);finiteFrozen(result);assert.equal(JSON.stringify({drawing,c}),before);
+  delete c.period;delete c.minSunAltitudeDeg;
+  assert.equal(L.run(drawing,c).status,'complete');
+});
+test('sky-only unknown context preserves finite modeled access and null primary evidence',()=>{
+  const result=L.run(scene(),skyOnlyConfig({roofContext:[],neighbors:{}}));
+  assert.equal(result.status,'incomplete');assert.equal(result.complete,false);
+  assert.equal(result.computationalComplete,true);assert.equal(result.context.status,'unknown-context');
+  assert.equal(result.sky.status,'modeled-context-only');assert.equal(access(result),null);near(modeled(result),1);
+  disabledHours(result);
+});
+test('sky-only rejects retained direct intervals, period, malformed enablement and both metrics disabled',()=>{
+  for(const direct of [null,false,{}, {enabled:null},{enabled:'false'},{enabled:false,unexpected:true}])
+    assert.throws(()=>L.normalizeConfig(skyOnlyConfig({direct})),TypeError);
+  assert.throws(()=>L.normalizeConfig(skyOnlyConfig({samples:[interval()]})),/empty samples/);
+  assert.throws(()=>L.normalizeConfig(skyOnlyConfig({period:copy(period)})),/period null or absent/);
+  for(const sky of [null,{}, {enabled:false}])
+    assert.throws(()=>L.normalizeConfig(skyOnlyConfig({sky})),/sky.enabled true/);
+  for(const minSunAltitudeDeg of [0,90,-1,'1'])
+    assert.throws(()=>L.normalizeConfig(skyOnlyConfig({minSunAltitudeDeg})));
+  const missingSamples=skyOnlyConfig();delete missingSamples.samples;
+  const blocked=L.run(scene(),missingSamples);
+  assert.equal(blocked.status,'blocked');assert.equal(blocked.progress.processedRays,0);
+  assert.ok(blocked.findings.some(f=>f.message==='config.samples is required.'));
+  assert.equal(L.run(scene(),skyOnlyConfig({windowOptics:null})).status,'blocked');
+  const empty=scene();empty.diagnostics=[{code:'missing-geometry'}];
+  assert.equal(L.run(empty,skyOnlyConfig()).status,'blocked');
+});
+test('sky-only early finalize and cancellation leave masks empty and incomplete sky cells null',()=>{
+  for(const terminal of ['finalize','cancel']){
+    const study=L.createStudy(scene(),skyOnlyConfig());
+    study.step(1);
+    const result=study[terminal]();
+    assert.equal(result.status,terminal==='cancel'?'cancelled':'incomplete');
+    assert.equal(result.complete,false);assert.equal(result.computationalComplete,false);
+    assert.equal(modeled(result),null);disabledHours(result);
+    assert.deepEqual(study.step(),result.progress);
+  }
+  const study=L.createStudy(scene(),skyOnlyConfig());
+  study.step(L.LIMITS.batchRays);
+  assert.equal(study.getResult().complete,false);
+  assert.equal(study.cancel().complete,false);
+});
+test('direct enablement is explicit provenance, legacy-compatible and sky-only comparison never subtracts null hours',()=>{
+  const drawing=scene(),legacy=config(),explicit=config({direct:{enabled:true}});
+  assert.equal(Object.hasOwn(L.normalizeConfig(legacy),'direct'),false);
+  assert.deepEqual(L.normalizeConfig({}),{});
+  const original=L.run(drawing,legacy),enabled=L.run(drawing,explicit),sky=L.run(drawing,skyOnlyConfig());
+  assert.deepEqual(original.direct,enabled.direct);assert.deepEqual(original.sky,enabled.sky);
+  assert.notEqual(original.provenance.inputFingerprint,enabled.provenance.inputFingerprint);
+  assert.notEqual(sky.provenance.inputFingerprint,enabled.provenance.inputFingerprint);
+  assert.equal(L.compare(original,enabled).comparable,true);
+  assert.ok(L.compare(original,sky).reasons.includes('different-direct-metric-enablement'));
+  const refined=skyOnlyConfig({sky:{enabled:true,radialBands:8,azimuthSectors:32},minSunAltitudeDeg:2});
+  delete refined.period;
+  const comparison=L.compare(sky,L.run(drawing,refined));
+  assert.equal(comparison.comparable,true);
+  assert.deepEqual(comparison.deltas,[{sensorId:sky.sensors[0].id,positivePathPresenceHours:null,
+    transmittedEquivalentSunHours:null,cosineWeightedSkyAccess:0}]);
+  assert.equal(L.run(drawing,config({period:null,samples:[],minSunAltitudeDeg:null})).status,'blocked');
+});
 test('browser/CommonJS contract, frozen JSON snapshots and immutable source',()=>{
   const sandbox={BuildingPhysics:Physics,HomePlannerProjection:Projection};
   vm.runInNewContext(fs.readFileSync(require.resolve('../planner-light.js'),'utf8'),sandbox);

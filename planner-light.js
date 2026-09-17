@@ -33,6 +33,7 @@
       heightM:{type:'number',minimum:0},spacingM:positiveSchema})},
     sky:{oneOf:[schemaObject({...skyProperties,enabled:{const:true}}),
       schemaObject({...skyProperties,enabled:{const:false}},['enabled'])]},
+    direct:schemaObject({enabled:{type:'boolean'}}),
     windowOptics:{oneOf:[schemaObject({mode:{const:'ideal-clear'},source:stringSchema},['mode']),
       schemaObject({mode:{const:'visible-transmission'},visibleTransmittance:fractionSchema,source:stringSchema})]},
     neighbors:schemaObject(Object.fromEntries(SIDES.map(side=>[side,schemaObject({
@@ -48,8 +49,14 @@
     site:schemaObject({latitudeDeg:{type:'number',minimum:-90,maximum:90},
       longitudeDeg:{type:'number',minimum:-180,maximum:180},timeZone:stringSchema},[])
   };
-  const CONFIG_SCHEMA=freeze({...schemaObject(configProperties,['version','workplanes','sky','windowOptics','neighbors',
-    'neighborBoxes','minSunAltitudeDeg','period','samples']),title:'HomePlannerLight v1 executable configuration',
+  const CONFIG_SCHEMA=freeze({...schemaObject({...configProperties,
+    period:{oneOf:[configProperties.period,{type:'null'}]},
+    minSunAltitudeDeg:{oneOf:[configProperties.minSunAltitudeDeg,{type:'null'}]}},
+  ['version','workplanes','sky','windowOptics','neighbors','neighborBoxes','samples']),
+    allOf:[{if:{required:['direct'],properties:{direct:{properties:{enabled:{const:false}},required:['enabled']}}},
+      then:{properties:{sky:{properties:{enabled:{const:true}}},period:{type:'null'},samples:{maxItems:0}}},
+      else:{required:['period','minSunAltitudeDeg'],properties:{period:configProperties.period,minSunAltitudeDeg:configProperties.minSunAltitudeDeg}}}],
+    title:'HomePlannerLight v1 executable configuration',
     description:'Repairable drafts may omit/null controls; executable inputs also require semantic geometry, timestamp, unit-vector and budget validation by createStudy.'});
   function object(v,p){if(!v||typeof v!=='object'||Array.isArray(v))throw new TypeError(p+' must be an object.');}
   function keys(v,allowed,p){object(v,p);for(const k of Object.keys(v))if(!allowed.includes(k))throw new TypeError(p+'.'+k+' is unsupported.');}
@@ -107,8 +114,18 @@
   }
   function normalizeConfig(value){
     json(value);keys(value,['version','id','label','workplanes','sky','windowOptics','neighbors','neighborBoxes','roofContext',
-      'period','samples','site','minSunAltitudeDeg'],'config');
+      'period','samples','site','minSunAltitudeDeg','direct'],'config');
     if(!missing(value.version)&&value.version!==VERSION)throw new RangeError('config.version must be 1.');
+    if(own(value,'direct')){
+      keys(value.direct,['enabled'],'direct');
+      if(typeof value.direct.enabled!=='boolean')throw new TypeError('direct.enabled must be boolean.');
+      if(!value.direct.enabled){
+        if(!missing(value.period))throw new TypeError('Disabled direct access requires period null or absent.');
+        if(!missing(value.samples)&&(!Array.isArray(value.samples)||value.samples.length))
+          throw new TypeError('Disabled direct access requires an empty samples array.');
+        if(value.sky?.enabled!==true)throw new TypeError('Disabled direct access requires sky.enabled true.');
+      }
+    }
     for(const k of ['id','label'])if(!missing(value[k]))text(value[k],k);
     if(!missing(value.minSunAltitudeDeg)){positive(value.minSunAltitudeDeg,'minSunAltitudeDeg');if(value.minSunAltitudeDeg>=90)throw new RangeError('Cutoff must be below 90 degrees.');}
     if(!missing(value.workplanes)){
@@ -310,13 +327,15 @@
     keys(options,['expectedPhysicalFingerprint'],'options');json(options);
     if(!missing(options.expectedPhysicalFingerprint))text(options.expectedPhysicalFingerprint,'expectedPhysicalFingerprint');
     const config=normalizeConfig(value),inventory=discover(scene),findings=copy(inventory.findings),sensors=[];
+    const directEnabled=config.direct?.enabled!==false;
     const issue=(code,message,reference=null,severity='blocking')=>findings.push({code,message,reference,severity});
     const required=(v,fields,p)=>{for(const k of fields)if(missing(v?.[k]))issue('missing-control',p+'.'+k+' is required.');};
-    required(config,['version','workplanes','sky','windowOptics','neighbors','neighborBoxes','period','samples','minSunAltitudeDeg'],'config');
+    required(config,['version','workplanes','sky','windowOptics','neighbors','neighborBoxes','samples'],'config');
+    if(directEnabled)required(config,['period','minSunAltitudeDeg'],'config');
     required(config.sky,['enabled'],'sky');if(config.sky?.enabled)required(config.sky,['radialBands','azimuthSectors'],'sky');
     required(config.windowOptics,['mode'],'windowOptics');
     if(config.windowOptics?.mode==='visible-transmission')required(config.windowOptics,['visibleTransmittance','source'],'windowOptics');
-    required(config.period,['startUTC','endUTC'],'period');
+    if(directEnabled)required(config.period,['startUTC','endUTC'],'period');
     if(config.workplanes&&!config.workplanes.length)issue('missing-workplanes','Select at least one exact room.');
     if(options.expectedPhysicalFingerprint&&options.expectedPhysicalFingerprint!==inventory.physicalFingerprint)issue('stale-physical-input','The actual physical content has changed.');
     const knownNeighbors=SIDES.every(side=>['clear','modeled'].includes(config.neighbors?.[side]?.state));
@@ -511,9 +530,10 @@
       completedSkySensors:directionCount?Math.floor(skyCursor/directionCount):0,totalSensors:sensors.length,
       computationalComplete:computationalComplete(),cancelled,finalized,blocked});}
     function getResult(){
-      const directComplete=finalized&&!blocked&&!cancelled&&sampleIndex===samples.length&&
+      const directComplete=directEnabled&&finalized&&!blocked&&!cancelled&&sampleIndex===samples.length&&
         periodHours!==null&&Math.abs(knownHours-periodHours)<1e-10;
-      const complete=computationalComplete()&&contextKnown&&directComplete;
+      const complete=computationalComplete()&&contextKnown&&
+        (directEnabled?directComplete:finalized&&!cancelled);
       const bounded=v=>Math.max(0,Math.min(1,v));
       const result={version:VERSION,kind:'RoomLightStudy',status:blocked?'blocked':cancelled?'cancelled':complete?'complete':finalized?'incomplete':'running',
         complete,computationalComplete:computationalComplete(),config,inventory,provenance,findings,progress:progress(),sensors,
@@ -533,14 +553,15 @@
             return {sensorId:s.id,status:done?contextKnown?'known':'modeled-context-only':'unavailable',
               cosineWeightedSkyAccess:done&&contextKnown?modeled:null,modeledCosineWeightedSkyAccess:modeled};
           })},
-        direct:{status:blocked?'blocked':directComplete?'complete':'incomplete',complete:directComplete,
-          units:'hours',periodHours,processedIntervalHours:processedHours,knownIntervalHours:knownHours,
-          unknownOrUnprocessedHours:periodHours===null?null:Math.max(0,periodHours-knownHours),nearHorizonUnresolvedHours:nearHours,
+        direct:{status:blocked?'blocked':!directEnabled?'disabled':directComplete?'complete':'incomplete',complete:directComplete,
+          units:'hours',periodHours,processedIntervalHours:directEnabled?processedHours:null,knownIntervalHours:directEnabled?knownHours:null,
+          unknownOrUnprocessedHours:periodHours===null?null:Math.max(0,periodHours-knownHours),nearHorizonUnresolvedHours:directEnabled?nearHours:null,
           masks,sensorResults:sensors.map((s,i)=>({sensorId:s.id,
             positivePathPresenceHours:directComplete?presence[i]:null,transmittedEquivalentSunHours:directComplete?equivalent[i]:null,
-            knownProcessedPositivePathPresenceHours:contextKnown?presence[i]:0,
-            knownProcessedTransmittedEquivalentSunHours:contextKnown?equivalent[i]:0,
-            modeledProcessedPositivePathPresenceHours:presence[i],modeledProcessedTransmittedEquivalentSunHours:equivalent[i]}))},
+            knownProcessedPositivePathPresenceHours:!directEnabled?null:contextKnown?presence[i]:0,
+            knownProcessedTransmittedEquivalentSunHours:!directEnabled?null:contextKnown?equivalent[i]:0,
+            modeledProcessedPositivePathPresenceHours:directEnabled?presence[i]:null,
+            modeledProcessedTransmittedEquivalentSunHours:directEnabled?equivalent[i]:null}))},
         limitations:['Uniform-sky geometric access only; not daylight factor, lux, irradiation, adequacy or artificial photometry.',
           'No interreflection, sky brightness/weather model, invented ceiling, connecting slab, parapet or gap geometry.',
           'Windows use the explicit study optics, never irradiance solar transmittance as visible transmission.',
@@ -567,13 +588,17 @@
     if(canonical(first.config.windowOptics)!==canonical(second.config.windowOptics))reasons.push('different-optical-definition');
     if(canonical(first.config.neighbors)!==canonical(second.config.neighbors))reasons.push('different-context-definition');
     if(first.config.sky?.enabled!==second.config.sky?.enabled)reasons.push('different-sky-metric-enablement');
-    if(canonical(first.config.period)!==canonical(second.config.period))reasons.push('different-period');
-    if(first.config.minSunAltitudeDeg!==second.config.minSunAltitudeDeg)reasons.push('different-horizon-cutoff');
+    const directEnabled=first.config.direct?.enabled!==false,secondDirectEnabled=second.config.direct?.enabled!==false;
+    if(directEnabled!==secondDirectEnabled)reasons.push('different-direct-metric-enablement');
+    if(directEnabled||secondDirectEnabled){
+      if(canonical(first.config.period)!==canonical(second.config.period))reasons.push('different-period');
+      if(first.config.minSunAltitudeDeg!==second.config.minSunAltitudeDeg)reasons.push('different-horizon-cutoff');
+    }
     const comparable=!reasons.length;
     return freeze({comparable,reasons,revisionMetadata:{first:first.provenance.revision,second:second.provenance.revision},
       deltas:comparable?first.sensors.map((s,i)=>({sensorId:s.id,
-        positivePathPresenceHours:second.direct.sensorResults[i].positivePathPresenceHours-first.direct.sensorResults[i].positivePathPresenceHours,
-        transmittedEquivalentSunHours:second.direct.sensorResults[i].transmittedEquivalentSunHours-first.direct.sensorResults[i].transmittedEquivalentSunHours,
+        positivePathPresenceHours:directEnabled?second.direct.sensorResults[i].positivePathPresenceHours-first.direct.sensorResults[i].positivePathPresenceHours:null,
+        transmittedEquivalentSunHours:directEnabled?second.direct.sensorResults[i].transmittedEquivalentSunHours-first.direct.sensorResults[i].transmittedEquivalentSunHours:null,
         cosineWeightedSkyAccess:first.sky.status==='disabled'?null:
           second.sky.sensorResults[i].cosineWeightedSkyAccess-first.sky.sensorResults[i].cosineWeightedSkyAccess})):null});
   }

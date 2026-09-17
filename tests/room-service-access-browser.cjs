@@ -32,9 +32,11 @@ module.exports=async function serviceAccessSmoke(browser,url,{width=1440}={}){
       const pack=roomPackProgram;
       window.__serviceRepackCalls=0;
       window.roomPackProgram=function(...args){window.__serviceRepackCalls++;return pack(...args);};
-      return {type:access?.targetType,rect:access?.target,guides:current.plan.stairPassages};
+      return {type:access?.targetType,rect:current.plan.stairApproaches.find(p=>p.stairId==='stair-1')?.rect,
+        guides:current.plan.stairPassages};
     });
     assert.equal(originalPassage.type,'passage','The fixture staircase must exit into the front-side internal passage');
+    assert.ok(originalPassage.rect,'The staircase must have a bounded entry approach, not reserve an entire flex-space');
     const before=await snapshot();
     await page.locator('[data-room-source="liftCount"]').click();
     const added=await snapshot();
@@ -73,7 +75,7 @@ module.exports=async function serviceAccessSmoke(browser,url,{width=1440}={}){
     await page.locator('#hp-editor-room-y').press('Enter');
     assert.deepEqual(await snapshot(),stable,'A passage-blocking numeric move changed the project');
     const errorsShown=await page.locator('#plannerInspector [role="alert"]:visible').allTextContents();
-    assert.match(errorsShown.join('\n'),/block a staircase passage/,
+    assert.match(errorsShown.join('\n'),/block a stair landing approach/,
       'A rejected numeric edit must expose its reason in the active inspector');
     await page.evaluate(()=>{
       const saved=HomePlanner.exportProject();

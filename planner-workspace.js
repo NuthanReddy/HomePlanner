@@ -288,6 +288,7 @@
       show(by('workspacePlumbing'), view === 'plumbing');
       show(by('workspaceDrainage'), view === 'drainage');
       show(by('workspaceAirflow'), view === 'env-airflow');
+      show(by('python-density-analysis'), view === 'env-airflow');
       show(by('workspaceElevations'), view === 'elevations');
       show(by('workspaceLight'), view === 'env-light');
       show(by('plotSources'), view === 'optimizer');

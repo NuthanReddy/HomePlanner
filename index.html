@@ -312,6 +312,7 @@ body.room-plan-lock{overflow:hidden}
 <link rel="stylesheet" href="environment-ui.css">
 <link rel="stylesheet" href="prohibited-properties.css">
 <link rel="stylesheet" href="planner-workspace.css">
+<link rel="stylesheet" href="planner-guide.css">
 <script src="planner-regions.js"></script>
 <link rel="stylesheet" href="planner-drawing-ui.css">
 <link rel="stylesheet" href="planner-structure-ui.css">
@@ -321,6 +322,7 @@ body.room-plan-lock{overflow:hidden}
 <link rel="stylesheet" href="planner-airflow-ui.css">
 <link rel="stylesheet" href="planner-light-ui.css">
 <link rel="stylesheet" href="planner-package-ui.css">
+<link rel="stylesheet" href="planner-python-analysis.css">
 <script type="importmap">
 {"imports":{"three":"./vendor/three/three.module.min.js"}}
 </script>
@@ -366,6 +368,7 @@ body.room-plan-lock{overflow:hidden}
 <div id="workspaceTools" class="hp-workspace-tools"></div>
 <p id="workspaceModeHint" class="mini"></p>
 <h2 id="workspaceHeading" tabindex="-1" class="hp-workspace-heading">Design</h2>
+<div id="workspaceGuide"></div>
 <section id="workspaceOverview" class="hp-workspace-panel" hidden aria-label="Project overview">
   <h3>Current project readiness</h3>
   <p id="workspaceReadiness"></p>
@@ -388,6 +391,7 @@ body.room-plan-lock{overflow:hidden}
 <section id="workspacePlumbing" class="hp-workspace-panel" hidden aria-label="Plumbing networks, plans and risers"></section>
 <section id="workspaceDrainage" class="hp-workspace-panel" hidden aria-label="Drainage networks, levels and profiles"></section>
 <section id="workspaceAirflow" class="hp-workspace-panel" hidden aria-label="Explicit pressure-network airflow scenarios"></section>
+<section id="python-density-analysis" class="hp-workspace-panel" hidden aria-label="Python air density calculation"></section>
 <section id="workspaceElevations" class="hp-workspace-panel" hidden aria-label="Elevations, sections and physical facade projections">
   <section id="workspaceViews" aria-label="Saved elevation and section views"></section>
   <section id="workspaceFacades" aria-label="Physical facade projections"></section>
@@ -1229,6 +1233,7 @@ body.room-plan-lock{overflow:hidden}
         <p class="mini" id="sunDiagramStatus" role="status"></p>
         <p class="mini" id="sunDailyCaption"></p>
       </section>
+      <section id="python-solar-analysis" aria-label="Python solar position and daily path"></section>
       <section class="card sun-day-summary" id="sunDaySummary" aria-labelledby="sunDaySummaryHeading">
         <div class="sun-heading"><h2 id="sunDaySummaryHeading">Day summary</h2><span class="mini" id="sunDaySummaryDate"></span></div>
         <dl class="sun-events">
@@ -2265,10 +2270,15 @@ function makeRoomRequests(cfg){
   }
   for(const id of roomStableIds('lift',cfg.counts.lift))
     req.push({id,label:`Lift ${id.slice(5)}`,type:'lift',reserveFootprint:true,range:cfg.lift,priority:5,seq:seq++});
-  for(const id of roomStableIds('stair',cfg.counts.staircase))
+  const priorStairs=globalThis.HomePlanner?.getProject()?.legacy?.context?.plan?.placed||[];
+  for(const id of roomStableIds('stair',cfg.counts.staircase)){
+    const prior=priorStairs.find(p=>p.req?.id===id)?.req;
     req.push({id,label:`Staircase ${id.slice(6)}`,type:'staircase',reserveFootprint:true,
+      ...(!prior?{stairEnclosure:'open'}:prior.stairEnclosure===undefined?{}:{stairEnclosure:prior.stairEnclosure}),
+      ...(prior?.stairEntryEdge?{stairEntryEdge:prior.stairEntryEdge}:{}),
       ...(Number.isFinite(cfg.stairPassageWidthM)?{passageWidthM:cfg.stairPassageWidthM}:{}),
       range:cfg.staircase,priority:6,seq:seq++});
+  }
   return req;
 }
 
@@ -2686,11 +2696,14 @@ function roomPlanSignature(plate,cfg){
 
 function roomRecalculatePlan(plan,g){
   const reservations=plan.placed.filter(p=>p.req.reserveFootprint).map(roomOccupiedBounds);
-  plan.stairPassages=[];plan.stairPassageIssues=[];
+  plan.stairPassages=[];plan.stairApproaches=[];plan.stairPassageIssues=[];
   for(const stair of plan.placed.filter(p=>p.req.type==='staircase'&&p.req.passageWidthM>0)){
     const passage=roomStairPassage(stair,plan,g);
     if(passage)plan.stairPassages.push(passage);
     else plan.stairPassageIssues.push(`${stair.req.label}: no along-stair passage of the requested width fits here`);
+    const approach=roomStairApproach(stair,g);
+    if(approach)plan.stairApproaches.push(approach);
+    else plan.stairPassageIssues.push(`${stair.req.label}: the entry end needs room for its landing approach`);
   }
   for(const p of plan.placed){
     p.usableRegions=p.req.reserveFootprint?[{...p.carpet}]:RoomRegions.subtractRectangle(p.carpet,reservations);
@@ -2707,8 +2720,9 @@ function roomRecalculatePlan(plan,g){
   plan.serviceCorridorOverlap=plan.placed
     .filter(p=>p.req.type==='lift'||p.req.type==='staircase')
     .reduce((s,p)=>s+g.corridors.reduce((a,c)=>a+roomIntersectionArea(p.carpet,c),0),0);
-  const moduleWallArea=plan.placed.reduce((s,p)=>s+p.module.w*p.module.h-p.carpet.w*p.carpet.h,0);
-  const externalWallOverlap=plan.placed.reduce((sum,p)=>sum+g.externalWalls.reduce((s,w)=>
+  const walled=plan.placed.filter(p=>p.req.stairEnclosure!=='open');
+  const moduleWallArea=walled.reduce((s,p)=>s+p.module.w*p.module.h-p.carpet.w*p.carpet.h,0);
+  const externalWallOverlap=walled.reduce((sum,p)=>sum+g.externalWalls.reduce((s,w)=>
     s+Math.max(0,roomIntersectionArea(p.module,w)-roomIntersectionArea(p.carpet,w)),0),0);
   plan.wallFootprint=g.externalWallArea+Math.max(0,moduleWallArea-externalWallOverlap);
   plan.flexSpaces=roomFlexSpaces(plan,g);
@@ -2734,16 +2748,27 @@ function roomPlacementConflict(a,b){
 }
 
 function roomServiceKeepClear(plan,g){
-  const stairs=plan.placed.filter(p=>p.req.type==='staircase'),ids=new Set(stairs.map(p=>p.req.id));
-  const guides=plan.stairPassages||stairs
-    .map(stair=>roomStairPassage(stair,plan,g)).filter(Boolean);
-  const clear=[...guides,...(plan.accessPassages||[])].filter(passage=>ids.has(passage.stairId));
-  for(const stair of stairs){
-    const access=plan.circulation?.accessByRoom?.get?.(stair.req.id),target=access?.target;
-    if(access?.targetType==='passage'&&target&&['x','y','w','h'].every(key=>Number.isFinite(target[key])))
-      clear.push({stairId:stair.req.id,rect:{x:target.x,y:target.y,w:target.w,h:target.h},source:'existing-access'});
-  }
-  return clear;
+  return plan.placed.filter(p=>p.req.type==='staircase').map(stair=>roomStairApproach(stair,g)).filter(Boolean);
+}
+
+function roomStairEntryEdge(stair,g){
+  const bounds=roomOccupiedBounds(stair),horizontal=bounds.w>=bounds.h;
+  const candidates=horizontal?['W','E']:['N','S'];
+  if(candidates.includes(stair.req.stairEntryEdge))return stair.req.stairEntryEdge;
+  const centre=horizontal?bounds.x+bounds.w/2:bounds.y+bounds.h/2;
+  const interior=horizontal?g.core.x+g.core.w/2:g.core.y+g.core.h/2;
+  return centre>=interior?candidates[0]:candidates[1];
+}
+
+function roomStairApproach(stair,g){
+  const width=stair.req.passageWidthM;
+  if(!Number.isFinite(width)||width<=0)return null;
+  const bounds=roomOccupiedBounds(stair),edge=roomStairEntryEdge(stair,g);
+  const rect=edge==='W'?{x:bounds.x-width,y:bounds.y,w:width,h:bounds.h}
+    :edge==='E'?{x:bounds.x+bounds.w,y:bounds.y,w:width,h:bounds.h}
+    :edge==='N'?{x:bounds.x,y:bounds.y-width,w:bounds.w,h:width}
+    :{x:bounds.x,y:bounds.y+bounds.h,w:bounds.w,h:width};
+  return roomRectInside(rect,g.core)?{stairId:stair.req.id,edge,rect,widthM:width,source:'stair-approach'}:null;
 }
 
 function roomServicePlacementRank(req,bounds,placed,passages){
@@ -2907,7 +2932,10 @@ function roomApplyManualLayout(plan,g,signature,cfg){
     const retained=requests.filter(req=>rooms[req.id]).map(req=>{
       const s=rooms[req.id],range=req.range,rotated=!!s.rotated;
       const carpet={x:s.x,y:s.y,w:s.w,h:s.h};
-      return {req,carpet,module:roomCarpetModule(carpet),rotated,
+      const savedReq=req.type==='staircase'?{...req,
+        ...(s.stairEnclosure===undefined?{}:{stairEnclosure:s.stairEnclosure}),
+        ...(s.stairEntryEdge===undefined?{}:{stairEntryEdge:s.stairEntryEdge})}:req;
+      return {req:savedReq,carpet,module:roomCarpetModule(carpet),rotated,
         minW:rotated?range.minD:range.minW,minD:rotated?range.minW:range.minD,
         maxW:rotated?range.maxD:range.maxW,maxD:rotated?range.maxW:range.maxD};
     });
@@ -2924,6 +2952,10 @@ function roomApplyManualLayout(plan,g,signature,cfg){
   const candidates=plan.placed.map(p=>{
     const s=rooms[p.req.id];
     if(!s)return {p,carpet:p.carpet,module:p.module};
+    if(p.req.type==='staircase'){
+      if(s.stairEnclosure!==undefined)p.req={...p.req,stairEnclosure:s.stairEnclosure};
+      if(s.stairEntryEdge!==undefined)p.req={...p.req,stairEntryEdge:s.stairEntryEdge};
+    }
     return {p,carpet:{x:s.x,y:s.y,w:s.w,h:s.h},
       module:{x:s.x-INT_WALL/2,y:s.y-INT_WALL/2,w:s.w+INT_WALL,h:s.h+INT_WALL}};
   });
@@ -2935,7 +2967,7 @@ function roomApplyManualLayout(plan,g,signature,cfg){
     roomRecalculatePlan(shadow,g);
     const inaccessible=roomCirculationAnalysis(g,shadow).inaccessible;
     if(inaccessible.length)
-      plan.manualWarning=(plan.manualWarning?plan.manualWarning+' ':'')+`Manual layout retained, but ${inaccessible.map(p=>p.req.label).join(', ')} ${inaccessible.length===1?'has':'have'} no internal circulation door yet. Continue rearranging rooms or add a reachable passage.`;
+      plan.manualWarning=(plan.manualWarning?plan.manualWarning+' ':'')+`Manual layout retained, but ${inaccessible.map(p=>p.req.label).join(', ')} ${inaccessible.length===1?'has':'have'} no resolved internal access yet. Continue arranging the layout or provide a reachable connection.`;
   }
   if (valid){
     candidates.forEach(c=>{c.p.carpet=c.carpet;c.p.module=c.module;});
@@ -2986,7 +3018,7 @@ function roomFurnitureClearances(plan,p,type){
     .map(o=>roomOpeningClearance(p,o,.9)).filter(Boolean);
   doors.push(...passages);
   doors.push(...roomReservationCuts(p,plan),
-    ...(plan.stairPassages||[]).map(passage=>roomIntersectionRect(p.carpet,passage.rect)).filter(Boolean));
+    ...(plan.stairApproaches||[]).map(passage=>roomIntersectionRect(p.carpet,passage.rect)).filter(Boolean));
   (plan.openings?.doors||[]).filter(door=>door.sweep).forEach(door=>{
     const s=door.sweep;
     const xs=[s.hinge.x,s.closedEnd.x,s.openEnd.x],ys=[s.hinge.y,s.closedEnd.y,s.openEnd.y];
@@ -3120,6 +3152,13 @@ function roomPlanFurniture(plan,cfg,signature){
   return plan;
 }
 
+function roomPlacementRecord(p,g){
+  return {...p.carpet,rotated:!!p.rotated,
+    ...(p.req.stairEnclosure===undefined?{}:{stairEnclosure:p.req.stairEnclosure}),
+    ...(p.req.stairEnclosure==='open'?{stairEntryEdge:roomStairEntryEdge(p,g)}:
+      p.req.stairEntryEdge===undefined?{}:{stairEntryEdge:p.req.stairEntryEdge})};
+}
+
 function roomSaveManualLayout(ctx){
   const saved={rooms:{},balconies:{},furniture:{...(ctx.plan.unresolvedFurniture||{})},preserveRooms:true,
     unplacedRoomIds:(ctx.plan.unmet||[]).map(req=>req.id),
@@ -3128,7 +3167,7 @@ function roomSaveManualLayout(ctx){
     wallOpenings:(ctx.plan.wallOpenings||[]).map(o=>({...o,segment:undefined})),
     hiddenFurniture:[...(ctx.plan.hiddenFurniture instanceof Set?ctx.plan.hiddenFurniture:new Set(ctx.plan.hiddenFurniture||[]))]};
   ctx.plan.preserveRooms=true;
-  ctx.plan.placed.forEach(p=>{ saved.rooms[p.req.id]={x:p.carpet.x,y:p.carpet.y,w:p.carpet.w,h:p.carpet.h,rotated:!!p.rotated}; });
+  ctx.plan.placed.forEach(p=>{saved.rooms[p.req.id]=roomPlacementRecord(p,ctx.g);});
   ctx.g.balconies.forEach(b=>{saved.balconies[b.id]={x:b.x,y:b.y,w:b.w,h:b.h};});
   (ctx.plan.furniture||[]).forEach(f=>{
     const room=ctx.plan.placed.find(p=>p.req.id===f.roomId);
@@ -3187,7 +3226,7 @@ function roomPreserveProgrammeChange(previous,plate,g,cfg,signature,project){
         roomServiceKeepClear(previous.plan,previous.g).filter(passage=>passage.source==='existing-access')));
     placed=attempts.reduce((best,attempt)=>roomScoreLess(attempt.score,best?.score)?attempt:best,null).placed;
   }
-  saved.rooms=Object.fromEntries(placed.map(p=>[p.req.id,{...p.carpet,rotated:!!p.rotated}]));
+  saved.rooms=Object.fromEntries(placed.map(p=>[p.req.id,roomPlacementRecord(p,g)]));
   saved.unplacedRoomIds=requests.filter(req=>!placed.some(p=>p.req.id===req.id)).map(req=>req.id);
   roomManualLayouts.set(signature,saved);
   return true;
@@ -3311,6 +3350,7 @@ function roomCirculationAnalysis(g,plan){
   const accessByRoom=new Map();
   if(living&&livingEntry)accessByRoom.set(living.req.id,livingEntry);
   plan.placed.filter(p=>p.req.type==='lift'||p.req.type==='staircase').forEach(p=>{
+    if(p.req.stairEnclosure==='open')return;
     const outside=roomCorridorOpenings(p.module,g,ROOM_DOOR_WIDTH,ROOM_DOOR_MIN)[0];
     if(outside)accessByRoom.set(p.req.id,outside);
   });
@@ -3321,10 +3361,12 @@ function roomCirculationAnalysis(g,plan){
       if(!internalNetwork.reachable.has(i))return null;
       const opening=roomSharedOpening(p.module,r,width,ROOM_DOOR_MIN,
         p.req.type==='bathroom'&&p.req.accessMode==='common'?FT+.001:INT_WALL+.001);
+      if(p.req.stairEnclosure==='open'&&opening?.edge!==roomStairEntryEdge(p,g))return null;
       return opening?{...opening,targetType:'passage',targetLabel:'Passage',target:r,
         distance:internalNetwork.distance.get(i)||1}:null;
     }).filter(Boolean).sort((a,b)=>a.distance-b.distance||b.available-a.available);
-    const hall=living&&livingAccessible?roomSharedOpening(p.module,living.module,width):null;
+    let hall=living&&livingAccessible?roomSharedOpening(p.module,living.module,width):null;
+    if(p.req.stairEnclosure==='open'&&hall?.edge!==roomStairEntryEdge(p,g))hall=null;
     const hallAccess=hall?[{...hall,targetType:'living',targetLabel:'Living / Dining',target:living}]:[];
     const candidates=p.req.type==='bathroom'&&p.req.accessMode==='common'?passage:[...hallAccess,...passage];
     if(candidates[0])accessByRoom.set(p.req.id,candidates[0]);
@@ -3339,6 +3381,7 @@ function roomCirculationAnalysis(g,plan){
   for(const service of plan.placed.filter(p=>p.req.reserveFootprint&&!accessByRoom.has(p.req.id))){
     const openings=plan.placed.filter(host=>!host.req.reserveFootprint&&accessByRoom.has(host.req.id))
       .flatMap(host=>roomReservationHostOpenings(service,host,plan))
+      .filter(opening=>service.req.stairEnclosure!=='open'||opening.edge===roomStairEntryEdge(service,g))
       .sort((a,b)=>Number(b.passagePreferred)-Number(a.passagePreferred)||
         Number(b.target.req.type==='living')-Number(a.target.req.type==='living')||b.available-a.available);
     if(openings[0])accessByRoom.set(service.req.id,openings[0]);
@@ -3452,6 +3495,7 @@ function roomPlanOpenings(g,plan,cfg){
   plan.circulation=circulation;
 
   plan.placed.forEach(p=>{
+    if(p.req.stairEnclosure==='open')return;
     const access=circulation.accessByRoom.get(p.req.id);
     if(!access)return;
     if((plan.wallOpenings||[]).some(opening=>opening.roomId===p.req.id&&opening.width>=ROOM_DOOR_MIN&&
@@ -3713,7 +3757,7 @@ function roomEditableError(ctx,item,rect){
     const p=item.room,module=roomCarpetModule(rect);
     if(!roomModuleClear(module,p.req.id,p.req,ctx.plan,ctx.g))
       return p.req.reserveFootprint
-        ? `${p.req.label} must stay inside the dwelling, including its wall footprint, and cannot overlap another lift or staircase or block a staircase passage.`
+        ? `${p.req.label} must stay inside the dwelling, including its reserved footprint, and cannot overlap another lift or staircase or block a stair landing approach.`
         : `${p.req.label} needs a free destination inside the dwelling, without overlapping another room or the prohibited pooja-bathroom wall. Move across other rooms to a valid destination before releasing.`;
   }else if(item.kind==='balcony'){
     const b=item.balcony;
@@ -5251,6 +5295,30 @@ function initRoomViewport(){
   roomSetZoom(1,null,true);
 }
 
+function roomStairGlyph(stair,g,point){
+  const r=stair.carpet,horizontal=r.w>=r.h,length=horizontal?r.w:r.h,across=horizontal?r.h:r.w;
+  const entry=roomStairEntryEdge(stair,g),reverse=entry==='E'||entry==='S';
+  const map=(u,v)=>horizontal?point(r.x+(reverse?length-u:u),r.y+v):point(r.x+v,r.y+(reverse?length-u:u));
+  const line=(a,b,extra='')=>`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" ${extra}/>`;
+  const landing=Math.min(across/2,length*.4),run=length-landing,margin=across*.05;
+  let out=`<g data-stair-symbol="${roomEscapeMarkup(stair.req.id)}" pointer-events="none" aria-hidden="true" fill="none" stroke="var(--svg-on-color)" stroke-width="1.1">`;
+  out+='<title>Schematic two-flight stair with landing and up direction; tread marks are not a measured riser schedule.</title>';
+  out+=line(map(run,margin),map(run,across-margin));
+  out+=line(map(length*.04,across/2),map(run,across/2));
+  for(let i=1;i<=6;i++){
+    const u=run*i/7;
+    out+=line(map(u,margin),map(u,across*.46),'data-stair-tread="schematic"');
+    out+=line(map(u,across*.54),map(u,across-margin),'data-stair-tread="schematic"');
+  }
+  const route=[[run*.12,across*.76],[run+landing*.5,across*.76],[run+landing*.5,across*.24],[run*.12,across*.24]].map(([u,v])=>map(u,v));
+  out+=`<polyline points="${route.map(p=>`${p.x},${p.y}`).join(' ')}" stroke-width="1.8"/>`;
+  out+=line(map(run*.12,across*.24),map(run*.23,across*.15),'stroke-width="1.8"');
+  out+=line(map(run*.12,across*.24),map(run*.23,across*.33),'stroke-width="1.8"');
+  const up=map(run*.13,across*.88);
+  out+=`<text x="${up.x}" y="${up.y}" stroke="none" fill="var(--svg-on-color)" font-size="9" text-anchor="middle">UP</text>`;
+  return out+'</g>';
+}
+
 function roomSvgPlan(plate,g,plan){
   const svg=$('roomPlan'), VW=800,VH=560,PAD=72;
   const focused=svg.contains(document.activeElement)?document.activeElement.closest('[data-planner-id],[data-room-id]'):null;
@@ -5375,21 +5443,30 @@ function roomSvgPlan(plate,g,plan){
   });
   plan.placed.slice().sort((a,b)=>Number(!!a.req.reserveFootprint)-Number(!!b.req.reserveFootprint)).forEach(p=>{
     out+=`<g data-room-id="${p.req.id}" tabindex="0" role="group" aria-label="${p.req.label}, draggable and resizable">`;
-    if(!effective)out+=rect(p.module,'var(--svg-deep)','var(--svg-line-strong)',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
+    if(!effective&&p.req.stairEnclosure!=='open')out+=rect(p.module,'var(--svg-deep)','var(--svg-line-strong)',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
     (p.usableRegions||[p.carpet]).forEach(region=>{
       out+=rect(region,ROOM_COLORS[p.req.type],'none',`class="room-draggable" data-room-id="${p.req.id}" data-action="move"`);
     });
     out+=`<title>${p.req.label}: ${f1(p.carpet.w/FT)} by ${f1(p.carpet.h/FT)} ft. Drag to move.</title>`;
     const labelRegion=(p.usableRegions||[p.carpet]).slice().sort((a,b)=>b.w*b.h-a.w*a.h)[0];
-    if(labelRegion)out+=label(labelRegion,p.req.label,showDims?(p.reservedAreaM2>ROOM_EPS
+    if(p.req.type==='staircase')out+=roomStairGlyph(p,g,point);
+    else if(labelRegion)out+=label(labelRegion,p.req.label,showDims?(p.reservedAreaM2>ROOM_EPS
       ?`${f0(roomUsableArea(p)*M2SF)} sq ft usable`:`${f1(p.carpet.w/FT)} × ${f1(p.carpet.h/FT)} ft`):'');
     out+=resizeHandles(p.carpet,p.req.id,p.req.label);
     out+='</g>';
   });
+  const selected=window.HomePlanner?.getSelection();
+  const selectedSource=effective?.rooms.find(room=>room.id===selected?.id)?.sourceId;
   for(const passage of plan.stairPassages||[]){
-    out+=rect(passage.rect,'var(--plan-corridor)',passage.crossesBoundary?'var(--warn)':'var(--svg-muted)',
-      'fill-opacity=".6" stroke-dasharray="5 3" pointer-events="none"');
-    out+=corridorLabel(passage.rect,'Passage',`${f1(passage.widthM/FT)} ft clearance${passage.crossesBoundary?' · review boundary':''}`);
+    if(passage.stairId!==selectedSource)continue;
+    out+=rect(passage.rect,'none',passage.crossesBoundary?'var(--warn)':'var(--svg-muted)',
+      'stroke-width="1" stroke-dasharray="4 5" pointer-events="none"');
+    out+=corridorLabel(passage.rect,'Side guide',`${f1(passage.widthM/FT)} ft`);
+  }
+  for(const approach of plan.stairApproaches||[]){
+    if(approach.stairId!==selectedSource)continue;
+    out+=rect(approach.rect,'none','var(--acc)','stroke-width="1.2" stroke-dasharray="4 3" pointer-events="none"');
+    out+=corridorLabel(approach.rect,'Entry clearance',`${f1(approach.widthM/FT)} ft`);
   }
   if(effective)out+=window.HomePlanner.renderLayer(effective,point,scale,'walls');
   (plan.furniture||[]).forEach(f=>{
@@ -5548,7 +5625,7 @@ function renderRoomPlanner(r){
   if(reservedRooms.length)alerts.push(`<div class="verdict v-info"><b>Lift / stair footprints are reserved.</b> ${reservedRooms.map(p=>`${roomEscapeMarkup(p.req.label)}: ${f0(p.reservedAreaM2*M2SF)} sq ft reserved, ${f0(roomUsableArea(p)*M2SF)} sq ft usable`).join('; ')}. The deduction includes service-wall footprints and is not counted again as usable room area.</div>`);
   if(directionExceptions.length)alerts.push(`<div class="verdict v-info"><b>Compass preference exceptions:</b> ${directionExceptions.map(p=>roomEscapeMarkup(p.req.label)).join(', ')}. Suggestions prefer kitchen SE, bedrooms NW/NE and bathrooms S/W; valid manual placements are retained rather than moving other rooms automatically.</div>`);
   if(fullyReserved.length)alerts.push(`<div class="verdict v-warn"><b>No usable area remains in ${fullyReserved.map(p=>roomEscapeMarkup(p.req.label)).join(', ')}.</b> Move or resize the service block, or remove the displaced room. Its original outline remains editable.</div>`);
-  if(plan.stairPassages?.length)alerts.push('<div class="verdict v-info"><b>Along-stair passage clearance shown.</b> It is part of the existing floor area and is not counted twice. Existing furniture in the strip is retained for relocation. A dashed strip crossing a room boundary does not remove that wall or establish an escape route.</div>');
+  if(plan.stairPassages?.length)alerts.push('<div class="verdict v-info"><b>Stair access guides:</b> select a staircase to see its entry clearance and advisory side guide. The side guide is not a separate room or a locked corridor.</div>');
   if(plan.stairPassageIssues?.length)alerts.push(`<div class="verdict v-warn">${plan.stairPassageIssues.map(roomEscapeMarkup).join('; ')}. Move the staircase or adjust the passage width; other rooms were not moved.</div>`);
   if(cfg.counts.balcony)alerts.push(`<div class="verdict v-info"><b>Balcony rule for floor ${plate.floorIndex}:</b> ${g.balconyPolicy.allowed
     ? `high-rise projection is active from ${f1(plate.floorElevation)} m; depth is capped at ${f1(g.balconyPolicy.maxDepth/FT)} ft on the ${DIRNAME[g.balconyPolicy.globalEdge].toLowerCase()} side.`
@@ -6392,6 +6469,7 @@ render();
 <script src="planner-3d.js"></script>
 <script src="building-physics.js"></script>
 <script src="planner-airflow.js"></script>
+<script src="planner-airflow-inputs.js"></script>
 <script src="planner-airflow-runner.js"></script>
 <script src="planner-airflow-display.js"></script>
 <script src="planner-light.js"></script>
@@ -6404,6 +6482,7 @@ render();
 <script src="planner-persistence.js"></script>
 <script src="prohibited-properties.js"></script>
 <script src="planner-workspace.js"></script>
+<script src="planner-guide.js"></script>
 <script src="planner-drawing.js"></script>
 <script src="planner-structure-drawing.js"></script>
 <script src="planner-services-drawing.js"></script>
@@ -6418,6 +6497,7 @@ render();
 <script src="planner-drainage-ui.js"></script>
 <script src="planner-airflow-ui.js"></script>
 <script src="planner-light-ui.js"></script>
+<script src="planner-python-analysis.js"></script>
 <script src="planner-package.js"></script>
 <script src="planner-package-ui.js"></script>
 </body>

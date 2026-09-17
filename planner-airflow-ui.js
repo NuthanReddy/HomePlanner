@@ -25,6 +25,103 @@
     }
     return value;
   };
+  const inputNames = { densityKgM3: 'air density', volumeM3: 'clear room volume',
+    freeAreaM2: 'operating free area', cd: 'discharge coefficient (Cd)', pressurePa: 'signed pressure forcing',
+    openFraction: 'operating fraction' };
+  const inputHelp = {
+    densityKgM3: 'Converts pressure into flow. Enter documented air mass per volume here; no weather-derived default.',
+    volumeM3: 'Use whole house fills a plan-volume estimate from usable area and wall height. Override here if you have a better clear-volume value.',
+    freeAreaM2: 'Area air can pass through, not glass area. Enter documented operating area within the cap below; do not multiply by the fraction again.',
+    cd: 'Describes opening flow restriction. Enter an applicable measured or documented coefficient, not a material preset.',
+    pressurePa: 'Enter documented additional forcing: positive drives from → to, negative reverses it. Zero means no imposed forcing; a wind rose cannot supply this.'
+  };
+  function readableValue(value) {
+    if (value === null || value === undefined || value === 'unknown') return 'Not supplied';
+    if (typeof value === 'number') return Number.isFinite(value) ? String(Number(value.toPrecision(7))) : 'Unavailable';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'object') return 'See Technical details';
+    return ({ 'not-run': 'Not run', 'not-selected': 'Not selected', converged: 'Converged',
+      nonconverged: 'Not converged — diagnostic only', 'numerical-error': 'Numerical failure — diagnostic only',
+      blocked: 'Inputs needed', active: 'Active', disabled: 'Disabled', complete: 'Complete', partial: 'Partly available',
+      unavailable: 'Unavailable', 'outside-zero-Pa': 'Outside = 0 Pa', 'arbitrary-zero-Pa': 'Selected reference room = 0 Pa',
+      closed: 'Closed — zero area' })[value] || String(value);
+  }
+  function referenceLabel(ref, state, kind = 'rooms') {
+    const items = state.inventory?.[kind] || [], item = items.find(item => refKey(item.ref) === refKey(ref));
+    const floor = state.floors?.find(floor => floor.id === ref?.floorId);
+    let name = item?.label && item.label !== ref?.entityId ? item.label : '';
+    if (!name && item && kind === 'openings') {
+      const rooms = (item.candidateAdjacency || []).filter(side => side.kind === 'room')
+        .map(side => state.inventory.rooms.find(room => refKey(room.ref) === refKey(side)))
+        .filter(Boolean).map(room => room.label && room.label !== room.ref.entityId ? room.label
+          : `Room ${state.inventory.rooms.indexOf(room) + 1}`);
+      const kindName = { hinged: 'Hinged door', sliding: 'Sliding door', window: 'Window', passage: 'Passage' }[item.kind] || 'Opening';
+      name = `${rooms.length ? rooms.join(' ↔ ') + ' · ' : ''}${kindName} ${items.indexOf(item) + 1}`;
+    }
+    return `${floor?.name || (floor ? `Floor ${state.floors.indexOf(floor) + 1}` : 'Floor unavailable')} / ${name ||
+      (item ? `Room ${items.indexOf(item) + 1}` : kind === 'openings' ? 'Opening unavailable' : 'Room unavailable')}`;
+  }
+  function readableMessage(value, state) {
+    let text = typeof value === 'string' ? value : value?.message || 'Review this input in Technical details.';
+    for (const kind of ['rooms', 'openings']) for (const item of state.inventory?.[kind] || []) {
+      const label = referenceLabel(item.ref, state, kind);
+      text = text.split(refKey(item.ref)).join(label).split(item.key).join(label);
+    }
+    for (const zone of state.draft?.zones || [])
+      text = text.split(JSON.stringify(['zone', zone.id])).join(referenceLabel(zone.room, state));
+    for (const [index, link] of (state.draft?.links || []).entries()) {
+      const label = link.opening ? referenceLabel(link.opening, state, 'openings') : `Manual connection ${index + 1}`;
+      text = text.split(JSON.stringify(['link', link.id])).join(label);
+      text = text.split(`Opening ${link.id} `).join(`Opening ${label} `);
+    }
+    text = text.replace(/(?:scenario\.)?(zones|links)\[(\d+)\]\./g, (_, kind, index) => {
+      const record = state.draft?.[kind]?.[Number(index)];
+      return record?.room ? `${referenceLabel(record.room, state)} — `
+        : record?.opening ? `${referenceLabel(record.opening, state, 'openings')} — ` : `${kind === 'zones' ? 'Room' : 'Connection'} ${Number(index) + 1} — `;
+    });
+    text = text.replace(/\bscenario\.(?=densityKgM3\b)/g, '');
+    for (const [key, name] of Object.entries(inputNames)) text = text.replace(new RegExp(`\\b${key}\\b`, 'g'), name);
+    return text;
+  }
+  function visibleFindings(state) {
+    const structured = [...(state.inventory?.findings || []), ...(state.result?.findings || []),
+      ...(state.preparedInputs?.issues || []),
+      ...(state.result?.planField?.findings || []), ...(state.inventory?.sourceDiagnostics || []),
+      ...(state.inventory?.sourceFloorDiagnostics || []).flatMap(floor =>
+        (floor.diagnostics || []).map(item => ({ ...item, floorId: floor.floorId })))];
+    const normalize = text => {
+      let message = String(text).replace(/^(?:blocking|warning|info):\s*/i, '').trim();
+      for (const floor of state.floors || []) if (message.startsWith(`Floor ${floor.id}: `))
+        message = message.slice(`Floor ${floor.id}: `.length);
+      return message;
+    };
+    const messageOf = item => typeof item === 'string' ? item : item?.message ||
+      'Additional source information is available in Technical details.';
+    const originals = new Set(structured.map(item => normalize(messageOf(item))));
+    const rows = structured.slice(), seen = new Set();
+    for (const warning of [...(state.result?.warnings || []), ...(state.preview?.warnings || [])]) {
+      const message = typeof warning === 'string' ? warning : warning?.message;
+      if (message && !originals.has(normalize(message))) rows.push({ message: normalize(message) });
+    }
+    rows.sort((a, b) => Number(b.severity === 'blocking') - Number(a.severity === 'blocking'));
+    return rows.flatMap(item => {
+      const match = item.path?.match(/^(zones|links)\[(\d+)\]/);
+      const record = match && state.draft[match[1]]?.[Number(match[2])];
+      const ref = record?.room || record?.opening || item.reference || item.roomRef || item.openingRef;
+      const kind = record?.opening || state.inventory?.openings.some(item => refKey(item.ref) === refKey(ref)) ? 'openings' : 'rooms';
+      const inventoryItem = state.inventory?.[kind]?.find(candidate => refKey(candidate.ref) === refKey(ref));
+      const floor = state.floors?.find(floor => floor.id === item.floorId || item.path === `floors[${JSON.stringify(floor.id)}]`);
+      const anchor = item.path?.match(/\.anchors\.(from|to)/)?.[1];
+      const location = (inventoryItem ? referenceLabel(ref, state, kind)
+        : record?.kind === 'manual' ? `Manual connection ${Number(match[2]) + 1}` : floor?.name || floor?.id || '') +
+        (anchor ? ` — ${anchor} anchor` : '');
+      const message = readableMessage(normalize(messageOf(item)), state);
+      const key = `${location}|${message}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [`${item.severity === 'blocking' ? 'Needed to run — ' : ''}${location ? location + ': ' : ''}${message}`];
+    });
+  }
   function numeric(value) {
     if (value === '' || value === null || typeof value === 'string' && !value.trim()) return null;
     if (!['number', 'string'].includes(typeof value) ||
@@ -81,14 +178,13 @@
     if (busy) return status('running', 'Calculating the selected network. Previous arrows are cleared until this run is verified.');
     if (previewError) return status('unavailable', previewError);
     if (!inventory && error) return status('unavailable', error);
-    if (!inventory) return status('not-prepared', 'Prepare inventory to read existing rooms and openings. No airflow has been calculated.');
+    if (!inventory) return status('not-prepared', 'Use whole house to select existing rooms and estimate volumes, or Prepare inventory for manual selection. No airflow has been calculated.');
     if (!inventory.rooms.length) return status('empty', 'No rooms are available to study. Add and place rooms in Design → Layout, then prepare inventory again.');
     if (!result) return status('not-run', draft.zones.length
       ? 'No current airflow result. Review room volumes, air density and enabled opening inputs, then Run scenario. Blank values are unknown, not zero.'
       : 'Inventory only — select Room to add in Scenario, rooms & opening inputs. Supply its clear volume and air density, then add and explicitly enable compatible openings.');
-    if (result.status === 'blocked') return status('blocked', 'No flow arrows: inputs require repair. ' +
-      result.findings.filter(item => item.severity === 'blocking').slice(0, 3).map(item => item.message).join(' ') +
-      ' Review Scenario, rooms & opening inputs and Findings, then run again.');
+    if (result.status === 'blocked') return status('blocked',
+      'No flow calculated: inputs are needed. Each issue is listed once in Findings below. Review Scenario, rooms & opening inputs, then run again.');
     if (result.status !== 'converged' || !result.balanced || result.solver?.converged !== true)
       return status('diagnostic', 'No trusted flow arrows: the solver did not produce a balanced result. Review its findings and residuals; diagnostic numbers are not a ventilation assessment.');
     const rows = (preview?.openingRows || []).filter(row => row.inScope && row.selected);
@@ -96,8 +192,7 @@
       return status('other-floor', 'The selected network is on another floor. Choose its Preview floor to see the result; the analytical room selection is unchanged.');
     if (result.planField) {
       const field = result.planField, cells = (preview?.fieldRows || []).filter(cell => cell.inScope);
-      if (!cells.length) return status('field-unavailable', 'The pressure-network result is available, but no velocity field can be shown here. ' +
-        field.findings.map(finding => finding.message).join(' ') + ' Review the 2D model inputs and numerical mesh; the network tables remain available.');
+      if (!cells.length) return status('field-unavailable', 'The pressure-network result is available, but no velocity field can be shown here. Review Findings and the 2D model inputs; the network tables remain available.');
       if (cells.every(cell => cell.speedMps === 0))
         return status('zero-flow', 'The selected network has a computed zero-velocity potential field on this floor. Blue cells are known zero; no direction arrows are expected. This does not predict single-sided exchange.');
       return status(field.status === 'partial' ? 'field-partial' : 'result',
@@ -131,7 +226,8 @@
     function session() {
       if (!projects.has(project.id)) {
         const draft = newScenario('Scenario 1');
-        projects.set(project.id, { selected: draft.id, drafts: new Map([[draft.id, draft]]), history: [], baseline: null });
+        projects.set(project.id, { selected: draft.id, drafts: new Map([[draft.id, draft]]), history: [], baseline: null,
+          preparedInputs: new Map() });
       }
       return projects.get(project.id);
     }
@@ -213,6 +309,8 @@
         selectedScenarioId: data.selected,
         scenarios: [...data.drafts].map(([id, value]) => ({ id, label: value.label || id })),
         draft: copy(draft()), inventory, result, preview, busy, error, previewError, message,
+        preparedInputs: data.preparedInputs.get(data.selected) || null,
+        projectWeather: runtime.HomePlannerAirflowInputs?.weather(project) || null,
         displayStatus: describeDisplay({ inventory, result, preview, previewError, error, busy,
           floorId: project.activeFloorId, draft: draft() }),
         history: data.history.map(item => ({ id: item.id, label: item.result.scenario.label || item.result.scenario.id,
@@ -264,12 +362,33 @@
         buildPreview(); return inventory;
       });
     }
+    function prepareHouse(captured, useAreas = false) {
+      const inputs = runtime.HomePlannerAirflowInputs;
+      if (!inputs?.build) throw new Error('Load planner-airflow-inputs.js to use whole-house plan inputs.');
+      let prepared = inputs.build(captured.inventory, captured.scene, project, draft(),
+        session().preparedInputs.get(session().selected));
+      if (useAreas) prepared = inputs.useOpeningAreas(prepared);
+      replaceDraft(prepared.scenario);
+      session().preparedInputs.set(session().selected, frozen(prepared));
+      return prepared;
+    }
+    function useWholeHouse(useAreas = false) {
+      return attempt(() => {
+        const prepared = prepareHouse(capture(), useAreas);
+        message = `Whole house selected: ${prepared.scenario.zones.length} rooms, ${prepared.scenario.links.length} links. ` +
+          `${prepared.volumes.filter(row => row.volumeM3 !== null).length} plan-volume estimates; manual overrides retained. ` +
+          'Review remaining flow inputs, then Run scenario.';
+        buildPreview(); return prepared;
+      });
+    }
     async function run() {
       let token;
       try {
         if (disposed) throw new Error('Airflow workbench is disposed.');
         cancelWork();
-        const captured = capture(), scenario = foundation().normalizeScenario(draft());
+        const captured = capture();
+        if (session().preparedInputs.has(session().selected)) prepareHouse(captured);
+        const scenario = foundation().normalizeScenario(draft());
         const scenarioKey = canonical(scenario), projectId = project.id;
         if (!runtime.HomePlannerAirflowRunner?.createRunner)
           throw new Error('Airflow worker runner unavailable. Load planner-airflow-runner.js and enable Workers; there is no main-thread fallback.');
@@ -304,7 +423,8 @@
         history.push({ id: nextId('snapshot'), result });
         if (history.length > HISTORY_LIMIT) history.shift();
         message = result.status === 'converged' && result.balanced ? 'Converged selected-network result. Not CFD.'
-          : `${result.status}: diagnostic only — not a balanced ventilation assessment. Review every qualified finding below.`;
+          : result.status === 'blocked' ? 'Inputs needed before airflow can be calculated. Review Findings below.'
+            : `${readableValue(result.status)}: diagnostic only — not a balanced ventilation assessment. Review Findings below.`;
         buildPreview(); notify(); return result;
       } catch (cause) {
         if (token !== undefined && (disposed || token !== generation)) return null;
@@ -333,7 +453,15 @@
     }
     return {
       getState, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-      sync, prepare, run, exportData,
+      sync, prepare, run, exportData, useWholeHouse,
+      useOpeningAreaEstimates() { return useWholeHouse(true); },
+      useProjectWeather() {
+        return attempt(() => {
+          const weather = runtime.HomePlannerAirflowInputs?.weather(bridge.getProject());
+          if (!weather) throw new Error('Load planner-airflow-inputs.js to read saved project weather.');
+          message = weather.message; return weather;
+        });
+      },
       cancel() { invalidate('Cancelled. No new result was published.'); buildPreview(); notify(); },
       clearResult() {
         invalidate('Result cleared. Scenario inputs and inventory are retained; Run scenario to recalculate.');
@@ -347,6 +475,8 @@
           if (session().drafts.size >= SCENARIO_LIMIT) throw new Error(`Keep at most ${SCENARIO_LIMIT} session scenarios per project.`);
           const value = clone ? { ...copy(draft()), id: nextId('scenario'), label } : newScenario(label);
           const normalized = foundation().normalizeScenario(value), id = value.id;
+          const prepared = clone && session().preparedInputs.get(session().selected);
+          if (prepared) session().preparedInputs.set(id, frozen({ ...copy(prepared), scenario: normalized }));
           session().drafts.set(id, normalized); selectScenario(id); return id;
         });
       },
@@ -357,14 +487,18 @@
           if (!session().drafts.has(id)) throw new Error('Scenario no longer exists.');
           if (session().drafts.size === 1) throw new Error('Keep at least one scenario.');
           if (session().selected === id) selectScenario([...session().drafts.keys()].find(key => key !== id));
-          session().drafts.delete(id); return true;
+          session().drafts.delete(id); session().preparedInputs.delete(id); return true;
         });
       },
       importScenario(text, append = false) {
         return attempt(() => {
           if (typeof text !== 'string' || text.length > IMPORT_LIMIT) throw new Error(`Scenario JSON must be text under ${IMPORT_LIMIT} characters.`);
           const value = foundation().normalizeScenario(JSON.parse(text));
-          if (!append) return replaceDraft(value);
+          if (!append) {
+            const replaced = replaceDraft(value);
+            session().preparedInputs.delete(session().selected);
+            return replaced;
+          }
           if (session().drafts.size >= SCENARIO_LIMIT) throw new Error('Scenario limit reached; delete a session scenario first.');
           const id = nextId('scenario');
           session().drafts.set(id, value); selectScenario(id); return copy(value);
@@ -380,10 +514,17 @@
         return edit(value => {
           const zone = value.zones.find(item => item.id === id);
           if (!zone) throw new Error('Zone no longer exists.');
+          if (Object.hasOwn(patch, 'volumeM3') && !Object.hasOwn(patch, 'volumeSource') &&
+              session().preparedInputs.get(session().selected)?.volumes.some(row => row.zoneId === id))
+            zone.volumeSource = 'User-supplied clear-volume override';
           Object.assign(zone, patch);
         });
       },
-      removeZone(id) { return edit(value => { value.zones = value.zones.filter(item => item.id !== id); }); },
+      removeZone(id) {
+        const value = edit(value => { value.zones = value.zones.filter(item => item.id !== id); });
+        if (value) { session().preparedInputs.delete(session().selected); notify(); }
+        return value;
+      },
       openingEndpoints(ref) { return attempt(() => endpoints(lookup('openings', ref))); },
       addOpening(ref) {
         return edit(value => {
@@ -402,10 +543,17 @@
         return edit(value => {
           const link = value.links.find(item => item.id === id);
           if (!link) throw new Error('Link no longer exists.');
+          if (Object.hasOwn(patch, 'freeAreaM2') && !Object.hasOwn(patch, 'notes') &&
+              session().preparedInputs.get(session().selected)?.openingAreas.some(row => row.linkId === id && row.applied))
+            link.notes = 'User-supplied operating free-area override';
           Object.assign(link, patch);
         });
       },
-      removeLink(id) { return edit(value => { value.links = value.links.filter(item => item.id !== id); }); },
+      removeLink(id) {
+        const value = edit(value => { value.links = value.links.filter(item => item.id !== id); });
+        if (value) { session().preparedInputs.delete(session().selected); notify(); }
+        return value;
+      },
       setAnchor(id, side, field, value) {
         return edit(scenario => {
           if (!['from', 'to'].includes(side) || !['floorId', 'x', 'y', 'z'].includes(field))
@@ -466,15 +614,15 @@
       const node = el('details'); node.append(el('summary', title)); return node;
     };
     let fieldSerial = 0;
-    function field(parent, label, value, callback, options = null, type = 'text', id = '') {
+    function field(parent, label, value, callback, options = null, type = 'text', id = '', help = '') {
       const wrapper = el('label', label), input = el(options ? 'select' : 'input');
       input.id = id || `hp-airflow-field-${++fieldSerial}`; wrapper.htmlFor = input.id;
       if (options) {
         for (const [key, text] of options) { const option = el('option', text); option.value = key; input.append(option); }
         if (value != null && value !== '' && !options.some(([key]) => key === value)) {
-          const option = el('option', `${value} — unavailable / retained`); option.value = value; input.append(option);
+          const option = el('option', 'Unavailable — retained selection'); option.value = value; input.append(option);
         }
-      } else { input.type = type; if (type === 'number') { input.step = 'any'; input.inputMode = 'decimal'; } }
+      } else { input.type = type; if (type === 'number') { input.step = 'any'; input.inputMode = 'decimal'; input.placeholder = 'Not supplied'; } }
       if (type === 'checkbox') input.checked = value === true; else input.value = value ?? '';
       input.addEventListener('change', () => {
         const restore = () => { if (type === 'checkbox') input.checked = value === true; else input.value = value ?? ''; };
@@ -484,13 +632,21 @@
         }
         catch (cause) { restore(); showError(`${cause.message} Change was not applied.`); }
       });
-      wrapper.append(input); parent.append(wrapper); return input;
+      wrapper.append(input);
+      if (help) {
+        const note = el('small', help, 'hp-airflow-input-help'); note.id = `${input.id}-help`;
+        input.setAttribute('aria-describedby', note.id); wrapper.append(note);
+      }
+      parent.append(wrapper); return input;
     }
     const showError = text => { error.textContent = text; error.hidden = !text; };
     host.classList.add('hp-airflow');
     const header = el('div', '', 'hp-airflow-header');
-    header.append(el('h2', 'Airflow workbench'), el('p', 'Pressure network + 2D velocity estimate · NOT CFD · Not measured room airspeed', 'hp-airflow-warning'));
+    header.append(el('h2', 'Airflow workbench'), el('p', 'Optional pressure network + 2D velocity estimate · Not CFD or measured room airspeed. No airflow inputs are needed to export a floor plan.', 'hp-airflow-warning'));
     const toolbar = el('div', '', 'hp-airflow-toolbar');
+    const wholeHouse = action('Use whole house', 'hp-airflow-whole-house', () => {
+      if (controller.useWholeHouse()) settings.open = true;
+    });
     const prepare = action('Prepare inventory', 'hp-airflow-prepare', () => {
       if (controller.prepare()) settings.open = true;
     });
@@ -502,7 +658,7 @@
     });
     const status = el('p', '', 'hp-airflow-status'); status.id = 'hp-airflow-status'; status.setAttribute('role', 'status');
     const error = el('p', '', 'hp-airflow-error'); error.id = 'hp-airflow-error'; error.setAttribute('role', 'alert'); error.hidden = true;
-    toolbar.append(prepare, run, cancel, clear, reviewInputs);
+    toolbar.append(wholeHouse, prepare, run, cancel, clear, reviewInputs);
     const topFields = el('div', '', 'hp-airflow-top-fields');
     const scenarioSelect = field(topFields, 'Scenario', '', id => controller.selectScenario(id), [], 'text', 'hp-airflow-scenario');
     const floorSelect = field(topFields, 'Preview floor', '', id => {
@@ -520,7 +676,7 @@
     findingsSection.append(findings);
     const tablesSection = section('Room & opening result tables'), tables = el('div'); tablesSection.append(tables);
     const evidence = section('Compare scenarios & download evidence'), evidenceBody = el('div'); evidence.append(evidenceBody);
-    const expert = section('Expert scenario JSON — import / export');
+    const expert = section('Technical details — scenario JSON import / export');
     const jsonLabel = el('label', 'Scenario JSON (maximum 1,000,000 characters; replacement is atomic)');
     const json = el('textarea'); json.id = 'hp-airflow-json'; json.rows = 8; json.maxLength = IMPORT_LIMIT;
     jsonLabel.htmlFor = json.id; jsonLabel.append(json);
@@ -557,21 +713,17 @@
         const option = el('option', label); option.value = value; return option;
       })); select.value = selected;
     }
-    const labelRef = (ref, state, kind = 'rooms') => {
-      const item = state.inventory?.[kind].find(item => refKey(item.ref) === refKey(ref));
-      const floor = state.floors.find(floor => floor.id === ref?.floorId);
-      return `${floor?.name || ref?.floorId || 'Unknown floor'} / ${item?.label || ref?.entityId || 'Missing reference'}`;
-    };
-    const plain = value => value === null || value === undefined ? 'Unknown' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+    const labelRef = referenceLabel;
+    const plain = readableValue;
     const endpointLabel = (id, state) => id === 'outside' ? 'Outside'
       : state.draft.zones.some(zone => zone.id === id)
-        ? labelRef(state.draft.zones.find(zone => zone.id === id).room, state) : id ? `${id} (unavailable)` : 'Unknown';
+        ? labelRef(state.draft.zones.find(zone => zone.id === id).room, state) : id ? 'Unavailable room — repair endpoint' : 'Not selected';
     function renderForms(state) {
       const focus = doc.activeElement;
       const focusKey = forms.contains(focus) ? focus?.dataset?.control : null;
       const disclosures = [...forms.querySelectorAll('details')].map(node => node.open);
       const key = canonical({ draft: state.draft, selected: state.selectedScenarioId, inventory: state.inventory?.physicalFingerprint,
-        floor: state.floorId, project: state.projectId });
+        floor: state.floorId, project: state.projectId, weather: state.projectWeather, wholeHouse: !!state.preparedInputs });
       if (key === formsKey) return;
       formsKey = key; forms.replaceChildren();
       const controls = el('div', '', 'hp-airflow-fields');
@@ -583,7 +735,7 @@
             controller.deleteScenario(state.selectedScenarioId, true);
         }));
       field(controls, 'Air density (kg/m³) · blank = unknown', state.draft.densityKgM3,
-        value => controller.setDraft({ densityKgM3: numeric(value) }), null, 'number');
+        value => controller.setDraft({ densityKgM3: numeric(value) }), null, 'number', '', inputHelp.densityKgM3);
       field(controls, 'Scenario notes / assumptions', state.draft.notes,
         value => controller.setDraft({ notes: value.trim() || null }));
       field(controls, 'Calculate a 2D potential-flow velocity estimate', state.draft.planField?.enabled === true,
@@ -595,9 +747,15 @@
       forms.append(el('p', 'The 2D field is a depth-averaged potential-flow estimate, not validated CFD. Its uniform depth is your declared clear room volume divided by the current usable floor area. It omits turbulence, jet mixing and furniture drag.'));
       const sources = section('Optional input sources');
       for (const name of ['densityKgM3', 'freeAreaM2', 'cd', 'pressurePa', 'openFraction'])
-        field(sources, `${name} source`, state.draft.sources?.[name], value =>
+        field(sources, `${inputNames[name]} source`, state.draft.sources?.[name], value =>
           controller.setDraft({ sources: { ...(state.draft.sources || {}), [name]: value.trim() || null } }));
       forms.append(controls, sources, el('h3', 'Selected rooms'));
+      if (state.projectWeather) {
+        const weather = section('Project wind reference');
+        weather.append(el('p', state.projectWeather.message),
+          action('Use project weather reference', 'hp-airflow-project-weather', () => controller.useProjectWeather()));
+        forms.append(weather);
+      }
       const roomChoices = [['', 'Choose an exact room on any floor'], ...(state.inventory?.rooms || [])
         .filter(room => !state.draft.zones.some(zone => refKey(zone.room) === refKey(room.ref)))
         .map(room => [refKey(room.ref), labelRef(room.ref, state)])];
@@ -611,7 +769,7 @@
         const row = el('fieldset', '', 'hp-airflow-fields');
         row.append(el('legend', labelRef(zone.room, state)));
         field(row, 'Clear room volume (m³) · blank = unknown', zone.volumeM3,
-          value => controller.updateZone(zone.id, { volumeM3: numeric(value) }), null, 'number');
+          value => controller.updateZone(zone.id, { volumeM3: numeric(value) }), null, 'number', '', inputHelp.volumeM3);
         field(row, 'Volume source / note', zone.volumeSource,
           value => controller.updateZone(zone.id, { volumeSource: value.trim() || null }));
         const refs = [['', 'Unknown / missing room'], ...(state.inventory?.rooms || [])
@@ -624,7 +782,11 @@
         forms.append(row);
       }
       forms.append(el('h3', 'Selected opening links'), el('p',
-        'Add both adjacent rooms first. New links are disabled until you explicitly enable them. Blank physical values remain unknown.'));
+        state.preparedInputs ? 'Whole-house selection includes known adjacent openings. Closed openings stay disabled; review remaining flow inputs.'
+          : 'Add both adjacent rooms first. New manual selections are disabled until enabled.'));
+      if (state.preparedInputs) forms.append(
+        action('Use geometric opening areas (estimate)', 'hp-airflow-plan-areas', () => controller.useOpeningAreaEstimates()),
+        el('p', 'Optional upper-bound areas from the current opening size and fraction; not verified aerodynamic free areas. Supplied values are preserved.'));
       let openingChoice = '';
       field(forms, 'Known opening to add', '', value => { openingChoice = value; }, [
         ['', 'Choose a known physical opening'], ...(state.inventory?.openings || [])
@@ -640,7 +802,7 @@
         ...state.draft.zones.map(zone => [zone.id, labelRef(zone.room, state)])];
       for (const link of state.draft.links) {
         const row = el('fieldset', '', 'hp-airflow-fields');
-        row.append(el('legend', link.kind === 'manual' ? `Manual connection · ${link.id}` : labelRef(link.opening, state, 'openings')));
+        row.append(el('legend', link.kind === 'manual' ? `Manual connection ${state.draft.links.indexOf(link) + 1}` : labelRef(link.opening, state, 'openings')));
         const opening = state.inventory?.openings.find(item => refKey(item.ref) === refKey(link.opening));
         const compatible = opening?.adjacencyStatus === 'known' ? opening.candidateAdjacency.map(candidate =>
           candidate.kind === 'outside' ? 'outside' : state.draft.zones.find(zone => refKey(zone.room) === refKey(candidate))?.id) : [];
@@ -657,7 +819,7 @@
         for (const [key, label] of [['freeAreaM2', 'Operating free area (m²)'], ['cd', 'Discharge coefficient (0 < Cd ≤ 1)'],
           ['pressurePa', 'Signed from → to forcing (Pa)']])
           field(row, `${label} · blank = unknown`, link[key],
-            value => controller.updateLink(link.id, { [key]: numeric(value) }), null, 'number');
+            value => controller.updateLink(link.id, { [key]: numeric(value) }), null, 'number', '', inputHelp[key]);
         field(row, 'Link notes / assumptions', link.notes,
           value => controller.updateLink(link.id, { notes: value.trim() || null }));
         if (link.kind === 'opening') {
@@ -711,7 +873,10 @@
       function paint() {
         body.replaceChildren();
         for (const row of rows.slice(page * 100, (page + 1) * 100)) {
-          const tr = el('tr'); columns.forEach(([, getter]) => tr.append(el('td', plain(getter(row))))); body.append(tr);
+          const tr = el('tr'); columns.forEach(([, getter]) => {
+            const value = getter(row);
+            tr.append(el('td', plain(value), typeof value === 'number' ? 'hp-airflow-number' : ''));
+          }); body.append(tr);
         }
       }
       node.append(head, body); region.append(node); paint();
@@ -727,11 +892,12 @@
       return region;
     }
     function render(state) {
-      status.textContent = state.message;
-      displayStatus.textContent = state.displayStatus.message;
+      status.textContent = readableMessage(state.message, state);
+      displayStatus.textContent = readableMessage(state.displayStatus.message, state);
       displayStatus.setAttribute('data-state', state.displayStatus.code);
-      showError([state.error, state.previewError, imageError].filter(Boolean).join(' '));
+      showError([...new Set([state.error, state.previewError, imageError].filter(Boolean))].map(text => readableMessage(text, state)).join(' '));
       run.disabled = state.busy; cancel.disabled = !state.busy; prepare.disabled = state.busy;
+      wholeHouse.disabled = state.busy;
       clear.disabled = !state.result && !state.busy;
       host.setAttribute('aria-busy', String(state.busy));
       options(scenarioSelect, state.scenarios.map(item => [item.id, item.label]), state.selectedScenarioId);
@@ -758,65 +924,69 @@
           } catch (cause) { failed(cause.message); }
         }
       }
-      if (!svg) preview.textContent = state.previewError || state.displayStatus.message;
-      showError([state.error, state.previewError, imageError].filter(Boolean).join(' '));
+      if (!svg) preview.textContent = readableMessage(state.previewError || state.displayStatus.message, state);
+      showError([...new Set([state.error, state.previewError, imageError].filter(Boolean))].map(text => readableMessage(text, state)).join(' '));
       legend.textContent = state.preview?.legend ? state.preview.legend.map(item =>
-        typeof item === 'string' ? item : item.label || item.message || plain(item)).join(' · ')
+        readableMessage(typeof item === 'string' ? item : item.label || item.message, state)).join(' · ')
         : 'Symbolic diagram, not a physical-scale drawing. Unknown inputs are never replaced with defaults.';
       if (!state.result) revokeDownloads();
       renderForms(state);
       findings.replaceChildren();
-      for (const finding of [...(state.inventory?.findings || []), ...(state.result?.findings || [])])
-        findings.append(el('li', `${finding.severity} · ${finding.path || finding.reference || 'inventory'} · ${finding.code}: ${finding.message}`));
-      for (const [index, diagnostic] of (state.inventory?.sourceDiagnostics || []).entries())
-        findings.append(el('li', `sourceDiagnostics[${index}] · ${plain(diagnostic)}`));
-      for (const floor of state.inventory?.sourceFloorDiagnostics || [])
-        for (const [index, diagnostic] of floor.diagnostics.entries())
-          findings.append(el('li', `sourceFloorDiagnostics[${floor.floorId}].diagnostics[${index}] · ${plain(diagnostic)}`));
-      for (const warning of state.result?.warnings || []) findings.append(el('li', plain(warning)));
-      for (const warning of state.preview?.warnings || []) findings.append(el('li', plain(warning)));
+      for (const finding of visibleFindings(state)) findings.append(el('li', finding));
       if (state.result && state.result !== lastResult && (!state.result.balanced || state.result.planField?.status === 'unavailable')) {
         findingsSection.open = true; settings.open = true;
       }
       lastResult = state.result;
       tables.replaceChildren();
       if (state.inventory) {
-        const roomRows = state.preview?.roomRows || state.result?.zoneResults ||
-          state.inventory.rooms.map(room => ({ ...room, roomRef: room.ref }));
-        const openingRows = state.preview?.openingRows || state.result?.flowResults ||
-          state.inventory.openings.map(opening => ({ ...opening, openingRef: opening.ref }));
+        const roomRows = (state.preview?.roomRows || state.result?.zoneResults ||
+          state.inventory.rooms.map(room => ({ ...room, roomRef: room.ref }))).map(row => {
+          if (state.result) return row;
+          const zone = state.draft.zones.find(zone => refKey(zone.room) === refKey(row.roomRef));
+          return { ...row, selected: !!zone, volumeM3: zone?.volumeM3 ?? null };
+        });
+        const openingRows = (state.preview?.openingRows || state.result?.flowResults ||
+          state.inventory.openings.map(opening => ({ ...opening, openingRef: opening.ref }))).map(row => {
+          if (state.result) return row;
+          const link = state.draft.links.find(link => refKey(link.opening) === refKey(row.openingRef));
+          return { ...row, selected: !!link, from: link?.from, to: link?.to,
+            state: link ? link.enabled === false ? 'disabled' : 'not-run' : 'not-selected' };
+        });
+        const metric = (row, key) => row[key] ?? (row.selected === false || !state.result && !row.selected
+          ? 'Not selected' : !state.result ? 'Not run' : state.result.status === 'blocked' ? 'Not calculated — inputs needed'
+            : 'Unavailable — see Findings');
         tables.append(el('p', state.result
-          ? `${state.result.status} · ${state.result.balanced ? 'Balanced selected network' : 'DIAGNOSTIC ONLY — not balanced'}`
-          : 'NOT RUN — inventory only. Numerical values are unknown.'),
+          ? `${plain(state.result.status)} · ${state.result.balanced ? 'Balanced selected network' : state.result.status === 'blocked' ? 'No flow calculated' : 'DIAGNOSTIC ONLY — not balanced'}`
+          : 'Not run — inventory only. Select rooms and supply inputs before calculating.'),
           table('Rooms — Direct outside inflow ACH; not complete fresh-air delivery or a mixing estimate.', [
             ['Plan key', row => row.shortKey], ['Room', row => labelRef(row.roomRef, state)],
-            ['Exact floor / room reference', row => row.roomRef], ['Selected', row => row.selected ?? !!row.solverId],
-            ['Clear volume (m³)', row => row.volumeM3], ['Pressure (Pa)', row => row.pressurePa],
+            ['Selected', row => row.selected ?? !!row.solverId],
+            ['Clear volume (m³)', row => row.volumeM3 ?? (row.selected ? 'Needed to run' : 'Not supplied')], ['Pressure (Pa)', row => metric(row, 'pressurePa')],
             ['Pressure gauge', row => row.gauge || state.result?.components.find(component => component.zoneIds.includes(row.id))?.gauge],
-            ['Inflow (m³/s)', row => row.inflowM3s], ['Outflow (m³/s)', row => row.outflowM3s],
-            ['Direct outside inflow (m³/s)', row => row.directOutsideInflowM3s],
-            ['Transfer inflow (m³/s)', row => row.transferInflowM3s],
-            ['Direct outside ACH (1/h)', row => row.directOutsideInflowACH],
-            ['Residual (m³/s)', row => row.netOutflowM3s], ['Mass residual (kg/s)', row => row.massResidualKgS],
-            ['Selected-network flags', row => `sealed=${plain(row.sealed)}, dead-end=${plain(row.deadEnd)}, outside-connected=${plain(row.connectedToOutside)}`]
+            ['Inflow (m³/s)', row => metric(row, 'inflowM3s')], ['Outflow (m³/s)', row => metric(row, 'outflowM3s')],
+            ['Direct outside inflow (m³/s)', row => metric(row, 'directOutsideInflowM3s')],
+            ['Transfer inflow (m³/s)', row => metric(row, 'transferInflowM3s')],
+            ['Direct outside ACH (1/h)', row => metric(row, 'directOutsideInflowACH')],
+            ['Residual (m³/s)', row => metric(row, 'netOutflowM3s')], ['Mass residual (kg/s)', row => metric(row, 'massResidualKgS')],
+            ['No active connections', row => row.sealed], ['Only one connection', row => row.deadEnd],
+            ['Connected to outside', row => row.connectedToOutside]
           ], roomRows),
           table('Links — signed flow relative to authored from → to orientation', [
-            ['Plan key', row => row.shortKey], ['Opening / connection', row => row.openingRef ? labelRef(row.openingRef, state, 'openings') : row.id],
-            ['Exact floor / opening reference', row => row.openingRef],
+            ['Plan key', row => row.shortKey], ['Opening / connection', row => row.openingRef ? labelRef(row.openingRef, state, 'openings') : 'Manual connection'],
             ['From', row => endpointLabel(row.from, state)], ['To', row => endpointLabel(row.to, state)], ['State', row => row.state],
-            ['Signed flow (m³/s)', row => row.m3s], ['Aperture-mean speed (m/s; NOT room airspeed)', row => row.meanOpeningSpeedMps],
+            ['Signed flow (m³/s)', row => metric(row, 'm3s')], ['Aperture-mean speed (m/s; NOT room airspeed)', row => row.meanOpeningSpeedMps ?? (row.effectiveAreaM2 === 0 ? 'Not applicable — zero area' : metric(row, 'meanOpeningSpeedMps'))],
             ['Free area (m²)', row => row.effectiveAreaM2], ['Numerical status', row => row.numericalStatus]
           ], openingRows));
         if (state.result?.planField) {
           tables.append(table('2D potential-flow cells — depth-averaged estimates, not measured room airspeeds', [
-            ['Cell', row => row.id], ['Room', row => labelRef(row.roomRef, state)],
+            ['Room', row => labelRef(row.roomRef, state)],
             ['Site x (m)', row => row.point.x], ['Site y (m)', row => row.point.y],
             ['x velocity estimate (m/s)', row => row.velocityMps.x], ['y velocity estimate (m/s)', row => row.velocityMps.y],
             ['Speed estimate (m/s)', row => row.speedMps], ['Conservation residual (m³/s)', row => row.conservationResidualM3s]
           ], state.preview?.fieldRows || state.result.planField.cells),
           table('2D room model depths — declared volume divided by actual usable area', [
             ['Room', row => labelRef(row.roomRef, state)], ['Usable area (m²)', row => row.usableAreaM2],
-            ['Uniform model depth (m)', row => row.modelDepthM], ['Field status', row => row.status], ['Reason', row => row.message]
+            ['Uniform model depth (m)', row => row.modelDepthM], ['Field status', row => row.status], ['Reason', row => row.message ? readableMessage(row.message, state) : 'No reported limitation']
           ], state.result.planField.rooms));
         }
       } else tables.append(el('p', 'No current numerical result. Prepare inventory and run an explicit scenario.'));
@@ -830,7 +1000,10 @@
       if (state.comparison) {
         evidenceBody.append(el('p', state.comparison.comparable
           ? 'Comparable physical inputs and room set. Deltas are current minus baseline.'
-          : `No numerical comparison: ${state.comparison.reasons.join(', ')}.`));
+          : `No numerical comparison: ${state.comparison.reasons.map(reason => ({
+            'physical-inputs-changed': 'physical geometry or operation changed', 'zone-selection-changed': 'selected rooms changed',
+            'project-changed': 'different projects', 'unbalanced-results': 'a result is not balanced'
+          })[reason] || reason.replace(/-/g, ' ')).join(', ')}.`));
         if (state.comparison.comparable) evidenceBody.append(table('Comparable room deltas', [
           ['Room', row => labelRef(row.roomRef, state)],
           ['Direct outside inflow Δ (m³/s)', row => row.directOutsideInflowM3s],
@@ -842,10 +1015,15 @@
         button.disabled = !state.result || state.busy || kind === 'svg' && !state.preview?.svg;
         evidenceBody.append(button);
       }
-      const provenance = section('Revision, provenance & original solver state (canonical keys, not cryptographic hashes)');
-      provenance.append(el('pre', state.result ? JSON.stringify({
-        provenance: state.result.provenance, solverInput: state.result.solverInput, solver: state.result.solver
-      }, null, 2) : 'Run a scenario to create immutable evidence.'));
+      const provenance = section('Technical details — exact references, diagnostics & solver evidence');
+      provenance.append(el('p', 'Unrounded values, original diagnostic codes and full captured inputs are retained here and in downloads. Canonical keys are equality encodings, not cryptographic hashes.'),
+        el('pre', JSON.stringify({
+          draft: state.draft, inventory: state.inventory, result: state.result,
+          roomRows: state.preview?.roomRows, openingRows: state.preview?.openingRows,
+          fieldRows: state.preview?.fieldRows, legend: state.preview?.legend, warnings: state.preview?.warnings,
+          comparison: state.comparison, error: state.error, previewError: state.previewError,
+          preparedInputs: state.preparedInputs, projectWeather: state.projectWeather
+        }, null, 2)));
       evidenceBody.append(provenance);
     }
     const unsubscribe = controller.subscribe(render);

@@ -232,9 +232,10 @@ test('mounted default OFF never requests projection; toggles rebuild and dispose
     await dom.nodes.structure.dispatch('change'); dom.flush();
     assert.equal(drawings, 1); assert.equal(builds, 1); assert.ok(oldDisposed > 0);
     assert.deepEqual(renderer.camera.position.toArray(), camera);
-    assert.match(dom.nodes['structure-note'].textContent, /4 solids, 1 nonphysical grid lines, 2 missing-geometry markers/);
-    assert.match(dom.nodes['structure-note'].textContent, /Structural engineering is not assessed/);
-    assert.match(dom.nodes['structure-note'].textContent, /Design → Structure \(2D\)/);
+    assert.match(dom.nodes['structure-note'].textContent, /4 members and 1 grid lines shown; 2 records need positions or sizes/);
+    assert.match(dom.host.html, /Structural engineering is not assessed/);
+    assert.match(dom.host.html, /Design → Structure \(2D\)/);
+    assert.equal(dom.nodes['structure-setup'].textContent, 'Edit structure');
     const structural = [];
     renderer.world.traverse(o => { if (o.userData.structuralId) structural.push(o); });
     let disposed = 0;
@@ -300,7 +301,8 @@ test('pending load refreshes registration instead of rendering an obsolete struc
     resolve(engine.engine); await opened;
     assert.equal(ui.isOpen, false); assert.ok(engine.renderers[0].disposed);
     assert.match(dom.nodes.status.textContent, /exactly all registered floors/);
-    assert.match(dom.nodes['structure-note'].textContent, /not displayed.*not assessed/);
+    assert.match(dom.nodes['structure-note'].textContent, /not displayed/);
+    assert.match(dom.host.html, /Structural engineering is not assessed/);
     assert.equal(dom.frames.size, 0);
   } finally { ui.destroy(); }
 });

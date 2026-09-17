@@ -60,6 +60,23 @@ test('exact browser/CommonJS API, frozen deterministic output and revision zero 
   assert.match(texts(result.sheets).join(' '), /NOT CERTIFIED - NOT ENGINEERED/);
 });
 
+test('whole-house sky-only evidence is accepted without fabricated direct hours', () => {
+  const scene = drawing(), config = copy(light(scene).config);
+  config.direct = { enabled: false }; config.period = null; config.samples = []; config.minSunAltitudeDeg = null;
+  config.workplanes = Light.discover(scene).rooms.map((room, i) => ({
+    id: 'house-' + i, room: room.ref, heightM: 0, spacingM: 2
+  }));
+  const result = Light.run(scene, config);
+  assert.equal(result.complete, true);
+  assert.equal(result.direct.complete, false);
+  const assembled = Package.build(scene, settings(), { light: result });
+  assert.equal(assembled.manifest.analyses.light.status, 'complete', assembled.manifest.analyses.light.reason);
+  assert.ok(assembled.attachments.some(attachment => attachment.fileName === 'light-evidence.json'));
+  const invalid = copy(result);
+  invalid.direct.sensorResults[0].modeledProcessedPositivePathPresenceHours = 0;
+  assert.match(Package.build(scene, settings(), { light: invalid }).manifest.analyses.light.reason, /disabled direct light hours/);
+});
+
 test('A2 imperial fixed scale survives shared PDF export with physical pages', async () => {
   const result = Package.build(drawing('sparse-unknown'), settings({ paper: 'A2', scaleDenominator: 75, units: 'imperial' }));
   const bytes = await Export.pdfBytes(result.sheets);

@@ -233,6 +233,44 @@ test('module interfaces produce one shared wall while preserving carpet and comp
   close(scene.metrics.roomCarpetM2, 2 * 4.2 * 6.5);
 });
 
+test('open stair reservations retain their footprint without manufacturing enclosing walls', () => {
+  const data = fixture();
+  const stair = placed('stair-1', 'staircase', { x: 2, y: 2, w: 2, h: 3 });
+  Object.assign(stair.req, { reserveFootprint: true, stairEnclosure: 'enclosed', stairEntryEdge: 'S' });
+  data.context.plan.placed.push(stair);
+  const enclosed = data.scene(), id = 'floor-1:stair-1';
+  assert.ok(enclosed.walls.some(wall => wall.roomIds.includes(id)));
+  stair.req.stairEnclosure = 'open';
+  const before = clone(data.context), open = data.scene();
+  assert.equal(open.rooms.find(room => room.id === id).stairEnclosure, 'open');
+  assert.ok(!open.walls.some(wall => wall.roomIds.includes(id)));
+  assert.deepEqual(open.rooms.map(room => room.rect), enclosed.rooms.map(room => room.rect));
+  close(open.metrics.reservedHostAreaM2, enclosed.metrics.reservedHostAreaM2);
+  assert.ok(open.metrics.wallFootprintM2 < enclosed.metrics.wallFootprintM2);
+  assert.deepEqual(data.context, before);
+  stair.req.stairEnclosure = 'invalid';
+  assert.throws(() => data.scene(), /stair enclosure/);
+});
+
+test('opening a stair retains an authored door as an unresolved source until its enclosure is restored', () => {
+  const data = fixture(), stair = placed('stair-1', 'staircase', { x: 2, y: 2, w: 2, h: 3 });
+  Object.assign(stair.req, { reserveFootprint: true, stairEnclosure: 'enclosed' });
+  data.context.plan.placed.push(stair);
+  const wall = data.scene().walls.find(wall => wall.roomIds.includes('floor-1:stair-1'));
+  const source = { id: 'specified-stair-door', kind: 'hinged', type: 'door', custom: true,
+    roomId: 'stair-1', targetRoomId: 'living-1', wallId: wall.id, offsetM: .2,
+    widthM: .8, heightM: 2, sillM: 0, openFraction: 0, sourceNote: 'Preserve this authored choice' };
+  data.context.plan.customOpenings.push(source);
+  assert.ok(data.scene().openings.some(item => item.sourceId === source.id));
+  stair.req.stairEnclosure = 'open';
+  const open = data.scene();
+  assert.ok(!open.openings.some(item => item.sourceId === source.id));
+  assert.ok(open.unresolvedOpenings.some(item => item.sourceId === source.id));
+  assert.equal(data.context.plan.customOpenings[0], source);
+  stair.req.stairEnclosure = 'enclosed';
+  assert.ok(data.scene().openings.some(item => item.sourceId === source.id));
+});
+
 test('empty floor programmes retain exterior enclosure instead of inventing or losing rooms', () => {
   const data = fixture('N', false);
   data.context.plan.placed = [];

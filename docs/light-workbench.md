@@ -73,14 +73,45 @@ timeout produce a visible error, never a main-thread calculation fallback.
 
 ## Native controls and first use
 
-The first viewport has the short heading, metric warning, Prepare / Run /
-Cancel / Clear controls, a **Review study inputs** shortcut, status and a closed
-view/scenario selector; the plan follows. The initial empty preview always paints
-prerequisite instructions, even before a first inventory or image exists.
+The main action is **Analyze whole house**. It uses every discovered room on
+every registered floor, including the edited plan. It maps sky access at floor
+level with ideal-clear apertures and the supplied building geometry. Those
+assumptions are stated beside the action; they do not alter the project or claim
+measured illumination. No room selection, date, geographic location or
+near-horizon cutoff is needed for this time-independent calculation.
+
+The whole-house action creates or updates its own study, preserving custom
+drafts. It shows explicitly labeled supplied-model values, not missing primary
+values as question marks. Neighbor and roof unknowns remain in the source
+evidence; they are not silently declared clear or absent. Re-run after edits.
+Use **Display floor & saved studies** to inspect another floor.
+
+The first viewport has the heading, assumptions, whole-house action, Cancel /
+Clear controls and status; the plan follows. The initial preview always paints
+instructions, even before a first inventory or image exists.
 Long input editors, warnings, tables, provenance and imports sit below it.
 No modal, autoplay or animation is used. All native controls have 44 px minimum
 targets. Workbench text, surfaces, borders and disclosures inherit the parent
 theme rather than its lower-contrast global accent or a new green palette.
+
+For optional time-based or custom-height studies, **Study inputs** includes
+Prepare inventory, Run custom study and a live missing-settings checklist. **Review setting**
+opens and focuses the relevant rooms, time or optics disclosure. **Run custom study**
+also takes you to the first missing setup group rather than starting a Worker
+with absent basic inputs. The setup message names the visible controls, not
+internal schema fields such as `config.period`. Completing the checklist is not
+physical validation: the solver still checks geometry and context, including
+unknown roofs and neighbors. No height, location, time, optical property or
+near-horizon cutoff is automatically assumed for a custom study.
+
+Normal result tables contain room names, point labels and scalar values with
+units, not nested JSON or source fingerprints. The map-reading guide explains
+the selected measure and groups repeated missing-information messages.
+**Technical details** retains original diagnostics and model inputs; JSON/CSV
+exports retain full numerical evidence. Blocked calculations show the floor
+outline rather than a pretend calculated map filled with question marks.
+
+### Optional custom sunlight study
 
 1. **Prepare inventory** opens **Study inputs → Select rooms & workplanes**.
    Select exact discovered room references. Supply each workplane height in

@@ -257,6 +257,58 @@ function plumbingDocument(planner, runtime) {
       revokeObjectURL(url) { revoked.push(url); } } });
   return { host, document, urls, revoked, find };
 }
+test('plumbing schedules name quantities and retain raw evidence without exposing schema or repeated warnings', () => {
+  const { ui: unused, planner, bridge, runtime } = setup(); unused.dispose();
+  const baseBuild = runtime.HomePlannerServices.build;
+  runtime.HomePlannerServices.build = (scene, options) => {
+    const result = baseBuild(scene, options), duplicate = result.findings.find(item => item.code === 'unknown-fixture-size');
+    return { ...result, findings: [...result.findings, copy(duplicate),
+      { code: 'future-check', floorId: 'ground', entityIds: [], message: 'Additional connection review required.' }] };
+  };
+  const { host, document, find } = plumbingDocument(bridge, runtime), ui = UI.mount(document);
+  const before = planner.exportProject();
+  ui.setPreviewSettings({ paper: 'A2' }); assert.ok(ui.refresh(), ui.getState().error);
+  const visible = node => node.hidden ? '' : [node.textContent || '', ...(node.tagName === 'DETAILS'
+    ? node.children.filter(child => child.tagName === 'SUMMARY') : node.children).map(visible)].join(' ');
+  const schedules = find(host, node => node.className === 'hp-service-schedules');
+  assert.match(visible(schedules), /Width \(m\).*Depth \(m\).*Height \(m\)/);
+  assert.match(visible(schedules), /Diameter \(mm\).*Invert level \(m\)/);
+  assert.match(visible(schedules), /Not supplied/);
+  assert.doesNotMatch(visible(schedules), /serviceNodes|serviceRoutes|unknown-fixture-size|\{"|\[object Object\]/);
+  assert.deepEqual(JSON.parse(find(schedules, node => node.tagName === 'PRE').textContent).authored, fixture());
+  const findings = find(host, node => node.className === 'hp-service-findings');
+  assert.equal(findings.children.filter(node => /Fixture dimensions: Not supplied/.test(node.textContent)).length, 1);
+  assert.equal(ui.getState().findings.filter(item => item.code === 'unknown-fixture-size').length, 2);
+  assert.match(visible(findings), /drawing dimensions/);
+  assert.match(visible(findings), /Additional connection review required/);
+  assert.doesNotMatch(visible(findings), /unknown-fixture-size|authored:unknown/);
+  const detail = find(findings, node => node.tagName === 'DETAILS');
+  assert.ok(!detail.open); detail.open = true;
+  const field = document.getElementById('hp-service-widthM'); field.value = '0.4'; field.dispatch('input');
+  assert.equal(find(findings, node => node.tagName === 'DETAILS'), detail); assert.equal(detail.open, true);
+  assert.equal(document.getElementById('hp-service-widthM'), field);
+  assert.equal(planner.exportProject(), before);
+  ui.dispose();
+});
+
+test('route and fixture references show floor and object names, with full exact pairs only in technical details', () => {
+  const { ui: unused, planner, bridge, runtime } = setup();
+  const { port, supply, route } = makeNetwork(unused, planner); unused.dispose();
+  const { host, document, find } = plumbingDocument(bridge, runtime), ui = UI.mount(document);
+  const schedules = find(host, node => node.className === 'hp-service-schedules');
+  const visible = node => [node.textContent || '', ...(node.tagName === 'DETAILS'
+    ? node.children.filter(child => child.tagName === 'SUMMARY') : node.children).map(visible)].join(' ');
+  const text = visible(schedules);
+  assert.match(text, /Upper supply/); assert.match(text, /Basin cold port/);
+  assert.ok(text.includes(planner.getProject().floors[1].name));
+  assert.doesNotMatch(text, /\(upper\)|\(ground\)|"floorId"|"entityId"|authored:/);
+  const rawRoute = find(schedules, node => node.tagName === 'PRE' && JSON.parse(node.textContent).authored.id === route.id);
+  const raw = JSON.parse(rawRoute.textContent).authored;
+  assert.deepEqual(raw.from, { floorId: 'upper', entityId: supply.id });
+  assert.deepEqual(raw.to, { floorId: 'ground', entityId: port.id });
+  ui.dispose();
+});
+
 test('mounted native fixture/node/route authoring, pending edits, missing refs, cached zoom and URL cleanup', () => {
   const { ui: unused, planner, bridge, runtime, captures } = setup(); unused.dispose();
   const { host, document, find, urls, revoked } = plumbingDocument(bridge, runtime);

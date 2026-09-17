@@ -80,6 +80,7 @@
   }
   function validateResult(value,request,inventory,previous){
     const r=snapshot(value);
+    const directEnabled=request.config.direct?.enabled!==false;
     keys(r,['version','kind','status','complete','computationalComplete','config','inventory','provenance','findings',
       'progress','sensors','context','sampling','sky','direct','limitations']);
     if(r.version!==1||r.kind!=='RoomLightStudy'||!['blocked','complete','incomplete'].includes(r.status)||
@@ -105,7 +106,8 @@
       r.findings.some(f=>!object(f)||typeof f.code!=='string'||typeof f.message!=='string'||
         !['blocking','warning'].includes(f.severity))||
       r.progress.blocked!==r.findings.some(f=>f.severity==='blocking')||
-      r.complete!==(r.computationalComplete&&r.context.status==='known-supplied-model'&&r.direct.complete===true)||
+      r.complete!==(r.computationalComplete&&r.context.status==='known-supplied-model'&&
+        (directEnabled?r.direct.complete===true:r.sky.status==='complete'))||
       r.limitations.some(v=>typeof v!=='string'))
       throw fail('inconsistent terminal study status.');
     const stale=own(request,'expectedPhysicalFingerprint')&&request.expectedPhysicalFingerprint!==inventory.physicalFingerprint;
@@ -119,14 +121,20 @@
       throw fail('invalid numerical result dimensions.');
     const fraction=v=>v===null||typeof v==='number'&&v>=0&&v<=1;
     const hours=v=>v===null||typeof v==='number'&&v>=0;
+    const coverageFields=['periodHours','processedIntervalHours','knownIntervalHours','unknownOrUnprocessedHours','nearHorizonUnresolvedHours'];
+    const sensorHourFields=['positivePathPresenceHours','transmittedEquivalentSunHours','knownProcessedPositivePathPresenceHours',
+      'knownProcessedTransmittedEquivalentSunHours','modeledProcessedPositivePathPresenceHours','modeledProcessedTransmittedEquivalentSunHours'];
     if(typeof r.direct.complete!=='boolean'||r.direct.complete!==(r.direct.status==='complete')||
+      (directEnabled?!['blocked','complete','incomplete'].includes(r.direct.status):
+        r.direct.status!==(r.status==='blocked'?'blocked':'disabled')||r.direct.complete||
+        r.sampling.directRays!==0||r.progress.totalIntervals!==0||r.direct.masks.length!==0||
+        coverageFields.some(k=>r.direct[k]!==null))||
       r.sky.metric!=='normalized-cosine-weighted-sky-access'||r.sky.units!=='dimensionless-0-to-1'||
       r.direct.units!=='hours'||!['known-supplied-model','unknown-context'].includes(r.context.status)||
       canonical(r.context.neighbors)!==canonical(request.config.neighbors??null)||
       canonical(r.context.windowOptics)!==canonical(request.config.windowOptics??null)||
       canonical(r.context.roofContext)!==canonical(request.config.roofContext??[])||
-      ['periodHours','processedIntervalHours','knownIntervalHours','unknownOrUnprocessedHours','nearHorizonUnresolvedHours']
-        .some(k=>!hours(r.direct[k]))||
+      coverageFields.some(k=>!hours(r.direct[k]))||
       r.direct.complete&&(r.status==='blocked'||r.direct.periodHours===null||
         Math.abs(r.direct.knownIntervalHours-r.direct.periodHours)>=1e-10))
       throw fail('invalid metric or coverage status.');
@@ -163,9 +171,7 @@
       seenSensors.add(s.id);
       const sky=r.sky.sensorResults[i],direct=r.direct.sensorResults[i];
       if(!fraction(sky.cosineWeightedSkyAccess)||!fraction(sky.modeledCosineWeightedSkyAccess)||
-        ['positivePathPresenceHours','transmittedEquivalentSunHours','knownProcessedPositivePathPresenceHours',
-          'knownProcessedTransmittedEquivalentSunHours','modeledProcessedPositivePathPresenceHours',
-          'modeledProcessedTransmittedEquivalentSunHours'].some(k=>!hours(direct[k]))||
+        sensorHourFields.some(k=>directEnabled?!hours(direct[k]):direct[k]!==null)||
         !r.direct.complete&&(direct.positivePathPresenceHours!==null||direct.transmittedEquivalentSunHours!==null))
         throw fail('invalid sensor metrics.');
     }

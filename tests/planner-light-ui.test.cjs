@@ -332,6 +332,47 @@ test('browser global is lazy and styles preserve inherited workbench contrast, n
   assert.match(css, /\.homePlannerLight summary \{ color: inherit/);
 });
 
+test('missing Light setup names actual controls and links to the right disclosure without launching a worker', async () => {
+  const s = setup(); s.ui.dispose();
+  const { document } = documentFor(s.bridge, s.runtime);
+  const ui = UI.mount(document, document.defaultView);
+  author(ui);
+  const before = s.planner.exportProject();
+  ui.setDraft({ period: null, samples: [], minSunAltitudeDeg: null, windowOptics: { mode: null } });
+  assert.deepEqual(ui.getState().setupRequirements.map(item => item.id), ['period', 'optics', 'horizon']);
+  assert.match(ui.getState().displayStatus.message, /Complete 3 study settings/);
+  assert.match(ui.getState().setupRequirements[0].message, /Prepare sun intervals/);
+  assert.doesNotMatch(ui.getState().displayStatus.message, /config\.period|config\.minSunAltitudeDeg|windowOptics\.mode/);
+  document.getElementById('light-run').click();
+  assert.equal(s.requests.length, 0);
+  const sun = document.getElementById('light-input-section-sun');
+  assert.equal(sun.open, true);
+  assert.equal(document.activeElement, sun.children[0]);
+  document.getElementById('light-setup-optics').click();
+  const optics = document.getElementById('light-input-section-optics');
+  assert.equal(optics.open, true);
+  assert.equal(document.activeElement, optics.children[0]);
+  assert.equal(ui.getState().draft.windowOptics.mode, null);
+  assert.equal(ui.getState().draft.minSunAltitudeDeg, null);
+  assert.equal(ui.getState().draft.period, null);
+  assert.equal(s.planner.exportProject(), before);
+  ui.setDraft({ windowOptics: { mode: 'ideal-clear' }, minSunAltitudeDeg: 1 });
+  assert.ok(ui.prepareSunIntervals());
+  assert.deepEqual(ui.getState().setupRequirements, []);
+  assert.ok(await ui.run(), ui.getState().error);
+  assert.equal(s.requests.length, 1);
+  ui.dispose();
+});
+
+test('setup checklist preserves explicit zero transmittance and still requires its source', () => {
+  const { ui } = setup(); author(ui);
+  ui.setDraft({ windowOptics: { mode: 'visible-transmission', visibleTransmittance: 0, source: null } });
+  assert.deepEqual(ui.getState().setupRequirements.map(item => item.id), ['transmission']);
+  ui.setDraft({ windowOptics: { mode: 'visible-transmission', visibleTransmittance: 0, source: 'Explicit opaque optical fixture' } });
+  assert.deepEqual(ui.getState().setupRequirements, []);
+  ui.dispose();
+});
+
 test('mounted worker receives the original runtime for receiver-sensitive browser getters', async () => {
   const state = setup(); state.ui.dispose();
   const { document } = documentFor(state.bridge, state.runtime);
@@ -356,14 +397,65 @@ test('initial mount paints prerequisite guidance before any inventory, images or
   const { document, host, find, urls } = documentFor(state.bridge, state.runtime);
   const ui = UI.mount(document), viewport = document.getElementById('light-viewport');
   assert.equal(ui.getState().displayStatus.code, 'not-prepared');
-  assert.match(viewport.children[0].textContent, /Prepare inventory/);
+  assert.match(viewport.children[0].textContent, /Analyze whole house/);
   assert.equal(urls.length, 0);
   assert.equal(state.requests.length, 0);
   document.getElementById('light-inputs').click();
   const inputs = find(host, node => node.tagName === 'DETAILS' &&
     node.children[0].textContent === 'Study inputs — rooms, site, optics & context');
   assert.equal(inputs.open, true);
-  assert.equal(inputs.children[1].querySelectorAll('details')[0].open, true);
+  assert.equal(document.getElementById('light-input-section-rooms').open, true);
+  ui.dispose();
+});
+
+test('whole-house sky access uses every current room and floor without repeated physical inputs', async () => {
+  const { ui, planner, requests } = setup(), before = planner.exportProject(), originalDraft = ui.getState().draft;
+  const result = await ui.runWholeHouse();
+  assert.ok(result, ui.getState().error);
+  assert.notEqual(result.status, 'blocked');
+  assert.equal(result.config.workplanes.length, result.inventory.rooms.length);
+  assert.equal(new Set(result.config.workplanes.map(plane => plane.room.floorId)).size, 2);
+  assert.ok(result.config.workplanes.every(plane => plane.heightM === 0 && plane.spacingM === .5));
+  assert.equal(result.config.period, null);
+  assert.equal(result.config.minSunAltitudeDeg, null);
+  assert.deepEqual(result.config.samples, []);
+  assert.equal(result.config.direct.enabled, false);
+  assert.equal(result.config.windowOptics.mode, 'ideal-clear');
+  assert.ok(result.sky.sensorResults.some(row => row.modeledCosineWeightedSkyAccess > 0));
+  assert.ok(ui.getState().preview.sensorRows.every(row => row.selectedValue !== null));
+  assert.equal(ui.getState().visualization.metric, 'sky'); assert.equal(ui.getState().visualization.modeled, true);
+  assert.deepEqual(ui.getState().setupRequirements, []);
+  const wholeHouseId = ui.getState().draft.id, count = ui.getState().scenarios.length;
+  ui.selectScenario(originalDraft.id); assert.deepEqual(ui.getState().draft, originalDraft);
+  await ui.runWholeHouse();
+  assert.equal(ui.getState().draft.id, wholeHouseId); assert.equal(ui.getState().scenarios.length, count);
+  assert.equal(requests.length, 2); assert.equal(planner.exportProject(), before);
+  ui.dispose();
+});
+
+test('Light reading guide and result tables do not expose nested JSON or repeated schema warnings', async () => {
+  const s = setup(); s.ui.dispose();
+  const { document, host, find } = documentFor(s.bridge, s.runtime);
+  const ui = UI.mount(document, document.defaultView);
+  author(ui);
+  ui.setDraft({ period: null, samples: [], minSunAltitudeDeg: null, windowOptics: { mode: null } });
+  await ui.run();
+  const reading = document.getElementById('light-reading-guide');
+  const text = node => [node.textContent, ...node.children.map(text)].join(' ');
+  assert.doesNotMatch(text(reading), /missing-control|config\.period|windowOptics\.mode|sunUpEnvelope|"floorId"|null:/);
+  assert.equal(reading.open, false);
+  assert.equal(ui.getState().preview.sensorRows.length, 0, 'blocked output shows inventory, not question-mark cells');
+  const technical = document.getElementById('light-technical-details');
+  assert.equal(technical.open, false);
+  assert.match(text(technical), /missing-control/);
+  ui.setDraft({ windowOptics: { mode: 'ideal-clear' }, minSunAltitudeDeg: 1 });
+  ui.prepareSunIntervals(); await ui.run();
+  const evidence = find(host, node => node.tagName === 'DETAILS' && node.children[0].textContent === 'Sensor & room evidence');
+  const tableText = text(evidence);
+  assert.match(tableText, /Study points|Room averages/);
+  assert.doesNotMatch(tableText, /"floorId"|"entityId"|"coordinateSpace"|"provenance"|sensorIds|inputFingerprint|\[object Object\]/);
+  assert.ok(find(evidence, node => node.tagName === 'TH' && node.textContent === 'Room'));
+  assert.equal(s.planner.getProject().revision, 0);
   ui.dispose();
 });
 
@@ -411,7 +503,8 @@ test('blocked, near-horizon, unprocessed and unselected-floor views explain why 
   assert.equal(ui.getState().displayStatus.code, 'unprocessed');
   ui.setDraft({ windowOptics: { mode: null } }); await ui.run();
   assert.equal(ui.getState().displayStatus.code, 'blocked');
-  assert.match(ui.getState().displayStatus.message, /windowOptics.mode/);
+  assert.ok(ui.getState().setupRequirements.some(item => /Window optical model/.test(item.message)));
+  assert.doesNotMatch(ui.getState().displayStatus.message, /windowOptics\.mode/);
   planner.importProject(JSON.stringify(createFixture('sparse-unknown').project));
   ui.prepare();
   assert.equal(ui.getState().displayStatus.code, 'empty');

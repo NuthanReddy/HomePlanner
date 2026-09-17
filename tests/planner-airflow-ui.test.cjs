@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const UI = require('../planner-airflow-ui.js');
 const A = require('../planner-airflow.js');
 const Display = require('../planner-airflow-display.js');
+const Inputs = require('../planner-airflow-inputs.js');
 const { createFixture, controllerFor } = require('./fixtures/drawing-fixtures.cjs');
 const copy = value => JSON.parse(JSON.stringify(value));
 const ref = (floorId, entityId) => ({ floorId, entityId });
@@ -27,7 +28,7 @@ function setup({ pending = false, subscribed = true, timers = false } = {}) {
   const bridge = { ...planner, subscribe: subscribed ? planner.subscribe : undefined,
     getDrawingScene() { const value = planner.getDrawingScene(); captures.push(value); return value; } };
   const jobs = new Map(); let timerId = 0;
-  const runtime = { Blob, HomePlannerAirflow: A, HomePlannerAirflowDisplay: Display,
+  const runtime = { Blob, HomePlannerAirflow: A, HomePlannerAirflowDisplay: Display, HomePlannerAirflowInputs: Inputs,
     HomePlannerAirflowRunner: { createRunner() {
       return {
         run(input) {
@@ -416,7 +417,8 @@ test('display status distinguishes absent rooms, blocked inputs, another floor a
   ui.updateLink(ids.incoming, { pressurePa: null });
   await ui.run();
   assert.equal(ui.getState().displayStatus.code, 'blocked');
-  assert.match(ui.getState().displayStatus.message, /pressurePa/);
+  assert.match(ui.getState().displayStatus.message, /inputs are needed/);
+  assert.doesNotMatch(ui.getState().displayStatus.message, /pressurePa/);
   planner.importProject(JSON.stringify(createFixture('sparse-unknown').project));
   ui.prepare();
   assert.equal(ui.getState().displayStatus.code, 'empty');
@@ -524,5 +526,158 @@ test('mounted setup, image failure and clear controls never leave an unexplained
   byId('clear').click();
   assert.equal(ui.getState().result, null);
   assert.doesNotMatch(ui.getState().preview.svg, /data-flow=/);
+  ui.dispose();
+});
+
+function ordinaryText(node) {
+  if (node.tagName === 'DETAILS' && node.children[0]?.textContent.startsWith('Technical details')) return '';
+  return [node.textContent, ...node.children.map(ordinaryText)].join('\n');
+}
+
+test('blocked mounted findings are actionable once per input, name rooms and retain original evidence privately', async () => {
+  const state = setup(); state.ui.dispose();
+  const { document, host, find } = documentFor(state.bridge, state.runtime);
+  const ui = UI.mount(document), before = state.planner.exportProject();
+  ui.prepare(); ui.addRoom(living); ui.addOpening(entry);
+  ui.updateLink(ui.getState().draft.links[0].id, { enabled: true });
+  const result = await ui.run();
+  assert.equal(result.status, 'blocked');
+  const section = find(host, node => node.tagName === 'DETAILS' && node.children[0]?.textContent === 'Findings & limitations');
+  const items = section.children[1].children.map(node => node.textContent);
+  for (const text of ['positive clear room volume', 'positive constant density', 'explicit operating free area',
+    'explicit discharge coefficient', 'explicit signed pressure forcing'])
+    assert.equal(items.filter(message => message.includes(text)).length, 1, text);
+  assert.equal(items.filter(message => message.startsWith('Needed to run')).length, 5);
+  assert.ok(items.some(message => /Living/i.test(message) && message.includes('signed pressure forcing')));
+  assert.equal(section.open, true);
+  const text = ordinaryText(host);
+  assert.doesNotMatch(text, /\[object Object\]|"floorId"|missing-pressurePa|sourceDiagnostics\[|zones\[\d+\]|links\[\d+\]|\bnull\b/);
+  assert.match(text, /No airflow inputs are needed to export a floor plan/);
+  assert.match(text, /Needed to run/);
+  const technical = find(host, node => node.tagName === 'DETAILS' &&
+    node.children[0]?.textContent.startsWith('Technical details — exact'));
+  assert.equal(technical.open, false);
+  assert.match(technical.children[2].textContent, /missing-pressurePa/);
+  assert.match(technical.children[2].textContent, /"floorId": "ground"/);
+  assert.equal(result.scenario.densityKgM3, null);
+  assert.equal(result.scenario.zones[0].volumeM3, null);
+  assert.equal(state.planner.exportProject(), before);
+  ui.dispose();
+});
+
+test('native input help is associated, names quantities and does not introduce physical defaults', () => {
+  const state = setup(); state.ui.dispose();
+  const { document, host, find } = documentFor(state.bridge, state.runtime);
+  const ui = UI.mount(document);
+  ui.prepare(); ui.addRoom(living); ui.addOpening(entry);
+  const roomTable = find(host, node => node.tagName === 'TABLE' && node.children[0]?.textContent.startsWith('Rooms —'));
+  const selectedRoom = roomTable.children[2].children.find(row => /Living/i.test(row.children[1].textContent));
+  assert.equal(selectedRoom.children[2].textContent, 'Yes');
+  assert.equal(selectedRoom.children[3].textContent, 'Needed to run');
+  assert.equal(selectedRoom.children[4].textContent, 'Not run');
+  for (const label of ['Air density', 'Clear room volume', 'Operating free area', 'Discharge coefficient', 'Signed from → to forcing']) {
+    const wrapper = find(host, node => node.tagName === 'LABEL' && node.textContent.startsWith(label));
+    const [input, note] = wrapper.children;
+    assert.ok(note.textContent.length > 35, label);
+    assert.equal(input.attributes['aria-describedby'], note.id);
+    assert.equal(input.placeholder, 'Not supplied');
+    assert.equal(input.value, '');
+  }
+  assert.match(ordinaryText(host), /positive drives from → to, negative reverses it/);
+  assert.equal(state.requests.length, 0);
+  ui.dispose();
+});
+
+test('ordinary result tables have named columns, rounded signed values and distinguish zero from unavailable', async () => {
+  const state = setup(); state.ui.dispose();
+  const { document, host, find } = documentFor(state.bridge, state.runtime);
+  const ui = UI.mount(document), ids = author(ui);
+  ui.setDraft({ planField: { enabled: false, spacingM: .5 } });
+  ui.updateLink(ids.incoming, { pressurePa: -12 });
+  const result = await ui.run(), flow = result.flowResults.find(row => row.id === ids.incoming).m3s;
+  assert.ok(flow < 0);
+  const table = find(host, node => node.tagName === 'TABLE' && node.children[0]?.textContent.startsWith('Links —'));
+  const headers = table.children[1].children[0].children;
+  assert.ok(headers.every(cell => cell.tagName === 'TH' && cell.scope === 'col'));
+  const flowColumn = headers.findIndex(cell => cell.textContent === 'Signed flow (m³/s)');
+  assert.ok(table.children[2].children.some(row => row.children[flowColumn].textContent === String(Number(flow.toPrecision(7)))));
+  assert.doesNotMatch(ordinaryText(host), /"entityId"|"floorId"|\["zone"|outside-zero-Pa|arbitrary-zero-Pa/);
+  for (const table of host.querySelectorAll('table'))
+    assert.doesNotMatch(ordinaryText(table), /\[object Object\]|\{"|ground:entry|ground:living-window|ground:living/);
+  const exported = JSON.parse(await ui.exportData('json').blob.text());
+  assert.deepEqual(exported, result, 'formatting does not round or remove exported evidence');
+  ui.updateLink(ids.incoming, { pressurePa: 0 }); await ui.run();
+  const zeroTable = find(host, node => node.tagName === 'TABLE' && node.children[0]?.textContent.startsWith('Links —'));
+  assert.ok(zeroTable.children[2].children.some(row => row.children[flowColumn].textContent === '0'));
+  assert.ok(zeroTable.children[2].children.some(row => row.children[flowColumn].textContent === 'Not selected'));
+  assert.equal(ui.getState().displayStatus.code, 'zero-flow');
+  ui.dispose();
+});
+
+test('source and preview diagnostic copies collapse into one finding with floor context', async () => {
+  const state = setup(); state.ui.dispose();
+  const original = state.bridge.getDrawingScene;
+  state.bridge.getDrawingScene = () => {
+    const scene = copy(original());
+    scene.scenes[0].diagnostics.push({ level: 'error', code: 'test-enclosure', message: 'Repair this enclosure in Design.' });
+    return scene;
+  };
+  const { document, host, find } = documentFor(state.bridge, state.runtime);
+  const ui = UI.mount(document); author(ui);
+  const result = await ui.run();
+  assert.equal(result.status, 'blocked');
+  const section = find(host, node => node.tagName === 'DETAILS' && node.children[0]?.textContent === 'Findings & limitations');
+  const issues = section.children[1].children.filter(node => node.textContent.includes('Repair this enclosure in Design.'));
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].textContent, /Needed to run/);
+  assert.ok(result.inventory.sourceFloorDiagnostics[0].diagnostics.some(item => item.code === 'test-enclosure'));
+  ui.dispose();
+});
+
+test('Use whole house selects real rooms and openings with plan volumes, without a worker or project mutation', () => {
+  const state = setup(); state.ui.dispose();
+  const { document, host, find } = documentFor(state.bridge, state.runtime);
+  const ui = UI.mount(document), before = state.planner.exportProject();
+  document.getElementById('hp-airflow-whole-house').click();
+  const current = ui.getState();
+  assert.equal(current.draft.zones.length, current.inventory.rooms.length);
+  assert.ok(current.draft.zones.every(zone => zone.volumeM3 > 0));
+  assert.ok(current.draft.zones.every(zone => /Plan estimate/.test(zone.volumeSource)));
+  assert.equal(current.draft.links.length, current.inventory.openings.filter(row => row.adjacencyStatus === 'known').length);
+  assert.equal(current.draft.densityKgM3, null);
+  assert.ok(current.draft.links.every(link => link.cd === null && link.pressurePa === null && link.freeAreaM2 === null));
+  assert.equal(state.requests.length, 0);
+  assert.equal(state.planner.exportProject(), before);
+  assert.ok(find(host, node => node.tagName === 'INPUT' && node.value === current.draft.zones[0].volumeM3));
+  document.getElementById('hp-airflow-plan-areas').click();
+  assert.ok(ui.getState().draft.links.some(link => link.freeAreaM2 > 0));
+  assert.equal(state.requests.length, 0);
+  ui.dispose();
+});
+
+test('explicit run refreshes whole-house plan estimates, but never overwrites manual volume and area overrides', async () => {
+  const { ui, bridge, requests, planner } = setup(), before = planner.exportProject();
+  ui.useWholeHouse(); ui.useOpeningAreaEstimates();
+  const [manual, automatic] = ui.getState().draft.zones, link = ui.getState().draft.links[0];
+  ui.updateZone(manual.id, { volumeM3: 123 });
+  ui.updateLink(link.id, { freeAreaM2: .1 });
+  const original = bridge.getDrawingScene;
+  bridge.getDrawingScene = () => {
+    const scene = copy(original());
+    for (const floor of scene.scenes) floor.wallHeightM *= 1.5;
+    return scene;
+  };
+  ui.sync();
+  assert.equal(requests.length, 0, 'geometry notifications do not run');
+  assert.equal(ui.getState().draft.zones.find(zone => zone.id === automatic.id).volumeM3, automatic.volumeM3);
+  const result = await ui.run();
+  assert.equal(result.scenario.zones.find(zone => zone.id === manual.id).volumeM3, 123);
+  assert.ok(Math.abs(result.scenario.zones.find(zone => zone.id === automatic.id).volumeM3 - automatic.volumeM3 * 1.5) < 1e-10);
+  assert.equal(result.scenario.links.find(row => row.id === link.id).freeAreaM2, .1);
+  assert.ok(result.scenario.zones.find(zone => zone.id === manual.id).volumeSource.includes('override'));
+  assert.equal(result.status, 'blocked', 'geometry alone cannot invent pressure, density or Cd');
+  assert.ok(!result.findings.some(item => item.code === 'missing-volume'));
+  assert.equal(requests.length, 1);
+  assert.equal(planner.exportProject(), before);
   ui.dispose();
 });

@@ -82,6 +82,12 @@
   padding: 0;
   accent-color: var(--acc);
 }
+#planner3d .hp3d-layer-controls { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 8px 0; }
+#planner3d .hp3d-layer-controls > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#planner3d .hp3d-layer-controls label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; }
+#planner3d .hp3d-layer-controls input { width: 16px; height: 16px; margin: 0; appearance: auto; accent-color: var(--acc); }
+#planner3d .hp3d-layer-controls input:disabled { cursor: not-allowed; }
+#planner3d .hp3d-layer-controls button { padding: 5px 8px; min-height: 32px; }
 #planner3d .hp3d-edit-toolbar {
   padding: 10px 0;
   border-top: 1px solid var(--line);

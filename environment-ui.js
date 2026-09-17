@@ -28,6 +28,7 @@
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const finite=value=>typeof value==='number'&&Number.isFinite(value);
   const copy=value=>JSON.parse(JSON.stringify(value));
+  const same=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null);
   const nice=(value,places=2)=>finite(value)?value.toLocaleString('en-GB',{maximumFractionDigits:places}):'Not evaluated';
   const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
   function requireNumber(value,label,min=-Infinity,max=Infinity){
@@ -51,6 +52,33 @@
       activeFloorId:project.activeFloorId,floors:project.floors.map(f=>({id:f.id,heightM:f.heightM})),
       scenes:scenes.map(s=>({floorId:s.floorId,headingDeg:s.headingDeg,floor:s.floor,building:s.building,
         floorElevationM:s.floorElevationM,wallHeightM:s.wallHeightM,rooms:s.rooms,walls:s.walls,openings:s.openings,obstacles:s.obstacles}))});
+  }
+  function windWeatherKey(weather){
+    if(!Array.isArray(weather?.records))return null;
+    return fingerprint({id:weather.id,kind:weather.kind,source:weather.source,coverage:weather.coverage,
+      units:weather.units,timeZoneOffsetHours:weather.timeZoneOffsetHours,
+      records:weather.records.map(row=>row&&({timestamp:row.timestamp,windSpeedMps:row.windSpeedMps,windFromDeg:row.windFromDeg,
+        missing:Array.isArray(row.missing)?row.missing.filter(key=>key==='windSpeedMps'||key==='windFromDeg'):[]}))});
+  }
+  function matchesSolar(entry,project){
+    const input=entry?.input,environment=project.environment||{},selection=environment.solar;
+    if(!selection||!input||!same(input.selection,selection)||!same(input.site,project.site)||!same(input.glazing,environment.glazing))return false;
+    if(selection.radiationMode==='none')return input.radiation===null&&input.weatherRecord===null;
+    if(selection.radiationMode==='manual')return !!selection.manualRadiation&&input.weatherRecord===null&&
+      same(input.radiation,{...selection.manualRadiation,groundAlbedo:selection.groundAlbedo});
+    const weather=environment.weather,instant=Date.parse(entry.output?.instantUTC);
+    if(selection.radiationMode!=='weather'||!Array.isArray(weather?.records)||!Number.isFinite(instant))return false;
+    const row=weather.records.find(r=>r&&instant>=Date.parse(r.timestamp)-r.durationSeconds*1000&&instant<Date.parse(r.timestamp));
+    if(!row||!['dniWm2','dhiWm2','ghiWm2'].every(key=>finite(row[key])&&!(Array.isArray(row.missing)&&row.missing.includes(key))))return false;
+    return same(input.radiation,{dniWm2:row.dniWm2,dhiWm2:row.dhiWm2,ghiWm2:row.ghiWm2,groundAlbedo:selection.groundAlbedo})&&
+      same(input.weatherRecord,{id:weather.id,kind:weather.kind,timestamp:row.timestamp,durationSeconds:row.durationSeconds,
+        intervalStartUTC:new Date(Date.parse(row.timestamp)-row.durationSeconds*1000).toISOString(),source:weather.source,units:weather.units||{}});
+  }
+  function matchesWind(entry,project){
+    const input=entry?.input,environment=project.environment||{},config=environment.wind;
+    if(!config||!input||!same(input.config,config))return false;
+    if(config.source==='manual')return input.weatherId===null;
+    return config.source==='weather'&&!!input.weatherKey&&input.weatherKey===windWeatherKey(environment.weather);
   }
   function dateParts(value){
     const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value||'');
@@ -247,7 +275,13 @@
     return input;
   }
   function warnList(items){
-    return items?.length?`<ul class="env-warnings">${[...new Set(items)].map(message=>`<li>${esc(typeof message==='string'?message:JSON.stringify(message))}</li>`).join('')}</ul>`:'';
+    if(!items?.length)return '';
+    const records=[...new Map(items.map(item=>[typeof item==='string'?item:JSON.stringify(item),item])).values()];
+    const messages=[...new Set(records.map(item=>typeof item==='string'?item:
+      typeof item?.message==='string'?item.message:typeof item?.reason==='string'?item.reason:'Review the model details.'))];
+    const structured=records.filter(item=>typeof item!=='string');
+    return `<ul class="env-warnings">${messages.map(message=>`<li>${esc(message)}</li>`).join('')}</ul>`+
+      (structured.length?`<details class="env-details"><summary>Technical warning records</summary><pre class="env-json">${esc(JSON.stringify(structured,null,2))}</pre></details>`:'');
   }
   function table(headers,rows,caption){
     return `<div class="env-table-wrap" tabindex="0" role="region" aria-label="${esc(caption)}"><table class="env-table"><caption>${esc(caption)}</caption><thead><tr>${headers.map(h=>`<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map(cell=>`<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -446,7 +480,7 @@
     }
     element.dataset.envMounted='true';element.classList.add('env-workspace');element.innerHTML=markup();
     const by=id=>element.querySelector(`#${id}`),Data=root.EnvironmentData,Sun=root.HomeSun;
-    let previousProjectId=null,previousFloorId=null,previousSiteKey=null,previousGeometryKey=null,previousWeatherId=null,previousAssemblyKey=null;
+    let previousProjectId=null,previousFloorId=null,previousSiteKey=null,previousGeometryKey=null,previousWeatherKey=null,previousAssemblyKey=null;
     const drafts=Drafts.createStore(planner,'Site / environment inputs'),formOwners=new Map(),formBases=new Map();
     const floorForms=new Set(['env-building-form','env-storey-form','env-obstacle-form','env-pressure-form','env-thermal-form']);
     const formScope=(id,project=planner.getProject())=>({projectId:project.id,floorId:floorForms.has(id)?project.activeFloorId:'',entityId:id});
@@ -483,6 +517,8 @@
     }
     function discardForm(id){
       const obstacle=id==='env-obstacle-form'?planner.getProject().obstacles.find(o=>o.id===by('env-obstacle-id').value):null;
+      if(id==='env-solar-form')invalidateSolar('Solar draft discarded. Restoring matching saved evidence only.');
+      if(id==='env-wind-form')invalidateWind('Wind draft discarded. Restoring matching saved evidence only.');
       drafts.remove(formOwners.get(id)||formScope(id));
       by(id).dataset.dirty='';by(id).reset();
       by(id).dataset.reload='true';formBases.delete(id);
@@ -492,10 +528,10 @@
     const obstacleFields=o=>({'env-obstacle-id':o.id,'env-obstacle-label':o.label,'env-obstacle-type':o.type,
       'env-obstacle-x':o.x,'env-obstacle-y':o.y,'env-obstacle-w':o.w,'env-obstacle-h':o.h,
       'env-obstacle-height':o.heightM,'env-obstacle-base':o.baseM,'env-obstacle-trans':o.transmittance});
-    let requestController=null,weatherOperation=0,locationOperation=0,monthlyOperation=0;
+    let requestController=null,weatherOperation=0,locationOperation=0,monthlyOperation=0,monthlyRequest=null;
     let proposals=[],preview=null,proposalGeometryKey=null,solarResult=null,windResult=null;
     let pressureTemplateKey=null,thermalTemplateKey=null,lastMaterialLayers=[],destroyed=false;
-    const experimentKeys=new Map();
+    const experimentKeys=new Map(),studyKeys=new Map();
     const scene=()=>planner.getScene();
     const scenes=()=>typeof planner.getScenes==='function'?planner.getScenes():[scene()].filter(Boolean);
     const currentGeometryKey=()=>geometryKey(planner.getProject(),scenes());
@@ -575,14 +611,17 @@
       by('env-fetch').disabled=false;by('env-fetch-cancel').disabled=true;
     }
     function invalidateSolar(message){
-      monthlyOperation++;solarResult=null;by('env-solar-results').innerHTML='';
+      monthlyOperation++;monthlyRequest=null;by('env-monthly').disabled=false;
+      studyKeys.delete('solar');studyKeys.delete('monthlySolar');
+      solarResult=null;by('env-solar-results').innerHTML='';
       by('env-monthly-results').innerHTML='';setStatus('env-solar-status',message);
       const active=scene();
       by('env-solar-view').innerHTML=active?`<figure class="env-figure">${planSVG(active,null,null)}<figcaption>Current geometry only. Recalculate to show shadows for the selected inputs.</figcaption></figure>`:
         '<p class="env-empty">No valid floor scene is available for a current geometry view.</p>';
     }
     function invalidateWind(message){
-      preview=null;proposals=[];proposalGeometryKey=null;
+      studyKeys.delete('wind');windResult=null;preview=null;proposals=[];proposalGeometryKey=null;
+      by('env-wind-rose').innerHTML='';
       by('env-window-preview').innerHTML='';by('env-window-proposals').innerHTML='';
       setStatus('env-wind-status',message);
     }
@@ -754,11 +793,8 @@
         by('env-material-results').innerHTML='';by('env-window-preview').innerHTML='';
         by('env-pressure-result').innerHTML='';by('env-thermal-result').innerHTML='';
       }
-      const weatherId=environment.weather?`${environment.weather.id}|${environment.weather.kind}`:null;
-      if(previousWeatherId!==weatherId){
-        invalidateWind('Weather changed. Rebuild the rose and review its coverage.');
-        by('env-wind-rose').innerHTML='';
-        if(value('env-radiation-mode')==='weather')invalidateSolar('Weather changed. Recalculate exposure for an explicitly matching interval.');
+      const weatherKey=environment.weather?fingerprint(environment.weather):null;
+      if(previousWeatherKey!==weatherKey){
         renderWeather(project);
       }else if(previousSiteKey!==key||changedProject)renderWeather(project);
       const provenance=environment.siteProvenance;
@@ -834,8 +870,6 @@
       }
       renderObstacles(project);
       by('env-floor-label').textContent=active?`${project.floors.find(f=>f.id===project.activeFloorId)?.name||'Active floor'} · ${all.length} scene(s)`:'No valid plate / floor scene';
-      if(!solarResult)by('env-solar-view').innerHTML=active?`<figure class="env-figure">${planSVG(active,null,preview)}<figcaption>Current active-floor geometry. No shadow or radiation calculation has been run for these inputs.</figcaption></figure>`:
-        '<p class="env-empty">No valid floor plate. Repair the plot/layout in the Planner; site, local weather and envelope inputs remain available.</p>';
       const diagnostics=all.flatMap(s=>(s.diagnostics||[]).map(d=>`${s.floorId}: ${d.message}`));
       if(!Data)diagnostics.push('Missing EnvironmentData module; load environment-data.js before environment-ui.js.');
       if(!Sun)diagnostics.push('Missing local HomeSun module; solar/time calculations are unavailable.');
@@ -858,12 +892,70 @@
           experimentKeys.delete(name);
         }
       }
+      syncStudies(project,shapeKey);
       if(changedFloor&&!changedProject)setStatus('env-global-status','Active floor changed. Each floor keeps its own pending dimension/obstacle drafts; no draft was applied to another floor.');
       for(const form of element.querySelectorAll('form[id]'))delete form.dataset.reload;
-      previousProjectId=project.id;previousFloorId=project.activeFloorId;previousSiteKey=key;previousGeometryKey=shapeKey;previousWeatherId=weatherId;
+      previousProjectId=project.id;previousFloorId=project.activeFloorId;previousSiteKey=key;previousGeometryKey=shapeKey;previousWeatherKey=weatherKey;
       updateAvailability();
     }
 
+    function monthlySelection(){
+      return {date:value('env-solar-date'),time:value('env-solar-time'),occurrence:value('env-solar-occurrence'),scope:value('env-solar-scope')};
+    }
+    function monthlyStateKey(){
+      const environment=planner.getProject().environment||{};
+      return JSON.stringify([currentGeometryKey(),monthlySelection(),environment.solar??null,
+        environment.results?.solar??null,environment.results?.monthlySolar??null]);
+    }
+    function matchesMonthly(entry,project,selection,dirty=false){
+      const input=entry?.input;
+      return !!input&&same(input.site,project.site)&&input.year===Number(selection.date.slice(0,4))&&input.scope===selection.scope&&
+        input.dates==='21st of each month'&&same(input.times,['09:00','12:00','15:00'])&&
+        (input.selection?same(input.selection,selection):!dirty&&!selection.occurrence);
+    }
+    function syncStudies(project,shapeKey){
+      const environment=project.environment||{};
+      if(monthlyRequest&&monthlyRequest.key!==monthlyStateKey())
+        invalidateSolar('Monthly comparison cancelled because its reviewed inputs or saved evidence changed.');
+      const solar=environment.results?.solar,solarDirty=!!by('env-solar-form').dataset.dirty;
+      const solarMatches=matchesSolar(solar,project);
+      const solarKey=JSON.stringify([shapeKey,environment.solar??null,environment.glazing??null,solar??null,solarMatches,solarDirty]);
+      if(studyKeys.get('solar')!==solarKey){
+        solarResult=null;
+        if(!solarDirty&&solarMatches&&solar.geometryKey===shapeKey){
+          if(renderSolar(solar))solarResult=solar;
+        }else{
+          const message=solarDirty?'Pending solar draft has not been evaluated. Calculate explicitly for these fields.':
+            'Solar result unavailable or stale for the saved inputs, geometry, glazing or weather interval. Calculate explicitly.';
+          by('env-solar-results').innerHTML=`<p class="env-help">${esc(message)}</p>`;setStatus('env-solar-status',message);
+        }
+        if(!solarResult){
+          const active=scene();
+          by('env-solar-view').innerHTML=active?`<figure class="env-figure">${planSVG(active,null,null)}<figcaption>Current active-floor geometry only. No matching shadow or radiation result is displayed.</figcaption></figure>`:
+            '<p class="env-empty">No valid floor plate. Repair the plot/layout in the Planner; site, local weather and envelope inputs remain available.</p>';
+        }
+        studyKeys.set('solar',solarKey);
+      }
+      const wind=environment.results?.wind,windDirty=!!by('env-wind-form').dataset.dirty,windMatches=matchesWind(wind,project);
+      const windKey=JSON.stringify([shapeKey,environment.wind??null,wind??null,windMatches,windDirty]);
+      if(studyKeys.get('wind')!==windKey){
+        invalidateWind(windDirty?'Pending wind draft has not been evaluated. Build the rose and proposals explicitly.':
+          'Wind result unavailable or stale for the saved inputs, geometry or source records. Build the rose and proposals explicitly.');
+        if(!windDirty&&windMatches&&wind.geometryKey===shapeKey&&renderWind(wind)){
+          windResult=wind;proposalGeometryKey=shapeKey;
+        }
+        studyKeys.set('wind',windKey);
+      }
+      if(!monthlyRequest){
+        const monthly=environment.results?.monthlySolar,selection=monthlySelection();
+        const monthlyKey=JSON.stringify([shapeKey,selection,monthly??null,solarDirty]);
+        if(studyKeys.get('monthlySolar')!==monthlyKey){
+          if(monthly?.geometryKey===shapeKey&&matchesMonthly(monthly,project,selection,solarDirty))renderMonthly(monthly);
+          else by('env-monthly-results').innerHTML='<p class="env-help">No matching monthly snapshot comparison. Run explicitly for the selected year, clock choice and floor scope.</p>';
+          studyKeys.set('monthlySolar',monthlyKey);
+        }
+      }
+    }
     function solarInputs(){
       if(!Sun)throw new Error('Load the local HomeSun/SunCalc modules to calculate the sun.');
       const project=planner.getProject(),selection={date:value('env-solar-date'),time:value('env-solar-time'),
@@ -893,6 +985,17 @@
     }
     function renderSolar(result){
       const {input,output}=result;
+      const selected=input.selection.scope==='all'?scenes():[scene()].filter(Boolean);
+      if(result.schemaVersion!==1||!output||!Number.isFinite(Date.parse(output.instantUTC))||
+        !finite(output.azimuth)||!finite(output.altitude)||!Array.isArray(output.floors)||
+        !same(output.floors.map(f=>f?.floorId),selected.map(s=>s.floorId))||
+        !output.floors.every(f=>f?.shadow&&Array.isArray(f.shadow.receivers)&&f.shadow.receivers.every(s=>s&&typeof s.id==='string')&&
+          Array.isArray(f.shadow.warnings)&&Array.isArray(f.shadow.groundPolygons)&&f.shadow.groundPolygons.every(p=>
+            p&&Array.isArray(p.points)&&p.points.every(v=>v&&finite(v.x)&&finite(v.y)))&&
+          (!f.exposure||Array.isArray(f.exposure.surfaces)&&f.exposure.surfaces.every(s=>s&&typeof s.id==='string')&&Array.isArray(f.exposure.warnings)))){
+        const message='Stored solar output is incomplete or unsupported. Review the saved inputs and calculate again.';
+        by('env-solar-results').innerHTML=`<p class="env-warning">${message}</p>`;setStatus('env-solar-status',message);return false;
+      }
       const floorNames=new Map(planner.getProject().floors.map(f=>[f.id,f.name]));
       by('env-solar-view').innerHTML=output.floors.map(f=>{
         const current=scenes().find(s=>s.floorId===f.floorId);
@@ -908,7 +1011,7 @@
           const isWindow=/window/i.test(s.type)||scenes().find(f=>f.floorId===floor.floorId)?.openings.some(o=>o.id===s.id&&o.kind==='window');
           const gain=glazing&&isWindow&&finite(s.incidentWm2)?s.incidentWm2*s.areaM2*glazing.shgc:null;
           rows.push([esc(floorNames.get(floor.floorId)||floor.floorId),esc(s.id),esc(s.type),nice(s.areaM2),
-            `${nice(s.sunlitFraction*100,1)}%`,finite(s.incidentWm2)?nice(s.incidentWm2,1):input.radiation?'Not evaluated for this receiver':'No radiation input',
+            finite(s.sunlitFraction)?`${nice(s.sunlitFraction*100,1)}%`:'Not evaluated',finite(s.incidentWm2)?nice(s.incidentWm2,1):input.radiation?'Not evaluated for this receiver':'No radiation input',
             gain===null?'Not evaluated':nice(gain,1)]);
         }
       }
@@ -920,6 +1023,36 @@
         ${table(['Floor','Surface ID','Type','Area (m²)','Beam sunlit','Incident (W/m²)','Constant-SHGC gain (W)'],rows,'Per-surface solar screening · not temperature or daylight lux')}
         ${warnList(warnings)}`;
       setStatus('env-solar-status',`Calculated locally at ${input.selection.date} ${input.selection.time} ${input.site.timeZone}. ${input.radiation?'Irradiance screening with stated inputs.':'Geometry only; no radiation or Celsius result.'}`);
+      return true;
+    }
+    function renderMonthly(entry){
+      const rows=entry.output?.rows,warnings=entry.output?.warnings;
+      if(entry.schemaVersion!==1||!Array.isArray(rows)||!rows.length||!Array.isArray(warnings)||!rows.every(row=>
+        row&&typeof row.date==='string'&&typeof row.time==='string'&&typeof row.floorId==='string'&&finite(row.altitude))){
+        by('env-monthly-results').innerHTML='<p class="env-warning">Stored monthly output is incomplete or unsupported. Run the comparison explicitly.</p>';return;
+      }
+      by('env-monthly-results').innerHTML=`${table(['Date','Site time','Floor','Elevation (°)','Area-weighted beam sunlit'],rows.map(r=>[esc(r.date),esc(r.time),esc(r.floorId),nice(r.altitude),finite(r.areaWeightedSunlitFraction)?`${nice(r.areaWeightedSunlitFraction*100,1)}%`:'Not evaluated']),'21st of each month · 09:00 / 12:00 / 15:00 snapshots')}
+        <p class="env-warning">36 snapshots per floor, not seasonal radiation energy or integrated sun hours. Different surface orientations are aggregated by area only. All storeys are evaluated independently; no mutual shading is inferred.</p>${warnList(warnings)}`;
+      setStatus('env-solar-status','Showing saved monthly snapshot comparison for these controls. Solar fields remain unchanged.');
+    }
+    function renderWind(entry){
+      const rose=entry.output?.rose,items=entry.output?.proposals,active=scene();
+      if(entry.schemaVersion!==1||!rose||!Array.isArray(rose.bins)||rose.bins.length!==16||
+        !rose.bins.every(bin=>bin&&finite(bin.directionDeg)&&Number.isInteger(bin.count)&&bin.count>=0&&
+          (bin.meanSpeedMps===null||finite(bin.meanSpeedMps)))||
+        !['total','calmCount','missingCount','excludedCount','unknownTimeCount'].every(key=>Number.isInteger(rose[key])&&rose[key]>=0)||
+        !finite(rose.calmThresholdMps)||typeof rose.daytimeDefinition?.meaning!=='string'||!Array.isArray(items)||
+        !items.every(p=>p&&p.command?.type==='add-window'&&p.command.wallId===p.wallId&&active?.walls.some(w=>w.id===p.wallId)&&
+          ['offsetM','widthM','sillM','heightM','openFraction'].every(key=>finite(p.command[key]))&&
+          Array.isArray(p.cautions)&&(!p.path||Array.isArray(p.path.openingIds)))){
+        setStatus('env-wind-status','Stored wind output is incomplete or unsupported. Review the saved inputs and rebuild explicitly.');return false;
+      }
+      const config=entry.input.config,weather=planner.getProject().environment?.weather;
+      const label=config.source==='manual'?'One hypothetical wind input, not regional climatology. Month/clock filters do not apply to this single scenario.':
+        `${weather.kind} · ${typeof weather.source==='string'?weather.source:weather.source?.label||'Imported weather'}. Reference-height gridded/station wind, not wind at a window.`;
+      proposals=copy(items);renderRose(rose,label);renderProposals();
+      setStatus('env-wind-status',`Showing ${rose.total} included records and ${proposals.length} reviewable proposals${active?'':'; no valid floor scene for proposals'}. ${config.source==='weather'?'Top two occupied sector centres are kept separately; no annual mean bearing is substituted.':''}`);
+      return true;
     }
     function renderRose(rose,label){
       const max=Math.max(1,...rose.bins.map(b=>b.count)),cx=145,cy=145,base=25,span=84;
@@ -942,7 +1075,8 @@
     }
     function renderPreview(){
       if(!preview){by('env-window-preview').innerHTML='';return;}
-      by('env-window-preview').innerHTML=`<div class="env-preview"><div><h4>Proposed window · not applied</h4><p>${esc(preview.reason)}</p>${warnList(preview.cautions)}<pre class="env-json">${esc(JSON.stringify(preview.command,null,2))}</pre><div class="env-actions"><button type="button" id="env-window-apply" class="env-primary">Apply this new window</button><button type="button" id="env-window-dismiss">Dismiss preview</button></div><p class="env-help">Only add-window is issued. Existing manual openings remain unchanged; use the planner's Undo to reverse an applied addition.</p></div><figure class="env-figure">${planSVG(scene(),null,preview)}<figcaption>Dashed accent segment is a proposal, not a computed shadow or flow field.</figcaption></figure></div>`;
+      const command=preview.command;
+      by('env-window-preview').innerHTML=`<div class="env-preview"><div><h4>Proposed window · not applied</h4><p>${esc(preview.reason)}</p><p>Width ${nice(command.widthM)} m · Height ${nice(command.heightM)} m · Sill ${nice(command.sillM)} m · Open ${nice(command.openFraction*100,0)}%</p>${warnList(preview.cautions)}<details class="env-details"><summary>Technical command</summary><pre class="env-json">${esc(JSON.stringify(command,null,2))}</pre></details><div class="env-actions"><button type="button" id="env-window-apply" class="env-primary">Apply this new window</button><button type="button" id="env-window-dismiss">Dismiss preview</button></div><p class="env-help">Adds this window only. Existing openings stay unchanged. Undo reverses the addition.</p></div><figure class="env-figure">${planSVG(scene(),null,preview)}<figcaption>Dashed segment shows the proposed window, not calculated airflow.</figcaption></figure></div>`;
     }
     function download(name,value){
       const blob=new Blob([JSON.stringify(value,null,2)],{type:'application/json'});
@@ -1111,16 +1245,15 @@
         }
       });
       bindForm('env-solar-form','env-solar-error',()=>{
-        invalidateSolar('Calculating locally…');
+        invalidateSolar('Solar results cleared. Complete valid inputs to calculate; no current calculation is displayed.');
         const physics=needPhysics('shadowAt'),{selection,sun,radiation,weatherRecord,selected}=solarInputs();
         if(radiation)needPhysics('surfaceExposure');
         const floors=selected.map(s=>({floorId:s.floorId,shadow:physics.shadowAt(s,sun.vector),
           exposure:radiation?physics.surfaceExposure(s,sun.vector,radiation):null}));
         const input={selection,site:copy(planner.getProject().site),sunENU:sun.vector,radiation,weatherRecord,
           glazing:planner.getProject().environment?.glazing?copy(planner.getProject().environment.glazing):null};
-        solarResult=storeResult('solar',input,{instantUTC:sun.instant.toISOString(),azimuth:sun.azimuth,altitude:sun.altitude,floors},
+        storeResult('solar',input,{instantUTC:sun.instant.toISOString(),azimuth:sun.azimuth,altitude:sun.altitude,floors},
           {scope:'Sampled geometry and irradiance screening; no thermal/daylight/CFD result'},{solar:selection});
-        renderSolar(solarResult);
       });
       bindClick('env-use-record','env-solar-error',()=>{
         const weather=planner.getProject().environment?.weather;
@@ -1134,22 +1267,25 @@
         const early=Sun.resolveLocal(value('env-solar-date'),value('env-solar-time'),zone,'earlier');
         by('env-solar-occurrence').value=early.ambiguous?(Math.abs(early.instant-instant)<60000?'earlier':'later'):'';
         by('env-radiation-mode').value='weather';by('env-solar-form').dataset.dirty='true';
+        rememberForm(by('env-solar-form'));
         updateAvailability();
         invalidateSolar(`Selected source interval ${row.timestamp}, midpoint ${instant.toISOString()}. Click Calculate; no weather request was made.`);
       });
       bindClick('env-monthly','env-solar-error',async()=>{
+        assertFormOwner('env-solar-form');
         const physics=needPhysics('shadowAt');
         if(!Sun)throw new Error('The local sun model is unavailable.');
-        const config={...planner.getProject().site,date:value('env-solar-date'),time:value('env-solar-time'),occurrence:value('env-solar-occurrence')};
-        Sun.validate(config);const year=Number(config.date.slice(0,4)),key=currentGeometryKey(),token=++monthlyOperation;
-        const selected=value('env-solar-scope')==='all'?scenes():[scene()].filter(Boolean);
+        const site=copy(planner.getProject().site),selection=monthlySelection(),config={...site,...selection};
+        Sun.validate(config);const year=Number(config.date.slice(0,4)),key=monthlyStateKey(),token=++monthlyOperation;
+        const selected=selection.scope==='all'?scenes():[scene()].filter(Boolean);
         if(!selected.length)throw new Error('No valid scene is available for monthly snapshots.');
         const rows=[],warnings=[];
+        monthlyRequest={key,token};studyKeys.delete('monthlySolar');
         by('env-monthly').disabled=true;by('env-monthly-results').innerHTML='';
         try{
           for(let month=1;month<=12;month++){
             await new Promise(resolve=>root.setTimeout(resolve,0));
-            if(token!==monthlyOperation||key!==currentGeometryKey())return;
+            if(destroyed||token!==monthlyOperation||key!==monthlyStateKey())return;
             for(const time of ['09:00','12:00','15:00']){
               const date=`${year}-${String(month).padStart(2,'0')}-21`,sun=Sun.calculate({...config,date,time});
               for(const s of selected){
@@ -1162,13 +1298,16 @@
             }
             setStatus('env-solar-status',`Monthly comparison: ${month}/12 months completed locally. No weather requests.`);
           }
-          if(token!==monthlyOperation||key!==currentGeometryKey())return;
-          const entry=storeResult('monthlySolar',{site:copy(planner.getProject().site),year,dates:'21st of each month',times:['09:00','12:00','15:00'],scope:value('env-solar-scope')},
+          if(destroyed||token!==monthlyOperation||key!==monthlyStateKey())return;
+          monthlyRequest=null;
+          storeResult('monthlySolar',{site,selection,year,dates:'21st of each month',times:['09:00','12:00','15:00'],scope:selection.scope},
             {rows,warnings:[...new Set(warnings)]},{scope:'36 local-clock snapshots per floor; not integrated sun hours or seasonal energy'});
-          by('env-monthly-results').innerHTML=`${table(['Date','Site time','Floor','Elevation (°)','Area-weighted beam sunlit'],rows.map(r=>[r.date,r.time,esc(r.floorId),nice(r.altitude),finite(r.areaWeightedSunlitFraction)?`${nice(r.areaWeightedSunlitFraction*100,1)}%`:'Not evaluated']),'21st of each month · 09:00 / 12:00 / 15:00 snapshots')}
-            <p class="env-warning">36 snapshots per floor, not seasonal radiation energy or integrated sun hours. Different surface orientations are aggregated by area only. All storeys are evaluated independently; no mutual shading is inferred.</p>${warnList(entry.output.warnings)}`;
-          setStatus('env-solar-status','Monthly snapshot comparison completed. Solar fields remain unchanged.');
-        }finally{if(!destroyed)by('env-monthly').disabled=false;}
+        }catch(error){
+          if(!destroyed&&token===monthlyOperation)setStatus('env-solar-status','Monthly comparison did not complete. No partial result was saved; review the error and run explicitly.');
+          throw error;
+        }finally{
+          if(!destroyed&&token===monthlyOperation){monthlyRequest=null;by('env-monthly').disabled=false;}
+        }
       });
       bindClick('env-material-use','env-material-error',()=>{
         const preset=MATERIAL_PRESETS.find(p=>p.id===value('env-material-preset'));
@@ -1215,13 +1354,12 @@
           dayEndHour:manual?null:number('env-wind-day-end','Day window end',0,24),calmThresholdMps:number('env-wind-calm','Calm threshold',0,150),clock:value('env-wind-clock'),
           window:{widthM:positive(value('env-window-width'),'Proposed width'),sillM:number('env-window-sill','Proposed sill',0),
             heightM:positive(value('env-window-height'),'Proposed height'),openFraction:number('env-window-open','Proposed operating fraction',0,1)}};
-        let records,options={calmThresholdMps:config.calmThresholdMps},label,bearings;
+        let records,options={calmThresholdMps:config.calmThresholdMps},bearings;
         const weather=planner.getProject().environment?.weather;
         if(config.source==='manual'){
           config.windFromDeg=number('env-wind-bearing','Hypothetical FROM bearing',0,360);
           config.windSpeedMps=number('env-wind-speed','Hypothetical wind speed',0,150);
           records=[{timestamp:new Date().toISOString(),windFromDeg:config.windFromDeg,windSpeedMps:config.windSpeedMps}];
-          label='One hypothetical wind input, not regional climatology. Month/clock filters do not apply to this single scenario.';
           bearings=config.windSpeedMps===0||config.windSpeedMps<config.calmThresholdMps?[]:[config.windFromDeg];
         }else{
           if(!Array.isArray(weather?.records)||!weather.records.length)throw new Error('Import weather to make a climate rose, or choose hypothetical wind. No data were fetched.');
@@ -1230,18 +1368,14 @@
             if(!finite(weather.timeZoneOffsetHours))throw new Error('This file has no fixed standard-time offset. Choose the site IANA clock or supply correctly identified metadata.');
             options.timeZoneOffsetHours=weather.timeZoneOffsetHours;
           }else options.timeZone=planner.getProject().site.timeZone;
-          label=`${weather.kind} · ${typeof weather.source==='string'?weather.source:weather.source?.label||'Imported weather'}. Reference-height gridded/station wind, not wind at a window.`;
         }
         const rose=Data.windRose(records,options);
         if(config.source==='weather')bearings=[...rose.bins].filter(b=>b.count>0).sort((a,b)=>b.count-a.count).slice(0,2).map(b=>b.directionDeg);
-        const active=scene();
-        if(active)proposals=bearings.flatMap(windFromDeg=>buildWindowRecommendations(active,{...config.window,windFromDeg})).slice(0,10);
-        proposalGeometryKey=currentGeometryKey();
-        windResult=storeResult('wind',{config,weatherId:config.source==='weather'?weather.id:null,
+        const active=scene(),items=active?bearings.flatMap(windFromDeg=>buildWindowRecommendations(active,{...config.window,windFromDeg})).slice(0,10):[];
+        storeResult('wind',{config,weatherId:config.source==='weather'?weather.id:null,
+          weatherKey:config.source==='weather'?windWeatherKey(weather):null,
           weatherProvenance:config.source==='weather'?{source:weather.source,coverage:weather.coverage,units:weather.units}:null,options},
-          {rose,proposalBearings:bearings,proposals},{scope:'Frequency distribution and actual-wall/path screening, not pressure estimates or CFD'},{wind:config});
-        renderRose(rose,label);renderProposals();
-        setStatus('env-wind-status',`Showing ${rose.total} included records and ${proposals.length} reviewable proposals${active?'':'; no valid floor scene for proposals'}. ${config.source==='weather'?'Top two occupied sector centres are kept separately; no annual mean bearing is substituted.':''}`);
+          {rose,proposalBearings:bearings,proposals:items},{scope:'Frequency distribution and actual-wall/path screening, not pressure estimates or CFD'},{wind:config});
       });
       bindClick('env-pressure-template','env-pressure-error',()=>{
         prepareExperiment('pressure',buildAirflowTemplate,'Not evaluated. Replace density, Cd and signed pressure nulls, review geometry-derived volumes/areas, and document the assumptions.');
@@ -1290,15 +1424,14 @@
       });
       bindClick('env-export','env-export-error',()=>{
         const project=planner.getProject(),all=scenes(),key=geometryKey(project,all),environment=copy(project.environment||{});
-        const same=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null);
         const matchesCurrentInputs=(name,entry)=>{
           if(name==='pressure'||name==='thermal')return same(entry.input,environment[name]?.input)&&entry.notes===environment[name]?.notes;
           if(name==='assemblies')return same(entry.input,{layers:environment.materials?.layers,films:environment.materials?.films,
             comparisonThicknessM:environment.materials?.comparisonThicknessM});
-          if(name==='solar')return same(entry.input.selection,environment.solar)&&same(entry.input.glazing,environment.glazing)&&
-            (!entry.input.weatherRecord||(entry.input.weatherRecord.id===environment.weather?.id&&entry.input.weatherRecord.kind===environment.weather?.kind));
-          if(name==='wind')return same(entry.input.config,environment.wind)&&
-            (entry.input.config.source!=='weather'||entry.input.weatherId===environment.weather?.id);
+          if(name==='solar')return matchesSolar(entry,project);
+          if(name==='wind')return matchesWind(entry,project);
+          if(name==='monthlySolar')return matchesMonthly(entry,project,{date:environment.solar?.date||'',time:environment.solar?.time||'12:00',
+            occurrence:environment.solar?.occurrence||'',scope:environment.solar?.scope||'active'});
           return null;
         };
         const results=Object.fromEntries(Object.entries(environment.results||{}).map(([name,entry])=>{

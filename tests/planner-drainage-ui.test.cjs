@@ -333,6 +333,31 @@ test('full other-floor findings have exact-pair navigation and collapsed raw IDs
   assert.equal(captures.length, count); ui.dispose();
 });
 
+test('drainage level guidance preserves zero, raw findings and separate qualified owners while deduplicating copies', () => {
+  const { planner, bridge, runtime, ui: unused } = setup(); unused.dispose();
+  const baseBuild = runtime.HomePlannerDrainage.build;
+  const item = { code: 'unknown-invert', severity: 'warning', floorId: 'ground', message: 'Original independently supplied invert evidence.',
+    entityIds: ['same-id'], entityRefs: [{ floorId: 'ground', entityId: 'same-id' }], componentId: null };
+  runtime.HomePlannerDrainage.build = (scene, options) => ({ ...baseBuild(scene, options),
+    findings: [item, copy(item), { ...copy(item), entityRefs: [{ floorId: 'upper', entityId: 'same-id' }] }] });
+  const { host, document, find } = dom(bridge, runtime), ui = UI.mount(document);
+  addNode(ui, { invertM: '0' });
+  const before = planner.exportProject();
+  ui.setPreviewSettings({ paper: 'A2' }); assert.ok(ui.refresh(), ui.getState().error);
+  const region = find(host, node => node.attributes['aria-label'] === 'Scrollable drainage findings with qualified references');
+  const body = find(region, node => node.tagName === 'TBODY');
+  assert.equal(body.children.length, 2, 'same bare ID on a different qualified floor is not deduplicated');
+  assert.equal(ui.getState().findings.length, 3);
+  const review = body.children[0].children[2];
+  assert.match(review.textContent, /Invert level: Not supplied.*survey.*project datum/);
+  const detail = find(region, node => node.tagName === 'DETAILS'); assert.ok(!detail.open);
+  assert.deepEqual(JSON.parse(find(detail, node => node.tagName === 'PRE').textContent), item);
+  const schedules = find(host, node => node.className === 'hp-service-schedules');
+  assert.ok(find(schedules, node => node.tagName === 'TD' && node.textContent === '0'), 'supplied zero level remains zero');
+  assert.ok(find(host, node => node.tagName === 'P' && /endpoint and waypoint invert levels from a level survey/.test(node.textContent)));
+  assert.equal(planner.exportProject(), before); ui.dispose();
+});
+
 test('multibyte SVG byte bound and later-page serializer failures clear cached previews', () => {
   const { ui, runtime } = setup(); network(ui); ui.setPreviewSettings({ paper: 'A2' });
   assert.ok(ui.refresh(), ui.getState().error); const sheet = ui.getState().preview.sheet;

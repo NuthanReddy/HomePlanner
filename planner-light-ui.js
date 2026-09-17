@@ -86,22 +86,117 @@
     }
     return { period: { startUTC: iso(start), endUTC: iso(end) }, samples };
   }
+  function setupRequirements(config) {
+    const items = [], missing = value => value === null || value === undefined;
+    const add = (id, section, message) => items.push({ id, section, message });
+    if (!config.workplanes?.length)
+      add('rooms', 'rooms', 'Select at least one room and add its workplane.');
+    else if (config.workplanes.some(plane => missing(plane.heightM)))
+      add('height', 'rooms', 'Enter the workplane height above the floor for every selected room.');
+    if (config.direct?.enabled !== false && (!config.period?.startUTC || !config.period?.endUTC))
+      add('period', 'sun', 'Choose the study location, date and start/end times, then click Prepare sun intervals.');
+    else if (config.direct?.enabled !== false && !config.samples?.length)
+      add('samples', 'sun', 'No sun intervals are prepared. Click Prepare sun intervals after reviewing the study times.');
+    if (!config.windowOptics?.mode)
+      add('optics', 'optics', 'Choose a Window optical model: ideal-clear geometry or sourced visible transmittance.');
+    else if (config.windowOptics.mode === 'visible-transmission' &&
+        (missing(config.windowOptics.visibleTransmittance) || !config.windowOptics.source))
+      add('transmission', 'optics', 'Supply the visible transmittance and its source for the selected optical model.');
+    if (config.direct?.enabled !== false && missing(config.minSunAltitudeDeg))
+      add('horizon', 'optics', 'Enter the near-horizon cutoff in degrees (greater than 0 and less than 90). Directions below it remain unresolved.');
+    return items;
+  }
+  function readingNotes(state) {
+    const notes = new Set();
+    const roomNames = new Map((state.inventory?.rooms || []).map(room => [refKey(room.ref), room.label || room.ref.entityId]));
+    const floorNames = new Map((state.floors || []).map(floor => [floor.id, floor.name || floor.id]));
+    for (const item of [...(state.inventory?.findings || []), ...(state.result?.findings || [])]) {
+      if (item.code === 'missing-control' && state.setupRequirements.length) continue;
+      if (item.code === 'unknown-neighbors') continue;
+      const messages = {
+        'missing-control': 'Some study inputs are still missing. Review the input groups; the exact fields are listed in Technical details.',
+        'missing-workplanes': 'Add a room and enter the height of the surface you want to study.',
+        'unsupplied-roof': 'Roof dimensions are not supplied. Review Roof context; a missing roof is not an open sky.',
+        'unmodeled-interstorey-gap': 'The space between floors is not fully described. Light passing through that gap is only an estimate from the supplied geometry.',
+        'missing-physical-floors': 'No floor geometry is ready. Create or repair the floor plan in Design, then prepare inventory again.',
+        'unresolved-physical-floor': 'A floor could not be read. Review its layout and dimensions in Design before running a whole-building study.',
+        'missing-room-reference': 'A selected room no longer matches the layout. Remove that workplane and select the current room again.',
+        'workplane-outside-supported-height': 'The study surface is above the room walls. Check its height above the floor.',
+        'unknown-workplane-height-extent': 'The room height is missing, so the study surface cannot be checked. Supply the wall height in Design.',
+        'roof-context-conflict': 'This floor already has a roof in the model. Do not mark it as having no roof; review the actual geometry.',
+        'missing-roof-geometry': 'The roof is marked as supplied, but its dimensions are missing. Add the dimensions or leave its context unknown.',
+        'missing-roof-floor': 'A roof declaration refers to a floor that is no longer available. Review the roof input list.',
+        'missing-neighbor-box': 'A side marked as a neighboring building needs a matching building box with dimensions.',
+        'unreferenced-neighbor-box': 'A neighboring building box has not been assigned to a side. Choose the side it belongs to.',
+        'conflicting-physical-obstacle': 'Two descriptions of the same obstruction disagree. Check their dimensions and transmission; neither is chosen automatically.',
+        'ambiguous-physical-obstacle': 'Two obstructions may describe the same building. Review duplicate boxes before calculating.',
+        'reused-project-obstacle': 'A neighboring box matches an existing obstruction. Its shading is counted only once.',
+        'missing-sun-vector': 'A prepared sun direction is missing. Prepare sun intervals again.',
+        'stale-physical-input': 'The layout changed after this study was prepared. Prepare inventory and run again.',
+        'unresolved-openings': 'Some doors or windows are not attached to valid walls. Repair them in Design before running.',
+        'missing-opening-host': 'A door or window has lost its wall. Repair its placement in Design.'
+      };
+      let message = messages[item.code];
+      if (!message && item.code?.startsWith('missing-wall-')) message = 'A wall is missing dimensions or placement. Review the wall in Design.';
+      if (!message && item.code?.startsWith('missing-opening-')) message = 'A door or window is missing dimensions or placement. Review its opening settings in Design.';
+      if (!message && item.code?.startsWith('missing-obstacle-')) message = 'An obstruction is missing dimensions or height. Review the building box in the site or facade settings.';
+      message ||= item.message || 'A model detail needs review. See Technical details for the source record.';
+      const reference = item.reference;
+      const label = reference && typeof reference === 'object'
+        ? roomNames.get(refKey(reference)) || floorNames.get(reference.floorId) : null;
+      notes.add(label ? `${label}: ${message}` : message);
+    }
+    return [...notes];
+  }
+  function evidenceRows(state) {
+    const view = state.preview, metric = state.visualization.metric;
+    const valueTitle = { direct: 'Sun path transmission (0–1)', sky: 'Sky access (0–1)',
+      'presence-hours': 'Sun path present (hours)', 'equivalent-hours': 'Transmission-weighted sun (hours)' }[metric];
+    const rooms = new Map((view?.roomRows || []).map(room => [refKey(room.roomRef), room.label || room.id]));
+    const floors = new Map(state.floors.map(floor => [floor.id, floor.name || floor.id]));
+    const column = state.visualization.modeled ? 'modeled' : 'primary';
+    return {
+      sensors: (view?.sensorRows || []).filter(row => row.inScope).map(row => ({
+        'Map point': row.shortKey, Room: rooms.get(refKey(row.roomRef)) || row.roomRef.entityId,
+        [valueTitle]: row.selectedValue,
+        Meaning: row.selectedValue === null ? 'Not available for this view' : row.selectedValue === 0 ? 'Calculated zero' : 'Calculated',
+        'Floor height of point (m)': row.point.z, 'Sampled area (m²)': row.areaWeightM2
+      })),
+      rooms: (view?.roomRows || []).filter(row => row.inScope).map(row => ({
+        Room: row.label || row.id, Floor: floors.get(row.floorId) || row.floorId,
+        [`Average ${valueTitle}`]: row[column]?.[metric] ?? null,
+        'Study points': row.sensorCount, 'Points without a value': row.unknownSensorCount
+      })),
+      electrical: (view?.electricalRows || []).filter(row => row.inScope).map(row => ({
+        'Map point': row.shortKey, Device: row.record.label || row.record.type || row.record.id,
+        Floor: floors.get(row.floorId) || row.floorId,
+        'Mounting height (m)': row.heightM,
+        'On this map': row.markerVisible ? 'Yes' : 'No — position not supplied or unresolved',
+        'Calculated illumination': 'Not supported'
+      }))
+    };
+  }
   function describeDisplay({ inventory, result, preview, previewError, error, busy, floorId, visualization, draft }) {
     const status = (code, message) => ({ code, message });
     if (busy) return status('running', 'Calculating the workplane grid. Previous light cells are cleared until this run is verified.');
     if (previewError) return status('unavailable', previewError);
     if (!inventory && error) return status('unavailable', error);
-    if (!inventory) return status('not-prepared', 'Prepare inventory to inspect existing rooms, then review study inputs. Unknown light is not a zero-value result.');
+    if (!inventory) return status('not-prepared', 'Analyze whole house to map sky access across every room. Custom surfaces and time-based sunlight studies are optional.');
     if (!inventory.rooms.length) return status('empty', 'No rooms are available to study. Add and place rooms in Design → Layout, then prepare inventory again.');
+    const requirements = setupRequirements(draft);
+    if (requirements.length && (!result || result.status === 'blocked'))
+      return status(result ? 'blocked' : 'setup-required',
+        `Complete ${requirements.length} study ${requirements.length === 1 ? 'setting' : 'settings'} before running. Review study inputs shows what is needed and why.`);
     if (!result) return status('not-run', draft.workplanes?.length
       ? 'No current light result. Supply workplane heights, optics and the horizon cutoff; prepare sun intervals and review roof/neighbor context, then Run study.'
       : 'Inventory only — select a room under Study inputs → Select rooms & workplanes. Room outlines are not a light calculation.');
-    if (result.status === 'blocked') return status('blocked', 'No calculated light cells: inputs require repair. ' +
-      result.findings.filter(item => item.severity === 'blocking').slice(0, 3).map(item => item.message).join(' ') +
-      ' Review Study inputs and Legend & model warnings, then run again.');
+    if (result.status === 'blocked') return status('blocked',
+      'The model needs attention before light can be calculated. Open Read the map & review missing information for the next steps.');
     const rows = (preview?.sensorRows || []).filter(row => row.inScope);
     if (!rows.length) return status('other-floor', 'No sampled workplanes on this display floor. Choose a studied floor under View & session study; neither the project floor nor analytical room selection is changed.');
     const mask = result.direct.masks.find(item => item.sampleIndex === visualization.intervalIndex);
+    if (result.direct.status === 'disabled' && visualization.metric !== 'sky')
+      return status('disabled', 'This is a sky-access calculation, independent of date and time. Choose Sky access, or start a custom sunlight study for hourly results.');
     if (visualization.metric === 'direct') {
       if (!mask) return status('unprocessed', 'The selected interval has no committed result. Prepare sun intervals and run again, or choose an already calculated interval. Missing is not zero.');
       if (mask.directSunStatus === 'night')
@@ -130,7 +225,7 @@
     };
     let project = bridge.getProject(), inventory = null, result = null, preview = null, runner = null;
     let busy = false, disposed = false, generation = 0, serial = 0, error = '', previewError = '';
-    let message = 'Prepare inventory, select rooms and supply the missing study inputs.';
+    let message = 'Analyze all rooms using the current house geometry. No room selection needed.';
     let progress = null, floorId = project.activeFloorId, rejectCancelled = null, timeout = null;
     let visualization = { metric: 'direct', intervalIndex: 0, modeled: false, showElectrical: false };
     const projects = new Map(), listeners = new Set(), nextId = prefix => `${prefix}-${++serial}`;
@@ -190,7 +285,7 @@
       try {
         boundedVisualization();
         const displayFloorId = inventory.floors.length ? floorId : null;
-        preview = result ? display.createView(result, { floorId: displayFloorId, ...visualization })
+        preview = result && result.status !== 'blocked' ? display.createView(result, { floorId: displayFloorId, ...visualization })
           : display.createInventoryView(inventory, { floorId: displayFloorId, showElectrical: visualization.showElectrical });
       } catch (cause) { previewError = `Plan preview unavailable: ${cause.message}`; }
     }
@@ -238,7 +333,7 @@
         scenarios: [...data.drafts].map(([id, item]) => ({ id, label: item.config.label || id })),
         draft: copy(draft()), selection: copy(current().selection), intervalSource: current().intervalSource,
         siteSource: current().siteSource, visualization: { ...visualization }, inventory, result, preview,
-        busy, error, previewError, message, progress,
+        busy, error, previewError, message, progress, setupRequirements: setupRequirements(draft()),
         displayStatus: describeDisplay({ inventory, result, preview, previewError, error, busy, floorId, visualization, draft: draft() }),
         history: data.history.map(item => ({ id: item.id, label: item.result.config.label || item.id, status: item.result.status })),
         baselineId: data.baseline?.id || null,
@@ -316,6 +411,10 @@
           : result.computationalComplete
             ? 'Computation complete; evidence remains incomplete. Unknown context is not clear sky or zero light.'
             : `${result.status}: review the missing inputs and findings below.`;
+        if (config.direct?.enabled === false && result.computationalComplete) {
+          const floors = new Set(config.workplanes.map(plane => plane.room.floorId)).size;
+          message = `Sky access calculated for ${config.workplanes.length} rooms across ${floors} ${floors === 1 ? 'floor' : 'floors'}. Showing supplied geometry only; unrecorded surroundings are not included.`;
+        }
         boundedVisualization(); buildPreview(); publish(false); notify(); return result;
       } catch (cause) {
         if (token !== undefined && (disposed || token !== generation)) return null;
@@ -347,6 +446,34 @@
     }
     const api = {
       getState, sync, run, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+      runWholeHouse() {
+        const ready = attempt(() => {
+          capture();
+          if (!inventory.rooms.length) throw new Error('No rooms are available. Add or repair the house layout in Design, then analyze again.');
+          const data = session(), existing = data.drafts.get(data.wholeHouseId);
+          if (!existing && data.drafts.size >= LIMITS.scenarios)
+            throw new Error('The saved-study limit is reached. Remove an unused custom study before adding the whole-house view.');
+          const config = {
+            ...newDraft('Whole house · floor-level sky access'),
+            ...(existing ? { id: existing.config.id } : {}),
+            direct: { enabled: false }, period: null, samples: [], minSunAltitudeDeg: null,
+            workplanes: inventory.rooms.map(room => ({
+              id: JSON.stringify(['whole-house-floor', room.ref.floorId, room.ref.entityId]),
+              room: copy(room.ref), heightM: 0, spacingM: .5
+            })),
+            windowOptics: { mode: 'ideal-clear' }
+          };
+          const normalized = foundation().normalizeConfig(config);
+          invalidate('Preparing all rooms for a floor-level sky-access calculation.');
+          const item = entry(normalized);
+          item.intervalSource = 'Sky access only — independent of sun position and time';
+          item.siteSource = 'Current house geometry; no geographic location needed for sky access';
+          data.drafts.set(normalized.id, item); data.selected = normalized.id; data.wholeHouseId = normalized.id;
+          visualization = { ...visualization, metric: 'sky', intervalIndex: 0, modeled: true };
+          buildPreview(); return true;
+        });
+        return ready ? run() : Promise.resolve(null);
+      },
       prepare() { return attempt(() => {
         capture(); message = inventory.rooms.length
           ? `${inventory.rooms.length} rooms found. Inventory only — review Study inputs below; no analysis or missing physical dimensions invented.`
@@ -392,7 +519,7 @@
       }); },
       prepareSunIntervals() { return attempt(() => {
         const prepared = prepareIntervals(runtime.HomeSun, current().selection, draft().site);
-        replace({ ...copy(draft()), ...prepared });
+        replace({ ...copy(draft()), ...prepared, ...(draft().direct?.enabled === false ? { direct: { enabled: true } } : {}) });
         current().intervalSource = 'HomeSun / bundled SunCalc; explicit UTC endpoints and exact midpoint vectors';
         message = `${prepared.samples.length} chronological sun intervals prepared. Run explicitly.`;
         return copy(prepared);
@@ -539,27 +666,28 @@
       node.addEventListener('click', action); return node;
     };
     const disclosure = title => { const node = el('details'); node.append(el('summary', title)); return node; };
-    const heading = el('h2', 'Room light study');
+    const heading = el('h2', 'House light map');
     const warning = el('p', 'Geometric light access · Not lux, daylight factor or adequacy.', 'light-warning');
     const actions = el('div', '', 'light-actions');
+    const wholeHouse = button('Analyze whole house', 'light-whole-house', () => controller.runWholeHouse());
+    const presetHelp = el('p', 'Whole-house view: all rooms at floor level, ideal-clear windows, supplied buildings only. Unrecorded surroundings are not included.', 'light-warning');
     const prepare = button('Prepare inventory', 'light-prepare', () => {
       if (controller.prepare()) {
         inputs.open = true;
         const rooms = forms.querySelectorAll('details')[0]; if (rooms) rooms.open = true;
       }
     });
-    const run = button('Run study', 'light-run', () => controller.run());
+    const run = button('Run custom study', 'light-run', () => {
+      if (controller.getState().setupRequirements.length) { openInputs(); return; }
+      controller.run();
+    });
     const cancel = button('Cancel', 'light-cancel', () => controller.cancel());
     const clear = button('Clear result', 'light-clear', () => controller.clearResult());
-    const reviewInputs = button('Review study inputs', 'light-inputs', () => {
-      inputs.open = true;
-      const rooms = forms.querySelectorAll('details')[0]; if (rooms) rooms.open = true;
-      inputs.children[0].focus();
-    });
-    actions.append(prepare, run, cancel, clear, reviewInputs);
+    const reviewInputs = button('Review study inputs', 'light-inputs', () => openInputs());
+    actions.append(wholeHouse, cancel, clear);
     const status = el('p', '', 'light-status'); status.id = 'light-status'; status.setAttribute('role', 'status');
     const error = el('p', '', 'light-error'); error.id = 'light-error'; error.setAttribute('role', 'alert'); error.hidden = true;
-    const choices = disclosure('View & session study');
+    const choices = disclosure('Display floor & saved studies');
     const viewFields = el('div', '', 'light-fields'); choices.append(viewFields);
     const viewport = el('div', '', 'light-viewport'); viewport.id = 'light-viewport';
     viewport.setAttribute('role', 'region'); viewport.setAttribute('aria-label', 'Room light plan; equivalent sensor evidence below');
@@ -567,14 +695,29 @@
     displayStatus.setAttribute('role', 'status');
     const scale = el('p', '', 'light-scale'); scale.id = 'light-scale';
     const viewControls = el('div', '', 'light-fields');
-    const legend = disclosure('Legend & model warnings'), legendBody = el('div'); legend.append(legendBody);
-    const inputs = disclosure('Study inputs — rooms, site, optics & context'), forms = el('div'); inputs.append(forms);
+    const legend = disclosure('Read the map & review missing information'), legendBody = el('div'); legend.append(legendBody);
+    legend.id = 'light-reading-guide';
+    const inputs = disclosure('Study inputs — rooms, site, optics & context'), forms = el('div');
+    const setupList = el('div'); setupList.id = 'light-setup-checklist';
+    const customActions = el('div', '', 'light-actions');
+    customActions.append(prepare, run, reviewInputs);
+    inputs.append(customActions, setupList, forms);
+    function openInputs(section = controller.getState().setupRequirements[0]?.section || 'rooms') {
+      inputs.open = true;
+      const target = doc.getElementById(`light-input-section-${section}`);
+      if (target) {
+        target.open = true; target.children[0].focus();
+        target.scrollIntoView?.({ block: 'nearest' });
+      } else inputs.children[0].focus();
+    }
     const scenarios = disclosure('Manage session studies & comparisons'), scenarioBody = el('div'); scenarios.append(scenarioBody);
     const evidence = disclosure('Sensor & room evidence'), evidenceBody = el('div'); evidence.append(evidenceBody);
-    const provenance = disclosure('Full provenance & canonical input keys'), provenanceBody = el('pre'); provenance.append(provenanceBody);
+    const provenance = disclosure('Technical details — diagnostics & model inputs'), provenanceBody = el('pre');
+    provenance.id = 'light-technical-details';
+    provenance.append(el('p', 'For detailed review and troubleshooting. Full precision, source identifiers and original diagnostics are also retained in result JSON exports.'), provenanceBody);
     const exports = disclosure('Export evidence / expert config import'), exportBody = el('div'); exports.append(exportBody);
-    host.append(heading, warning, actions, status, choices, displayStatus, viewport, error, scale, viewControls, legend, inputs, scenarios, evidence, provenance, exports);
-    let fieldSerial = 0, imageURL = null, previousPreview, structuralKey = '', refreshPending = false, destroyed = false;
+    host.append(heading, warning, presetHelp, actions, status, choices, displayStatus, viewport, error, scale, viewControls, legend, inputs, scenarios, evidence, provenance, exports);
+    let fieldSerial = 0, imageURL = null, previousPreview, structuralKey = '', previousSetupKey = '', refreshPending = false, destroyed = false;
     let imageError = '', lastResult = null;
     const urlAPI = runtime.URL || root.URL, BlobClass = runtime.Blob || root.Blob;
     function showError(text) { error.textContent = text; error.hidden = !text; }
@@ -654,6 +797,7 @@
     function renderForms(state) {
       forms.replaceChildren();
       const rooms = disclosure('Select rooms & workplanes'), roomFields = el('div', '', 'light-fields'); rooms.append(roomFields);
+      rooms.id = 'light-input-section-rooms';
       const roomOptions = [['', 'Choose a room from prepared inventory'], ...(state.inventory?.rooms || [])
         .map(room => [refKey(room.ref), `${room.label || room.ref.entityId} · ${room.ref.floorId}`])];
       const roomPick = field(roomFields, 'Room', '', () => true, roomOptions, 'text', 'light-room');
@@ -662,6 +806,7 @@
         const [floorId, entityId] = JSON.parse(roomPick.value); controller.addRoom({ floorId, entityId });
       }));
       rooms.append(el('p', 'Workplane height is explicit, relative to its supplied floor elevation. The 0.5 m grid default is numerical only; floor heights and roofs are never invented.'));
+      rooms.append(el('p', 'A workplane is the horizontal surface you want to study, such as a desk or the floor. Measure its height above the finished floor. This is not the ceiling height; choose it for your task.'));
       for (const plane of state.draft.workplanes || []) {
         const group = el('fieldset'), fields = el('div', '', 'light-fields');
         group.append(el('legend', `${plane.room?.floorId} · ${plane.room?.entityId}`), fields);
@@ -672,8 +817,10 @@
         group.append(button('Remove workplane', '', () => controller.removeWorkplane(plane.id))); rooms.append(group);
       }
       const sun = disclosure('Site, civil time & sun intervals'), sunFields = el('div', '', 'light-fields');
+      sun.id = 'light-input-section-sun';
       sun.append(el('p', state.siteSource), button('Use project site', 'light-project-site', () => controller.useProjectSite()),
         button('Use Sun Path selections', 'light-sun-path', () => controller.useSunPathSelections(doc)), sunFields);
+      sun.append(el('p', 'Location and local time determine the sun direction. Use the saved project site or your Sun Path selections, check them, then choose the study period. Preparing intervals creates the times to calculate; it does not change the house.'));
       field(sunFields, 'Latitude · degrees (unknown until supplied)', state.draft.site?.latitudeDeg,
         latitudeDeg => controller.setSite({ latitudeDeg }), null, 'number', 'light-latitude');
       field(sunFields, 'Longitude · degrees (unknown until supplied)', state.draft.site?.longitudeDeg,
@@ -697,6 +844,9 @@
       sun.append(button('Prepare sun intervals', 'light-prepare-sun', () => controller.prepareSunIntervals()),
         el('p', `${state.intervalSource}. Date/site edits discard previously sampled periods; no browser-local time or guessed UTC offset.`));
       const optics = disclosure('Optics, sky quadrature & horizon'), opticFields = el('div', '', 'light-fields'); optics.append(opticFields);
+      optics.id = 'light-input-section-optics';
+      optics.append(el('p', 'Ideal-clear studies geometry without glazing losses; it is an assumption, not a claim about your glass. For actual glazing, visible transmittance describes how much visible light passes through it. Get that value from the product data or a measurement, not its heat-gain rating (SHGC).'));
+      optics.append(el('p', 'The near-horizon cutoff is an analysis choice: sun directions this close to the horizon are left unresolved rather than reported as reliable shade. Use the threshold specified for your study; the app does not choose one for you.'));
       field(opticFields, 'Window optical model — explicit choice', state.draft.windowOptics?.mode,
         mode => controller.setDraft({ windowOptics: mode === 'visible-transmission'
           ? { mode, visibleTransmittance: null, source: null } : { mode: mode || null } }),
@@ -718,6 +868,7 @@
       field(opticFields, 'Unresolved near-horizon cutoff · degrees (0 < value < 90)', state.draft.minSunAltitudeDeg,
         minSunAltitudeDeg => controller.setDraft({ minSunAltitudeDeg }), null, 'number', 'light-horizon');
       const context = disclosure('Neighbors — four explicit side states & site-local boxes'); boxFields(state, context);
+      context.append(el('p', 'Leave a side unknown if you have not checked it. Mark it clear only after checking for obstructions, or enter measured neighboring building dimensions. Unknown sides do not stop a supplied-model preview, but the result cannot describe their shading.'));
       const roof = disclosure('Roof context — existing floors only');
       roof.append(el('p', 'An absence declaration cannot remove an actual supplied roof. No declaration invents a missing roof, wall height or interstorey slab.'));
       for (const floor of state.inventory?.floors || []) {
@@ -744,8 +895,13 @@
         const offset = page * 100;
         for (const row of rows.slice(offset, offset + 100)) {
           const line = el('tr');
-          keys.forEach(key => line.append(el('td', row[key] === null || row[key] === undefined ? 'Unknown / unavailable'
-            : typeof row[key] === 'object' ? JSON.stringify(row[key]) : String(row[key]))));
+          keys.forEach(key => {
+            const value = row[key], text = value === null || value === undefined ? 'Not available'
+              : typeof value === 'number' ? String(Number(value.toPrecision(6))) : String(value);
+            const cell = el('td', text);
+            if (typeof value === 'number') cell.title = String(value);
+            line.append(cell);
+          });
           body.append(line);
         }
         pageStatus.textContent = `Rows ${offset + 1}–${Math.min(offset + 100, rows.length)} of ${rows.length}. Exports retain all rows.`;
@@ -768,9 +924,13 @@
         button('Clear comparison pin', 'light-unpin', () => controller.clearPin()));
       if (state.comparison) {
         scenarioBody.append(el('p', state.comparison.comparable
-          ? 'Comparable supplied-model snapshots. Exact paired-sensor deltas follow.'
-          : `Comparison refused: ${state.comparison.reasons.join(', ')}. No incompatible sensor subtraction.`));
-        if (state.comparison.comparable) table(scenarioBody, 'Paired-sensor deltas (raw keys include units)', state.comparison.deltas);
+          ? 'These studies can be compared. Positive changes mean a higher value in the current study.'
+          : `These studies cannot be compared: ${state.comparison.reasons.map(reason => reason.replaceAll('-', ' ')).join('; ')}. Match their settings and sampled rooms first.`));
+        if (state.comparison.comparable) table(scenarioBody, 'Change from pinned study at matching points', state.comparison.deltas.map((row, index) => ({
+          'Study point': `S${index + 1}`, 'Sun path present change (hours)': row.positivePathPresenceHours,
+          'Transmission-weighted sun change (hours)': row.transmittedEquivalentSunHours,
+          'Sky access change (0–1)': row.cosineWeightedSkyAccess
+        })));
       }
     }
     function download(kind) {
@@ -815,7 +975,7 @@
     }
     function render(state) {
       if (destroyed) return;
-      run.disabled = state.busy; cancel.disabled = !state.busy; prepare.disabled = state.busy;
+      run.disabled = state.busy; wholeHouse.disabled = state.busy; cancel.disabled = !state.busy; prepare.disabled = state.busy;
       clear.disabled = !state.result && !state.busy;
       host.setAttribute('aria-busy', String(state.busy));
       status.textContent = state.busy && state.progress
@@ -828,12 +988,23 @@
       scale.textContent = state.preview?.legend?.[0]
         ? `${state.preview.legend[0]} Blue = known zero · cyan → green → yellow → red = increasing computed values · hatch / ? = unavailable.`
         : 'No light values yet. This 2D plan and its evidence tables do not require WebGL.';
-      if (state.result && state.result !== lastResult && !state.result.complete) {
-        legend.open = true;
-        if (state.result.status === 'blocked') inputs.open = true;
-      }
+      if (state.result && state.result !== lastResult && state.result.status === 'blocked') inputs.open = true;
       if (state.displayStatus.code === 'other-floor' && state.result !== lastResult) choices.open = true;
       lastResult = state.result;
+      const setupKey = canonical(state.setupRequirements);
+      if (previousSetupKey !== setupKey) {
+        previousSetupKey = setupKey; setupList.replaceChildren();
+        if (state.setupRequirements.length) {
+          setupList.append(el('p', 'Complete these settings before running. Physical inputs are not filled automatically.'));
+          const list = el('ul');
+          for (const item of state.setupRequirements) {
+            const entry = el('li', item.message + ' ');
+            entry.append(button('Review setting', `light-setup-${item.id}`, () => openInputs(item.section)));
+            list.append(entry);
+          }
+          setupList.append(list);
+        } else setupList.append(el('p', 'Basic study inputs are supplied. Run study to check the model; unknown context may still leave primary results unavailable.'));
+      }
       const key = canonical({ draft: state.draft, selection: state.selection, inventory: state.inventory?.physicalFingerprint,
         floor: state.floorId, scenarios: state.scenarios, history: state.history, baseline: state.baselineId,
         result: state.result?.provenance?.inputFingerprint, visualization: state.visualization });
@@ -857,24 +1028,39 @@
       legendBody.replaceChildren();
       const neighborCounts = { clear: 0, modeled: 0, unknown: 0 };
       SIDES.forEach(side => { neighborCounts[state.draft.neighbors?.[side]?.state || 'unknown']++; });
+      legendBody.append(el('p', 'Blue means a calculated zero. Increasing colors mean higher values for the selected measure. Hatching and ? mean there is no reliable value yet — not zero light.'));
+      const metricMeaning = {
+        direct: 'Sun path transmission is the fraction reaching a study point for the selected time: 0 means blocked; 1 means no loss along the modeled path.',
+        sky: 'Sky access describes how much of the sky reaches the surface, with more weight given to overhead sky. It is independent of the selected time and is not an illumination reading.',
+        'presence-hours': 'Sun path present counts sampled hours with any positive path transmission. Even a partly transmitting window counts the full sampled interval.',
+        'equivalent-hours': 'Transmission-weighted sun discounts each interval by the light that passes through. One hour at 40% transmission contributes 0.4 hours.'
+      };
+      legendBody.append(el('p', metricMeaning[state.visualization.metric]),
+        el('p', 'These are estimates of light access, not lux or proof that a room is bright enough. Electrical symbols mark planned devices; they do not emit simulated light.'));
+      if (state.setupRequirements.length)
+        legendBody.append(el('p', 'The study is not ready to run. Use the missing-settings checklist in Study inputs.'),
+          button('Review missing settings', 'light-reading-setup', () => openInputs()));
+      if (neighborCounts.unknown)
+        legendBody.append(el('p', `${neighborCounts.unknown} of 4 sides have not been checked for neighboring obstructions. You may leave them unknown; primary values then stay unavailable. “Show modeled-only evidence” uses only the buildings you supplied and may miss real shading.`));
+      else legendBody.append(el('p', 'All four sides have a declaration. Check those declarations against the site; they are not a survey.'));
       const warningList = el('ul');
-      const warnings = [...(state.result?.findings || state.inventory?.findings || []), ...(state.preview?.warnings || []),
-        ...(state.result?.limitations || [])];
-      warnings.forEach(item => warningList.append(el('li', typeof item === 'string' ? item
-        : `${item.code || ''} ${typeof item.reference === 'object' ? JSON.stringify(item.reference) : item.reference || ''}: ${item.message || JSON.stringify(item)}`)));
-      legendBody.append(el('p', `Neighbor declarations: ${neighborCounts.clear} clear, ${neighborCounts.modeled} modeled, ${neighborCounts.unknown} unknown. ${state.draft.neighborBoxes?.length || 0} study boxes. Declarations alone do not prove complete context.`),
-        el('p', 'Unknown primary values stay unavailable, not grey zeroes. Modeled-only values use only supplied context. Electrical intent never emits calculated light.'),
-        el('pre', typeof state.preview?.legend === 'string' ? state.preview.legend : JSON.stringify(state.preview?.legend || [], null, 2)), warningList);
+      readingNotes(state).forEach(message => warningList.append(el('li', message)));
+      if (warningList.children.length) legendBody.append(warningList);
       evidenceBody.replaceChildren();
-      table(evidenceBody, 'Sensors — selected metric and units', state.preview?.sensorRows);
-      table(evidenceBody, 'Rooms — selected metric and units', state.preview?.roomRows);
+      evidenceBody.append(el('p', 'Values below are for the displayed floor and selected measure. Room averages use the sampled areas, not a whole-room lighting rating. Full-precision values, coordinates and source records remain in the JSON/CSV exports.'));
+      const readable = evidenceRows(state);
+      table(evidenceBody, 'Study points', readable.sensors);
+      table(evidenceBody, 'Room averages', readable.rooms);
       if (state.visualization.showElectrical)
-        table(evidenceBody, 'Electrical intent — no calculated photometry or inferred mounting heights', state.preview?.electricalRows);
+        table(evidenceBody, 'Planned electrical points — no light output calculated', readable.electrical);
       // Canonical keys can contain the complete model; keep them behind this closed disclosure.
       provenanceBody.textContent = JSON.stringify(state.result ? {
         config: state.result.config, provenance: state.result.provenance, context: state.result.context,
-        sampling: state.result.sampling, progress: state.result.progress
-      } : { intervalSource: state.intervalSource, siteSource: state.siteSource }, null, 2);
+        sampling: state.result.sampling, progress: state.result.progress, findings: state.result.findings,
+        inventoryFindings: state.inventory?.findings, legend: state.preview?.legend,
+        displayWarnings: state.preview?.warnings, limitations: state.result.limitations, comparison: state.comparison
+      } : { intervalSource: state.intervalSource, siteSource: state.siteSource,
+        findings: state.inventory?.findings, legend: state.preview?.legend, displayWarnings: state.preview?.warnings }, null, 2);
     }
     const focusOut = () => {
       (runtime.setTimeout || root.setTimeout)(() => { if (refreshPending && !destroyed) render(controller.getState()); }, 0);

@@ -330,19 +330,15 @@
             const ids = original.sensors.map(s => s.id);
             if (new Set(ids).size !== ids.length || typeof original.direct.complete !== 'boolean' ||
               !['known-supplied-model', 'unknown-context'].includes(original.context.status)) throw new Error('malformed completed light context');
-            if (original.complete !== (original.context.status === 'known-supplied-model' && original.direct.complete) ||
+            const directEnabled = normalized.direct?.enabled !== false;
+            if (!directEnabled && (original.direct.status !== 'disabled' || original.direct.complete !== false))
+              throw new Error('malformed disabled direct light evidence');
+            if (original.complete !== (original.context.status === 'known-supplied-model' && (!directEnabled || original.direct.complete)) ||
               (original.status === 'complete') !== original.complete) throw new Error('malformed light completeness');
-            for (const sensor of original.sensors) {
-              const room = inventory.rooms.find(r => Model.stableStringify(r.ref) === Model.stableStringify(sensor.room));
-              const rect = room?.geometry?.rect, grid = sensor.grid;
-              if (!rect || !grid || !['rows', 'columns'].every(k => Number.isInteger(grid[k]) && grid[k] > 0) ||
-                !['row', 'column'].every(k => Number.isInteger(grid[k]) && grid[k] >= 0 &&
-                  grid[k] < grid[k === 'row' ? 'rows' : 'columns']) ||
-                !['x', 'y', 'z'].every(k => Number.isFinite(sensor.point?.[k])) ||
-                Math.abs(sensor.point.x - rect.x - (grid.column + .5) * rect.w / grid.columns) > 1e-7 ||
-                Math.abs(sensor.point.y - rect.y - (grid.row + .5) * rect.h / grid.rows) > 1e-7)
-                throw new Error('malformed light sensor physical grid');
-            }
+            const prepared = Light.createStudy(scene, normalized).getResult();
+            if (prepared.status === 'blocked') throw new Error('malformed light configuration: current inputs are blocked');
+            if (Model.stableStringify(original.sensors) !== Model.stableStringify(prepared.sensors))
+              throw new Error('malformed light sensor physical grid');
             for (const [records, fields] of [
               [original.sky.sensorResults, ['cosineWeightedSkyAccess', 'modeledCosineWeightedSkyAccess']],
               [original.direct.sensorResults, ['positivePathPresenceHours', 'transmittedEquivalentSunHours',
@@ -357,6 +353,8 @@
                 if (records === original.direct.sensorResults && !original.direct.complete &&
                   fields.filter(k => !k.startsWith('modeled')).some(k => r[k] !== null))
                   throw new Error('malformed incomplete primary light hours');
+                if (records === original.direct.sensorResults && !directEnabled && fields.some(k => r[k] !== null))
+                  throw new Error('malformed disabled direct light hours');
                 if (records === original.sky.sensorResults && original.context.status === 'unknown-context' &&
                   fields.filter(k => !k.startsWith('modeled')).some(k => r[k] !== null))
                   throw new Error('malformed light primary values in unknown context');

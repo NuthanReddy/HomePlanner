@@ -314,15 +314,16 @@ test('mounted lazy opt-in, services-only and both toggles, live edit, camera ret
     initialDisposed();
     assert.equal(drawings, 1); assert.equal(builds, 1); assert.equal(structureBuilds, 0);
     assert.deepEqual(renderer.camera.position.toArray(), camera);
-    assert.match(dom.nodes['services-note'].textContent, /7 known consecutive centerline segments, 2 unknown segment gaps/);
+    assert.match(dom.nodes['services-note'].textContent, /7 segments.*2 gaps need review/);
     assert.match(dom.nodes['services-schedule'].textContent, /diameter 25.125 mm/);
     assert.match(dom.nodes['services-schedule'].textContent, /width 0.6, depth 0.4, height 0.85 m/);
     assert.doesNotMatch(dom.nodes['services-note'].textContent, /diameter 25.125 mm/);
     assert.equal(dom.nodes['services-details'].hidden, false);
     assert.match(dom.host.html, /<details class="hp3d-assumptions" data-hp3d="services-details" hidden>/);
     assert.ok(dom.host.html.indexOf('data-hp3d="services-details"') > dom.host.html.indexOf('data-hp3d="viewport"'));
-    assert.match(dom.nodes['services-note'].textContent, /not velocity, hydraulics/);
-    assert.match(dom.nodes.status.textContent, /Plumbing engineering is not assessed/);
+    assert.match(dom.nodes['services-scope-detail'].textContent, /not velocity, hydraulics/);
+    assert.doesNotMatch(dom.nodes.status.textContent, /Plumbing engineering is not assessed/);
+    assert.match(dom.host.html, /Plumbing engineering is not assessed/);
     let previous = plumbingObjects(renderer), disposed = watchDisposal(previous);
     dom.nodes.structure.checked = true; await dom.nodes.structure.dispatch('change'); dom.flush(); disposed();
     assert.equal(structureBuilds, 1); assert.equal(builds, 2); assert.equal(drawings, 2);
@@ -341,9 +342,9 @@ test('mounted lazy opt-in, services-only and both toggles, live edit, camera ret
       assert.deepEqual(renderer.camera.position.toArray(), camera);
     }
     dom.nodes.active.checked = true; await dom.nodes.active.dispatch('change'); dom.flush();
-    assert.match(dom.nodes['services-note'].textContent, /owned or endpoint-touching routes in full/);
-    assert.match(dom.nodes['services-note'].textContent, /3 foreign-floor spans\/routes and 2 foreign endpoint nodes/);
-    assert.match(dom.nodes['services-note'].textContent, /findings across all floors/);
+    assert.match(dom.nodes['services-scope-detail'].textContent, /owned or endpoint-touching routes in full/);
+    assert.match(dom.nodes['services-scope-detail'].textContent, /3 foreign-floor spans\/routes and 2 foreign endpoint nodes/);
+    assert.match(dom.nodes['services-scope-detail'].textContent, /findings across all floors/);
     previous = plumbingObjects(renderer);
     dom.nodes.cutaway.checked = false; await dom.nodes.cutaway.dispatch('change'); dom.flush();
     assert.ok(previous.every(o => o.visible));
@@ -362,7 +363,8 @@ test('mounted lazy opt-in, services-only and both toggles, live edit, camera ret
     assert.equal(notify, null);
     assert.ok(renderer.disposed && renderer.lost && engine.controls[0].disposed);
     assert.equal(dom.frames.size, 0);
-    assert.match(dom.nodes['services-note'].textContent, /not displayed.*not assessed/);
+    assert.match(dom.nodes['services-note'].textContent, /not displayed/);
+    assert.match(dom.host.html, /Plumbing engineering is not assessed/);
   } finally { ui.destroy(); }
 });
 
@@ -400,7 +402,8 @@ test('bad registration, missing module and service build errors dispose an open 
       dom.nodes.active.checked = true; await dom.nodes.active.dispatch('change'); disposed();
       assert.equal(ui.isOpen, false); assert.ok(renderer.disposed && renderer.lost);
       assert.match(dom.nodes.status.textContent, /2D/);
-      assert.match(dom.nodes['services-note'].textContent, /not displayed.*not assessed/);
+      assert.match(dom.nodes['services-note'].textContent, /not displayed/);
+      assert.match(dom.host.html, /Plumbing engineering is not assessed/);
       assert.equal(dom.frames.size, 0);
     } finally { ui.destroy(); }
   }

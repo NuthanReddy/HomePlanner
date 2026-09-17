@@ -244,6 +244,23 @@ function workbenchDocument(planner, runtime) {
     confirm(value) { confirmed = value; }, confirmations: () => confirmations };
 }
 
+test('saved section positions read plainly while exact unresolved anchors remain in closed technical details', () => {
+  const cut = [point(1, 2, 0), null];
+  const { ui: unused, planner, bridge, runtime } = setup([saved('cut-view', { kind: 'section', direction: null, cut })]);
+  unused.dispose();
+  const { host, document, find } = workbenchDocument(bridge, runtime), ui = UI.mount(document);
+  const before = planner.exportProject(); ui.select('cut-view');
+  const summary = find(host, node => node.className === 'hp-view-anchors');
+  assert.match(summary.textContent, /A: x 1, y 2, z 0 m/);
+  assert.match(summary.textContent, /B: Position not supplied.*repair/);
+  assert.doesNotMatch(summary.textContent, /floorId|\{"|entityId/);
+  const detail = find(host, node => node.tagName === 'DETAILS' && node.children.some(child => /saved cut positions/.test(child.textContent)));
+  assert.ok(!detail.open); assert.deepEqual(JSON.parse(find(detail, node => node.tagName === 'PRE').textContent), cut);
+  detail.open = true; ui.setDraft({ name: 'Pending section name' });
+  assert.equal(detail.open, true); assert.equal(planner.exportProject(), before);
+  ui.dispose();
+});
+
 test('mounted-once workbench preserves adjacent facade, form drafts, native confirmation and cached page URL lifetime', () => {
   const { ui: unused, bridge, planner, runtime, captures } = setup([saved()]); unused.dispose();
   runtime.HomePlannerElevation = {

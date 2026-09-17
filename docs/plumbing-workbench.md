@@ -105,6 +105,26 @@ UUID rows. Tables have keyboard-focusable horizontal scrolling regions for
 phones. Project/global findings are included beside current-floor findings.
 “Not refreshed / not selected” is not a successful assessment.
 
+The view-only schedules label each dimension, diameter, invert, slope and length
+separately with its units; connection points and routes are not exposed as
+schema collection names. Reference cells show floor/object names; exact
+`floorId`/`entityId` pairs stay in technical details rather than JSON table cells.
+**Not supplied** means no physical value was entered,
+not zero. A missing calculated length instead says to repair route positions.
+Use **Edit** to change a saved record. Initially closed **Technical details**
+retain the complete authored/projected records, issue codes and stable IDs.
+Short form help identifies drawing/measurement dimensions and engineer-supplied
+pipe diameters; coordinate and independent-level conventions are expandable.
+An early sketch can keep missing inputs, but this workbench does not calculate
+pressure or flow.
+
+Missing-input findings explain what to supply or repair and retain the original
+record in technical details. Only exact repeated warnings with the same code,
+floor/component, qualified references, related IDs, message and severity are
+deduplicated for display; controller evidence and exports are unchanged.
+Unknown finding types keep their original message. Open finding disclosures
+survive unrelated draft typing.
+
 Preview page selection uses cached sheets without rebuilding. **Fit to width**
 and **Full view (intrinsic size)** change screen zoom only, not pipe geometry,
 sheet millimetres or print scale. Fixed-scale fit failures require an explicit

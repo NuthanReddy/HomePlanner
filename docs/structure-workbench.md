@@ -52,12 +52,30 @@ Drafts are not project JSON or browser saves; apply them before making a backup.
 
 ## Schedule, coordination and preview
 
-The current-floor schedule displays every authored field, with absent/null
-metadata explicit. Original anchors retain their owner/host information.
-Resolved anchors, geometry and issue codes appear after **Refresh coordination
-& 2D preview**. Projected x/y are **site-local** and z is **project-relative**:
+The view-only current-floor schedule shows named elements, positions, individually
+labelled dimensions in metres, material/source and drawing status rather than
+JSON geometry or issue-code lists. Position cells use floor names and available
+authored object names; exact host identifiers remain in technical details.
+**Not supplied** means no value was entered,
+never zero; grids and beam height remain **Not applicable**. An early sketch can
+retain missing sizes/material. Supply dimensions from drawings or measurements
+to show solids, and obtain material descriptions from the engineer's specification.
+The short form help and closed coordinate-conventions disclosure explain this
+without adding a setup page.
+
+Every authored field, including absent versus null metadata, stable identifier,
+original host and computed result, remains in initially closed **Technical details**.
+The selected-position summary is readable; its separate technical disclosure
+retains exact authored and resolved anchors. Resolution and shape status appear
+after **Refresh coordination & 2D preview**. Projected x/y are **site-local** and z is **project-relative**:
 do not paste those numbers into plate-local inputs without converting frames.
 Project-wide caveats and current-floor findings are listed alongside the schedule.
+Missing-input findings name the required evidence or repair; original finding
+records and codes remain in technical details. Identical warnings with matching
+code, owner, related IDs, message and severity are deduplicated for display only.
+Different owners or evidence remain separate, and controller/export records are
+unchanged. Unrecognized findings keep their original warning text.
+Technical disclosures remain open while typing an unrelated pending field.
 Stale findings are discarded, not shown as current.
 
 Refresh captures one `HomePlanner.getDrawingScene()` and passes that same scene

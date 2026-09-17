@@ -251,7 +251,9 @@
     host.classList.add('hp-structure');
     const warning = el('p', 'Engineering status: NOT ASSESSED. Conceptual geometry coordination only—not safety, capacity, compliance or construction approval. No loads, soil, reinforcement, material strengths or costs are inferred.', 'hp-structure-warning');
     const context = el('p');
-    const help = el('p', 'Coordinates are metres in the active floor’s plate-local x/y frame; z is relative to that floor’s elevation. Anchor = bottom center; beam endpoints = bottom centers. Column/slab/footing width and depth are site-axis footprints and height is explicit vertical extent. Beam width is cross-axis and depth is vertical thickness; beam/grid height is not applicable. Blank sizes/material/reference are unknown. Grids have no sizes or material. Provenance/reference are unverified author claims.');
+    const help = el('p', 'Choose an element, enter its position, then Save. Blank sizes/material may stay Not supplied for a sketch; use drawing dimensions and the engineer’s material specification for more detail. Refresh reviews saved geometry only.');
+    const geometryHelp = el('details');
+    geometryHelp.append(el('summary', 'Position, size and source conventions'), el('p', 'Column/slab/footing width and depth follow the site axes; height extends upward from the bottom center. Beam endpoints are bottom centers: width crosses the beam and depth is its upward vertical thickness. Leave beam/grid height blank. Grids have no sizes or material. Existing hosted positions stay unchanged unless replacement is checked. Computed positions use site-local x/y, project-relative z; do not paste them into floor-local fields without conversion. Source and reference are unverified author claims.'));
     const form = el('form', '', 'hp-structure-form'), fields = {};
     function field(name, label, options) {
       const wrapper = el('label', label), input = el(options ? 'select' : 'input');
@@ -261,24 +263,26 @@
       wrapper.append(input); form.append(wrapper); fields[name] = input; return input;
     }
     field('selectedId', 'Element to edit', []).addEventListener('change', () => controller.select(fields.selectedId.value));
-    field('kind', 'Explicit kind', kinds.map(value => [value, value]));
-    field('label', 'Label (blank = unknown)');
+    field('kind', 'Element type', kinds.map(value => [value, value]));
+    field('label', 'Name (optional)');
     for (const prefix of ['start', 'end']) for (const axis of ['X', 'Y', 'Z']) {
       const input = field(`${prefix}${axis}`, `${prefix === 'start' ? 'Start / bottom center' : 'End (beam/grid only)'} ${axis.toLowerCase()} (m, floor-relative plate-local)`);
       input.inputMode = 'decimal';
     }
     for (const [name, label] of [['widthM', 'Width'], ['depthM', 'Depth'], ['heightM', 'Height']])
-      field(name, `${label} (m; blank = unknown / not applicable)`).inputMode = 'decimal';
-    field('material', 'Material (authored text; blank = unknown)');
-    field('sizeSource', 'Size source (unverified claim)', sources.map(value => [value, value]));
-    field('reference', 'Reference (unverified claim; blank = unknown)');
+      field(name, `${label} (m; blank = Not supplied / not applicable)`).inputMode = 'decimal';
+    field('material', 'Material (from specification; blank = Not supplied)');
+    field('sizeSource', 'Size source (unverified claim)', [['unspecified', 'Not supplied'], ['assumed', 'Assumed for a sketch'],
+      ['authored', 'Entered by you'], ['engineer-provided', 'Engineer-provided (unverified)']]);
+    field('reference', 'Drawing / specification reference (optional; unverified)');
     const replaceLabel = el('label'), replace = el('input'); replace.type = 'checkbox'; replace.id = 'hp-structure-replaceAnchors';
     replaceLabel.htmlFor = replace.id; replaceLabel.append(replace, document.createTextNode('Replace anchors with entered point coordinates'));
     form.append(replaceLabel); fields.replaceAnchors = replace;
     for (const [name, input] of Object.entries(fields)) if (name !== 'selectedId')
       input.addEventListener(input.tagName === 'SELECT' || name === 'replaceAnchors' ? 'change' : 'input',
         () => controller.setDraft({ [name]: name === 'replaceAnchors' ? input.checked : input.value }));
-    const anchorSummary = el('pre', '', 'hp-structure-anchor-summary');
+    const anchorSummary = el('p', '', 'hp-structure-anchor-summary'), anchorDetails = el('details'), anchorRaw = el('pre');
+    anchorDetails.append(el('summary', 'Technical details — saved positions and resolution'), anchorRaw);
     const save = el('button', 'Save structural intent'); save.type = 'submit';
     const reload = el('button', 'Discard draft / reload fields'); reload.type = 'button';
     reload.addEventListener('click', () => {
@@ -311,19 +315,41 @@
     const error = el('p', '', 'hp-structure-error'); error.setAttribute('role', 'alert');
     const schedule = el('div', '', 'hp-structure-schedule'); schedule.tabIndex = 0; schedule.setAttribute('role', 'region'); schedule.setAttribute('aria-label', 'Scrollable current-floor structural schedule');
     const findings = el('ul'), preview = el('div', '', 'hp-structure-preview'); preview.tabIndex = 0; preview.setAttribute('role', 'region'); preview.setAttribute('aria-label', 'Scrollable structural sheet preview');
-    host.replaceChildren(el('h2', 'Editable structural intent'), warning, context, help, form, anchorSummary, previewControls, layout, status, error,
-      el('h3', 'Current-floor schedule — all authored fields'), el('p', 'Authored anchors below retain their host floor and plate-local coordinates. Projected anchors are site-local x/y and project-relative z, never values to paste into this form without conversion. Refresh to resolve anchors and findings.'), schedule,
+    host.replaceChildren(el('h2', 'Editable structural intent'), warning, context, help, geometryHelp, form, anchorSummary, anchorDetails, previewControls, layout, status, error,
+      el('h3', 'Current-floor elements'), el('p', 'The schedule is view-only. Select an element above to edit it. Technical details retain every saved field, identifier and computed position; computed coordinates are not replacement form values.'), schedule,
       el('h3', 'Current coordination findings — not an engineering assessment'), findings, preview);
-    let url = null, priorPreview = null, selectKey = '', scheduleKey = '', pageKey = '';
+    const readable = value => String(value).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ');
+    const findingText = item => ({
+      'unknown-dimensions': 'Dimensions not supplied or unusable. Enter width, depth and applicable height from a drawing or measurement to show the solid; leave them blank for an early sketch.',
+      'unknown-material': 'Material: Not supplied. Obtain the material description from the engineer’s specification; a drawn shape is not a material specification.',
+      'unknown-provenance': 'Size source: Not supplied. Record whether dimensions are assumed, entered from a drawing, or supplied by an engineer, and add the reference when available.',
+      'unresolved-anchor': 'Position cannot be resolved. Place or repair the referenced object, or explicitly replace its position above; no shape is invented.',
+      'unsupported-height': 'Leave beam/grid height blank. Beam depth is its vertical thickness; grids have no vertical extent.'
+    }[item.code] || item.message);
+    function technical(value) {
+      const node = el('details'); node.append(el('summary', 'Technical details — fields and identifiers'), el('pre', JSON.stringify(value, null, 2))); return node;
+    }
+    const dimension = (record, key) => record.kind === 'grid' || (key === 'heightM' && record.kind === 'beam')
+      ? 'Not applicable' : record[key] == null ? 'Not supplied' : String(record[key]);
+    function position(anchor) {
+      if (!anchor) return 'Not supplied — place or repair position';
+      const floor = view.HomePlanner.getProject().floors.find(floor => floor.id === anchor.floorId);
+      const floorName = floor?.name || 'Unavailable floor';
+      if (anchor.kind === 'point') return `${floorName} · x ${anchor.point.x}, y ${anchor.point.y}, z ${anchor.point.z} m (floor-local)`;
+      const record = Object.values(floor?.authored || {}).flat().find(record => record?.id === anchor.entityId);
+      return `${floorName} · ${record?.label || readable(anchor.entityKind || anchor.kind)} reference`;
+    }
+    let url = null, priorPreview = null, selectKey = '', scheduleKey = '', pageKey = '', findingsKey = '';
     function render(state) {
-      context.textContent = `${state.floorName} (${state.floorId}) · Project ${state.projectId} · Revision ${state.revision}`;
+      context.textContent = `${state.floorName} · Revision ${state.revision}`;
+      context.title = `Floor ${state.floorId} · Project ${state.projectId}`;
       status.textContent = `${state.message}${state.dirty ? ' Pending unsaved input draft; project Save does not include it.' : ''}`; error.textContent = state.error; error.hidden = !state.error;
       const nextKey = JSON.stringify([state.projectId, state.floorId, state.retainedDraftIds,
         state.schedule.map(row => [row.record.id, row.record.label, row.record.kind])]);
       if (nextKey !== selectKey || !fields.selectedId.children.length) {
         const option = el('option', 'New element'); option.value = '';
-        fields.selectedId.replaceChildren(option, ...state.schedule.map(({ record }) => {
-          const node = el('option', `${record.label || record.id} (${record.kind})`); node.value = record.id; return node;
+        fields.selectedId.replaceChildren(option, ...state.schedule.map(({ record }, index) => {
+          const node = el('option', `${record.label || `${record.kind} ${index + 1}`} (${record.kind})`); node.value = record.id; return node;
         }), ...state.retainedDraftIds.map(id => {
           const node = el('option', `Unavailable element — input draft ${id}`); node.value = id; return node;
         })); selectKey = nextKey;
@@ -340,8 +366,9 @@
       }
       remove.disabled = !state.selectedId; replace.disabled = !state.selectedId;
       anchorSummary.textContent = state.selectedId
-        ? `Existing anchors are preserved exactly unless replacement is explicitly checked. Hosted, cross-floor and unresolved anchors are never silently flattened. Resolution is from the latest explicit refresh; null resolution means not refreshed.\n${JSON.stringify(state.anchorSummary, null, 2)}`
+        ? `Saved positions stay unchanged unless replacement is checked. ${state.anchorSummary.map((entry, index) => `Position ${index + 1}: ${position(entry.authored)}. ${!entry.resolution ? 'Refresh to check its location.' : entry.resolution.status === 'resolved' ? 'Location resolved; not an engineering assessment.' : 'Location unresolved — place or repair the referenced object.'}`).join(' ')}`
         : 'New elements require every applicable point coordinate explicitly. No zero coordinates, member dimensions or materials are prefilled.';
+      anchorDetails.hidden = !state.selectedId; anchorRaw.textContent = JSON.stringify(state.anchorSummary, null, 2);
       const pageCount = state.preview?.pageCount || 0;
       pageLabel.hidden = pageCount <= 1; pageSelect.disabled = pageCount <= 1;
       const nextPageKey = JSON.stringify([state.floorName, pageCount]);
@@ -354,21 +381,38 @@
       for (const [name, value] of Object.entries(state.previewSettings)) previewFields[name].value = String(value);
       const nextSchedule = JSON.stringify(state.schedule);
       if (scheduleKey !== nextSchedule) {
-        const table = el('table'), caption = el('caption', 'Current floor only. Unknown values and absent optional metadata remain explicit.');
-        const headers = ['ID', 'Kind', 'Label', 'Anchors (authored; host/plate-local)', 'Width m', 'Depth m', 'Height m', 'Material', 'Size source', 'Reference', 'Resolved site-local x/y, project-relative z', 'Geometry', 'Issues'];
+        const table = el('table'), caption = el('caption', 'Current floor only. Not supplied means no value was entered, never zero.');
+        const headers = ['Element', 'Type', 'Saved position', 'Width (m)', 'Depth (m)', 'Height (m)', 'Material', 'Size source', 'Reference', 'Drawing shape', 'Review', 'Technical details'];
         const head = el('tr'); headers.forEach(title => { const cell = el('th', title); cell.scope = 'col'; head.append(cell); }); const thead = el('thead'); thead.append(head);
         const body = el('tbody');
-        for (const { record, projected } of state.schedule) {
+        for (const [index, { record, projected }] of state.schedule.entries()) {
           const row = el('tr');
-          const values = [record.id, record.kind, record.label, JSON.stringify(record.anchors), record.widthM, record.depthM, record.heightM, record.material, record.sizeSource,
-            record.reference, projected ? JSON.stringify(projected.anchors) : 'Not refreshed', projected ? JSON.stringify(projected.geometry) : 'Not refreshed', projected ? projected.issues.join(', ') : 'Not refreshed'];
-          for (const value of values) row.append(el('td', value === undefined ? 'Unspecified (absent)' : value === null ? 'Unknown / not applicable' : String(value)));
+          const values = [record.label || `${record.kind} ${index + 1}`, readable(record.kind), record.anchors.map(position).join(' → '),
+            ...['widthM', 'depthM', 'heightM'].map(key => dimension(record, key)), record.kind === 'grid' ? 'Not applicable' : record.material ?? 'Not supplied',
+            !record.sizeSource || record.sizeSource === 'unspecified' ? 'Not supplied' : readable(record.sizeSource), record.reference ?? 'Not supplied',
+            !projected ? 'Not refreshed' : projected.geometry ? (projected.geometry.kind === 'grid' ? 'Reference line' : 'Conceptual solid') : 'Cannot draw yet — review missing inputs',
+            projected ? (projected.issues.length ? `${projected.issues.length} review items — see findings below` : 'No local findings; engineering NOT ASSESSED') : 'Not refreshed'];
+          for (const value of values) row.append(el('td', String(value)));
+          const detailsCell = el('td'); detailsCell.append(technical({ authored: record, projected })); row.append(detailsCell);
           body.append(row);
         }
         table.append(caption, thead, body); schedule.replaceChildren(table); scheduleKey = nextSchedule;
       }
-      findings.replaceChildren(...(state.stale ? [el('li', 'Coordination is stale / not yet computed. Refresh explicitly. Engineering remains not assessed.')]
-        : state.findings.map(item => el('li', `${item.code}: ${item.message} ${item.elementIds.join(', ')}`))));
+      const nextFindings = JSON.stringify([state.stale, state.findings, nextSchedule]);
+      if (findingsKey !== nextFindings) {
+        const seen = new Set();
+        findings.replaceChildren(...(state.stale ? [el('li', 'Coordination is stale / not yet computed. Refresh explicitly. Engineering remains not assessed.')]
+        : state.findings.filter(item => {
+          const key = JSON.stringify([item.code, item.floorId, [...item.elementIds].sort(), item.message, item.severity]);
+          if (seen.has(key)) return false; seen.add(key); return true;
+        }).map(item => {
+          const names = item.elementIds.map(id => state.schedule.findIndex(row => row.record.id === id))
+            .filter(index => index >= 0).map(index => state.schedule[index].record.label || `${readable(state.schedule[index].record.kind)} ${index + 1}`);
+          const node = el('li', `${names.length ? `${names.join(', ')}: ` : ''}${findingText(item)}`);
+          node.append(technical(item)); return node;
+        })));
+        findingsKey = nextFindings;
+      }
       if (priorPreview !== state.preview) {
         if (url) view.URL.revokeObjectURL(url); url = null; priorPreview = state.preview; preview.replaceChildren();
         if (state.preview) {

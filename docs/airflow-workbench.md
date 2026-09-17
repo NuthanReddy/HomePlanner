@@ -16,7 +16,7 @@ The shared shell owns the `environment/airflow` route and its
 Load the existing project bridge, `planner-regions.js`, `building-physics.js`,
 `planner-airflow-field.js`, `planner-airflow.js`,
 `planner-airflow-runner.js`, `planner-airflow-display.js`, then
-`planner-airflow-ui.js`. Serve the worker and its dependencies over same-origin
+`planner-airflow-inputs.js` and `planner-airflow-ui.js`. Serve the worker and its dependencies over same-origin
 HTTP(S). No new package dependency is required.
 
 ```js
@@ -38,6 +38,7 @@ Stable integration IDs:
 
 * `workspaceAirflow` → `host.homePlannerAirflow`
 * `hp-airflow-prepare`, `hp-airflow-run`, `hp-airflow-cancel`, `hp-airflow-clear`, `hp-airflow-inputs`
+* `hp-airflow-whole-house`, `hp-airflow-plan-areas`, `hp-airflow-project-weather`
 * `hp-airflow-scenario`, `hp-airflow-floor`
 * `hp-airflow-status`, `hp-airflow-view-status` (live statuses), `hp-airflow-error` (alert)
 * `hp-airflow-preview` (image-only Blob SVG)
@@ -53,6 +54,48 @@ disposes the runner, unsubscribes listeners, revokes owned URLs, clears session
 drafts/snapshots and removes the host controller property. Remount is then safe.
 
 ## Explicit authoring workflow
+
+Airflow is an **optional study**: you do not need to supply any airflow inputs
+to export a floor plan. If you do want an estimate, prepare the current geometry,
+review the selected room/opening inputs, then explicitly run. Preparation and
+navigation never calculate or change the project.
+
+**Use whole house** selects all discovered rooms across registered floors and
+their known adjacent openings in one action. It fills room volumes from the
+existing net usable area × that floor’s supplied wall height. These are labelled
+plan estimates, not measured clear volumes. No room-by-room entry is required.
+Missing height is requested in Design only when absent; an empty usable region
+does not become a bounding-box room.
+
+Tracked estimates refresh on another **Use whole house** or explicit **Run**,
+not navigation. Manual volume and opening-area overrides remain untouched.
+Removing a room/link returns that scenario to manual selection. Imported
+scenarios retain their supplied volumes; whole-house clones retain estimate
+tracking. Physical edits still invalidate old results immediately.
+
+**Use geometric opening areas (estimate)** optionally fills missing areas from
+the current aperture size × modeled fraction, with an upper-bound source note.
+It does not claim verified aerodynamic free area or overwrite supplied areas.
+Whole-house selection includes open links and disables modeled-closed openings;
+it never physically opens a door/window or invents unknown adjacency.
+
+**Project wind reference** reads the latest valid normalized record already
+saved in `project.environment.weather`, showing its speed, FROM direction,
+timestamp and source. It makes no request and is not live site wind or a wind-rose
+average. If no valid weather record is available, a saved explicit Environment
+wind scenario is shown as hypothetical, without inventing a timestamp.
+Location/weather alone cannot supply facade pressure coefficients,
+discharge coefficients or density, so the pressure network still needs those
+genuine boundary inputs. Wind speed is never passed off as indoor airspeed.
+
+Adjacent input help explains what each quantity means, why the model needs it,
+and where to enter a supplied value/source. Clear room volume (m³) can use the
+labelled plan estimate or a user-supplied override. Air density (kg/m³) is a documented scenario
+constant. Opening free area (m²) describes the current aerodynamic opening, not
+glass area; Cd is a dimensionless, applicable discharge coefficient, not a
+material preset. Signed imposed pressure (Pa) is additional from → to forcing:
+positive and negative signs matter, and explicit zero is not a missing input.
+A wind rose supplies neither these pressure boundaries nor the other inputs.
 
 1. **Prepare inventory** captures one detached DrawingScene and discovers all
    registered floors. The preview shows geometry and unknown results, no arrows.
@@ -161,8 +204,23 @@ unknown inventory values before solving.
 
 Converged, blocked, nonconverged and numerical-error status remains explicit.
 Unbalanced output is diagnostic, not a successful ventilation assessment.
-All qualified foundation findings, source diagnostics, warnings and original
-solver state remain available. Direct outside ACH excludes transfer inflow;
+Ordinary findings use room/floor names and actionable input names. Repeated
+structured, source and preview copies are shown once per issue/location;
+blocking issues say **Needed to run**. Missing supplied values say **Not supplied**,
+while results distinguish **Not selected**, **Not run**, **Not calculated — inputs
+needed**, and unavailable outputs. Known numerical zero remains zero. Native
+input labels retain “blank = unknown” to describe the unchanged null contract;
+blank controls display “Not supplied.”
+
+All ordinary tables use room/opening and floor names, not JSON references.
+Unnamed entities use a numbered room/opening label; unresolved references remain
+explicitly unavailable, with their retained IDs only in Technical details.
+Inline field help stays short; the full method and input cautions remain here.
+Tables use named column headers and explicit units, with up to seven significant
+digits for display only. Exact IDs, configuration keys, original diagnostic
+codes, full reference objects, unrounded rows, captured inputs and solver state
+are in the closed **Technical details** disclosure and unchanged JSON/CSV exports,
+not serialized into ordinary table cells. Direct outside ACH excludes transfer inflow;
 aperture-mean speed is not room or occupant airspeed.
 
 The visible plan status separately explains **no inventory**, **no rooms**,
@@ -170,8 +228,9 @@ The visible plan status separately explains **no inventory**, **no rooms**,
 **display unavailable**. A balanced zero-flow network has no arrows; this is not
 a missing result or a prediction of single-sided exchange. Disabled/zero-area
 links and a single-opening dead end must not be illustrated as moving room air.
-The first blocking findings and the input/finding disclosures are exposed on a
-blocked run. All original qualified findings remain available below.
+The input/finding disclosures are exposed on a blocked run. The compact status
+points to the findings rather than repeating each issue above them. All original
+qualified findings remain available in Technical details.
 
 Rendering errors live in `state.previewError`, independently of form validation;
 a successful edit or preparation cannot accidentally erase them. Missing display
@@ -225,7 +284,8 @@ CommonJS: `require('./planner-airflow-ui.js')`. Browser:
 `mount(document?)`, `numeric(value)`, `csvCell(value)`, `csv(result)`,
 and `IMPORT_LIMIT`.
 
-Controller methods: `getState`, `subscribe`, `sync`, `prepare`, async `run`,
+Controller methods: `getState`, `subscribe`, `sync`, `prepare`, `useWholeHouse`,
+`useOpeningAreaEstimates`, `useProjectWeather`, async `run`,
 `cancel`, `clearResult`, `dispose`, `setDraft(patch)`, `replaceDraft(value)`,
 `selectScenario(id)`, `addScenario(label,clone=false)`, `renameScenario(label)`,
 `deleteScenario(id,confirmed=false)`, `importScenario(text,append=false)`,
@@ -244,8 +304,24 @@ inventory, current immutable result/preview, busy/error/previewError/message,
 history summaries, baselineId and comparison. Scenario selection IDs are
 session-local handles, not necessarily imported scenario document IDs.
 
+`preparedInputs` holds the session-only whole-house estimate records and their
+physical fingerprint; `projectWeather` is read-only saved-weather context.
+Neither changes the project schema or creates an authored geometry transaction.
+
+The pure helper is `HomePlannerAirflowInputs` in browsers and
+`require('./planner-airflow-inputs.js')` in CommonJS:
+`build(inventory, drawingScene, project, draft, previousPreparedInputs?)` returns
+`{scenario, projectId, physicalFingerprint, volumes, openingAreas, issues, weather}`.
+`useOpeningAreas(prepared)` returns a detached candidate with missing areas filled
+from explicit geometric proposals; `weather(project)` returns saved-wind context.
+The controller validates the candidate with the unchanged `normalizeScenario`.
+Volume provenance uses existing `zone.volumeSource`; area provenance uses
+existing `link.notes`, so full scenario/result exports retain the assumptions.
+This extends the older Environment template’s area × wall-height estimate to the
+all-floor inventory without calling that separate active-floor expert workflow.
+
 ```powershell
-node --test tests\planner-airflow-ui.test.cjs tests\planner-airflow-runner.test.cjs
+node --test tests\planner-airflow-inputs.test.cjs tests\planner-airflow-ui.test.cjs tests\planner-airflow-runner.test.cjs
 ```
 
 Tests exercise the real bridge/foundation/display with deterministic async runner

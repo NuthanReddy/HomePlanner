@@ -113,12 +113,16 @@ module.exports=async function movementSmoke(browser,url,{width=1440,touch=false}
       const staircase=scene.rooms.find(r=>r.sourceId==='stair-1');
       return {usable:living.usableAreaM2,reserved:living.reservedAreaM2,
         footprint:staircase.reservationFootprint,errors:scene.diagnostics.filter(item=>item.level==='error'),
-        hostDoor:scene.openings.some(opening=>opening.roomId===staircase.id&&opening.targetRoomId===living.id)};
+        openStair:staircase.stairEnclosure==='open',
+        stairWalls:scene.walls.filter(wall=>wall.roomIds.includes(staircase.id)).length,
+        automaticDoor:scene.openings.some(opening=>opening.roomId===staircase.id&&!opening.hosted)};
     });
     assert.ok(reservation.usable<40&&reservation.reserved>0);
     close(reservation.usable+reservation.reserved,40);
     assert.deepEqual(reservation.errors,[]);
-    assert.equal(reservation.hostDoor,true,'A contained staircase should have its generated opening into the accessible host');
+    assert.equal(reservation.openStair,true);
+    assert.equal(reservation.stairWalls,0,'A new open stair must not acquire a generated walled-room enclosure');
+    assert.equal(reservation.automaticDoor,false,'An open stair must not acquire an automatic room door');
     const saved=await page.evaluate(()=>HomePlanner.exportProject());
     await page.evaluate(text=>{HomePlanner.newProject();HomePlanner.importProject(text);},saved);
     assert.deepEqual(await rect('stair-1'),stairPlaced);

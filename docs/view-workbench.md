@@ -51,7 +51,11 @@ equal z and distinct horizontal positions. Endpoint order defines the screen
 right axis and viewer bearing; reversing it reverses the section.
 
 Existing point, wall and entity hosts—including cross-floor, unresolved and
-null hosts—are shown verbatim and preserved on metadata edits. Changing the
+null hosts—are summarized as readable A/B positions. Missing positions explicitly
+request a placement or repair; a saved reference is not claimed resolved before
+Refresh. Initially closed **Technical details — saved cut positions and identifiers**
+retain the verbatim anchor array for inspection/copying. This disclosure stays
+open during draft typing. All hosts are preserved on metadata edits. Changing the
 owner floor does **not** rehost existing cuts. Check **Replace cut anchors**
 to author a new pair of explicit points on the selected owner floor. Coordinate
 edits without that checkbox do not replace an existing section's anchors.

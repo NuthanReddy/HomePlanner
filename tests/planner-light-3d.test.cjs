@@ -60,6 +60,24 @@ const build = (THREE, f, s, extra = {}) => View.buildContent(THREE, f.drawing.sc
   { lightStudy: true, lightData: dataFor(f, s), cutaway: true, ...extra });
 const dispose = layer => layer.objects.forEach(View.disposeObject);
 
+test('whole-house sky-only results produce actual 3D light cells without direct sun intervals', async () => {
+  const THREE = await import('../vendor/three/three.module.min.js'), f = fixture();
+  const config = { ...f.config, direct: { enabled: false }, period: null, samples: [], minSunAltitudeDeg: null,
+    workplanes: f.config.workplanes.map(plane => ({ ...plane, heightM: 0 })) };
+  const result = Light.run(f.drawing, config), displayState = state(result, { metric: 'sky', modeled: true });
+  const data = dataFor(f, displayState);
+  assert.equal(data.result, result);
+  const content = build(THREE, f, displayState);
+  try {
+    const cells = content.lightStudy.objects.filter(object => object.userData.lightSensorId);
+    assert.equal(cells.length, result.sensors.length);
+    assert.ok(cells.length > 0);
+    assert.equal(result.direct.status, 'disabled');
+    assert.ok(result.sensors.every(sensor => sensor.point.z ===
+      f.drawing.scenes.find(scene => scene.floorId === sensor.room.floorId).floorElevationM));
+  } finally { View.disposeObject(content.group); }
+});
+
 test('clipped 3D light cells use their exact areas and never cover reserved host floor', async () => {
   const THREE = await import('../vendor/three/three.module.min.js'), f = fixture();
   const drawing = copy(f.drawing), room = drawing.scenes[0].rooms[0];

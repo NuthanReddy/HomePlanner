@@ -110,6 +110,99 @@ test('actual finite aperture and supplied roof match synchronous kernel and anal
   assert.ok(Math.abs(result.sky.sensorResults[0].cosineWeightedSkyAccess-expected)<.001);
   assert.deepEqual(result.direct.masks[0].directPathWeights,[1]);cleaned(h);
 });
+test('actual worker runs every supplied room floor plane sky-only without period, location or horizon',async()=>{
+  const project=createFixture('furnished-single').project;
+  project.floors[0].legacy.context.plate.sitePlot={x:0,y:0,w:10,h:8};
+  project.legacy=copy(project.floors[0].legacy);
+  const drawing=copy(controllerFor(project).getDrawingScene()),inventory=Light.discover(drawing);
+  const c=config({direct:{enabled:false},period:null,samples:[],minSunAltitudeDeg:null,roofContext:[],
+    neighbors:{},sky:{enabled:true,radialBands:8,azimuthSectors:32},
+    workplanes:inventory.rooms.map((room,i)=>({id:'floor-plane-'+i,room:room.ref,heightM:0,spacingM:2}))});
+  const before=JSON.stringify({drawing,c}),h=harness(),events=[];
+  const promise=Runner.createRunner(h.runtime).run({scene:drawing,config:c},p=>events.push(p));
+  h.workers[0].drain();const result=await promise;
+  assert.deepEqual(result,Light.run(drawing,c));finiteFrozen(result);
+  assert.equal(result.status,'incomplete');assert.equal(result.computationalComplete,true);
+  assert.equal(result.context.status,'unknown-context');assert.equal(result.direct.status,'disabled');
+  assert.equal(result.direct.complete,false);assert.deepEqual(result.direct.masks,[]);
+  assert.equal(result.sampling.directRays,0);assert.ok(result.progress.processedRays>0);
+  assert.ok(events.every(p=>p.totalIntervals===0&&p.completedIntervals===0));
+  assert.equal(new Set(result.sensors.map(s=>s.workplaneId)).size,inventory.rooms.length);
+  assert.ok(result.sky.sensorResults.every(s=>s.cosineWeightedSkyAccess===null&&Number.isFinite(s.modeledCosineWeightedSkyAccess)));
+  assert.ok(result.direct.sensorResults.every(s=>Object.entries(s).every(([key,value])=>key==='sensorId'||value===null)));
+  assert.ok(result.sensors.every(s=>s.point.z===drawing.scenes.find(f=>f.floorId===s.room.floorId).floorElevationM));
+  assert.equal(JSON.stringify({drawing,c}),before);cleaned(h);
+});
+test('sky-only known context completes through runner while disabled direct totals remain null',async()=>{
+  const c=config({direct:{enabled:false},period:null,samples:[],minSunAltitudeDeg:null});
+  const h=harness(),promise=Runner.createRunner(h.runtime).run({scene:scene(),config:c});
+  h.workers[0].drain();const result=await promise;
+  assert.equal(result.status,'complete');assert.equal(result.complete,true);
+  assert.equal(result.direct.status,'disabled');assert.equal(result.direct.complete,false);
+  assert.deepEqual(result,Light.run(scene(),c));cleaned(h);
+});
+test('sky-only protocol rejects forged direct status, rays, masks and zero-valued unavailable hours',async()=>{
+  const changes=[
+    r=>{r.direct.status='incomplete';},
+    r=>{r.direct.complete=true;},
+    r=>{r.sampling.directRays=1;},
+    r=>{r.direct.masks=[{}];},
+    r=>{r.direct.periodHours=0;},
+    r=>{r.direct.processedIntervalHours=0;},
+    r=>{r.direct.sensorResults[0].modeledProcessedPositivePathPresenceHours=0;},
+    r=>{r.direct.sensorResults[0].knownProcessedTransmittedEquivalentSunHours=0;},
+    r=>{r.sky.status='disabled';}
+  ];
+  for(const change of changes){
+    const h=harness({intercept:m=>{if(m.type==='result')change(m.result);}});
+    const promise=Runner.createRunner(h.runtime).run({scene:scene(),
+      config:config({direct:{enabled:false},period:null,samples:[],minSunAltitudeDeg:null})});
+    h.workers[0].drain();await assert.rejects(promise);cleaned(h);
+  }
+});
+test('real worker thread executes browser worker sky-only protocol and publishes known and unknown context',async()=>{
+  const {Worker:Thread}=require('node:worker_threads');
+  class Worker{
+    constructor(){
+      this.handlers=new Map();
+      this.thread=new Thread(`
+        const {parentPort,workerData}=require('node:worker_threads');
+        const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+        const sandbox={setTimeout,clearTimeout};sandbox.self=sandbox;
+        sandbox.postMessage=data=>parentPort.postMessage(data);
+        sandbox.addEventListener=(type,fn)=>{if(type==='message')parentPort.on('message',data=>fn({data}));};
+        const context=vm.createContext(sandbox);
+        sandbox.importScripts=(...names)=>{for(const name of names)
+          vm.runInContext(fs.readFileSync(path.join(workerData.root,name),'utf8'),context,{filename:name});};
+        vm.runInContext(fs.readFileSync(path.join(workerData.root,'planner-light-worker.js'),'utf8'),
+          context,{filename:'planner-light-worker.js'});
+      `,{eval:true,workerData:{root:require('node:path').resolve(__dirname,'..')}});
+    }
+    addEventListener(type,fn){
+      const listener=type==='message'?data=>fn({data}):fn;
+      this.handlers.set(fn,listener);this.thread.on(type,listener);
+    }
+    removeEventListener(type,fn){this.thread.off(type,this.handlers.get(fn));this.handlers.delete(fn);}
+    postMessage(data){this.thread.postMessage(data);}
+    terminate(){this.thread.terminate();}
+  }
+  for(const known of [true,false]){
+    const runtime={Worker,location:{href:'https://example.test/index.html'},setTimeout,clearTimeout};
+    const runner=Runner.createRunner(runtime),drawing=scene();
+    const c=config({direct:{enabled:false},period:null,samples:[],minSunAltitudeDeg:null,
+      ...(known?{}:{neighbors:{},roofContext:[]})});
+    c.workplanes[0].heightM=0;
+    try{
+      const result=await runner.run({scene:drawing,config:c});
+      assert.deepEqual(result,Light.run(drawing,c));
+      assert.equal(result.status,known?'complete':'incomplete');
+      assert.equal(result.direct.status,'disabled');assert.equal(result.direct.complete,false);
+      assert.equal(result.sky.sensorResults[0].modeledCosineWeightedSkyAccess,1);
+      assert.equal(result.sky.sensorResults[0].cosineWeightedSkyAccess,known?1:null);
+      assert.ok(result.progress.processedRays>0);assert.equal(result.progress.totalIntervals,0);
+    }finally{runner.dispose();}
+  }
+});
 test('actual shared bridge DrawingScene fixture, real windows, roof and explicit context',async()=>{
   const project=createFixture('furnished-single').project;
   project.floors[0].legacy.context.plate.sitePlot={x:0,y:0,w:10,h:8};

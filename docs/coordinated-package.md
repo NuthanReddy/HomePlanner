@@ -202,8 +202,12 @@ when the corresponding floor/entity pair exists; ambiguous foreign IDs are
 not assigned guessed floors. Warnings without source references remain
 unlinked. Printed text is never scraped to manufacture references.
 
-Analysis acceptance calls only `Airflow.discover`/`Light.discover`, never
-`run`, `createStudy`, a solver, or worker. It checks project identity, original
+Analysis acceptance uses `Airflow.discover`/`Light.discover` and the initial
+`Light.createStudy(...).getResult()` sensor layout. It never steps or finalizes
+that study, runs ray calculations, invokes a solver, or starts a worker.
+The shared sensor layout validates clipped usable-region fragments instead of
+assuming every sensor lies at a full rectangular grid-cell center.
+It checks project identity, original
 revision, source keys, current **actual physical** fingerprints, original
 inventory content, configuration/sensor/input fingerprints and result shape.
 An identical project ID/revision or cached input string alone is insufficient:
@@ -221,7 +225,9 @@ context may retain original `incomplete` status and clearly named model-only
 metrics. Unknown primary metrics remain null, not zero. Original
 `modeledProcessed...`/`knownProcessed...` evidence keys are not renamed as
 full-period validated sunlight hours. No illuminance or light-strength claim
-is made.
+is made. Whole-house sky-only evidence can be computationally complete while
+direct sunlight is explicitly disabled. Disabled direct hours must remain null,
+including modeled subtotals; they are not converted into zero-hour results.
 
 Serializable supplied results, even rejected evidence, are preserved as the
 exact parsed JSON payload (no provenance rewriting) in fixed collision-free

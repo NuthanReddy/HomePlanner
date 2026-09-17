@@ -714,6 +714,16 @@
         id: entityId(floorId, sourceId), sourceId, label: String(req.label || sourceId), type: String(req.type || 'room'),
         rect: carpet, module, service: !!(placedRoom.corridorService || placedRoom.anchorZone === 'service' || ['lift', 'staircase'].includes(req.type))
       };
+      if (req.stairEnclosure !== undefined) {
+        if (req.type !== 'staircase') fail('Only a staircase can specify its enclosure.');
+        enumValue(req.stairEnclosure, ['open', 'enclosed'], `Room ${sourceId} stair enclosure`);
+        room.stairEnclosure = req.stairEnclosure;
+      }
+      if (req.stairEntryEdge !== undefined) {
+        if (req.type !== 'staircase') fail('Only a staircase can specify a stair entry edge.');
+        enumValue(req.stairEntryEdge, Object.keys(DIRECTIONS), `Room ${sourceId} stair entry`);
+        room.stairEntryEdge = req.stairEntryEdge;
+      }
       if (reservesSpace) {
         const reservationFootprint = regions.reservationBounds(carpet, module);
         if (regions.subtractRectangle(reservationFootprint, [building]).length)
@@ -793,6 +803,7 @@
     }
     let perimeterAllowance = false;
     for (const room of scene.rooms) {
+      if (room.stairEnclosure === 'open') continue;
       for (const edge of Object.keys(DIRECTIONS)) {
         const moduleEdge = edgeData(room.module, edge), coreEdge = edgeData(core, edge);
         const carpetEdge = edgeData(room.rect, edge);

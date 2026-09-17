@@ -1,0 +1,165 @@
+/* Shared guide content only; workspace layout and visibility remain with their owners. */
+#workspaceGuide {
+  margin: 0 var(--hp-workspace-inset, 1.5rem) .5rem;
+  max-width: 75ch;
+  color: var(--txt);
+}
+
+.hp-guide-disclosure {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel);
+}
+
+.hp-guide-disclosure > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: .65rem .25rem;
+  cursor: pointer;
+  color: var(--txt);
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.hp-guide-content,
+.hp-guide-page {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.hp-guide-content {
+  padding: .25rem .25rem .5rem;
+  max-width: 75ch;
+}
+
+.hp-guide-content h3,
+.hp-guide-content h2 {
+  margin: .25rem 0 .5rem;
+}
+
+.hp-guide-content p,
+.hp-guide-content ol,
+.hp-guide-content dl {
+  margin: .5rem 0 1rem;
+}
+
+.hp-guide-content ol,
+.hp-guide-page ol,
+.hp-guide-page ul {
+  padding-left: 1.6rem;
+}
+
+.hp-guide-content li,
+.hp-guide-page li {
+  margin-bottom: .6rem;
+}
+
+.hp-guide-content dt,
+.hp-guide-page dt {
+  font-weight: 650;
+  margin-top: .75rem;
+}
+
+.hp-guide-content dd,
+.hp-guide-page dd {
+  margin-left: 0;
+  margin-bottom: .75rem;
+}
+
+#workspaceGuide a,
+.hp-guide-page a {
+  color: var(--acc);
+  text-decoration: underline;
+  text-underline-offset: .18em;
+}
+
+#workspaceGuide a,
+.hp-guide-footer a,
+.hp-guide-toc a,
+.hp-guide-page > header a,
+.hp-guide-page #start li a {
+  display: inline-block;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-top: .55rem;
+  padding-bottom: .55rem;
+}
+
+.hp-guide-disclosure > summary:focus-visible,
+#workspaceGuide a:focus-visible,
+.hp-guide-page a:focus-visible {
+  outline: 3px solid var(--acc);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.hp-guide-footer {
+  margin: 0 .25rem .5rem;
+}
+
+.hp-guide-page {
+  --txt: #202b36;
+  --acc: #075985;
+  --line: #bac6ce;
+  --panel: #fff;
+  margin: 0;
+  padding: 1.25rem;
+  background: var(--panel);
+  color: var(--txt);
+  font: 1rem/1.6 system-ui, sans-serif;
+}
+
+.hp-guide-page > header,
+.hp-guide-page > main {
+  max-width: 75ch;
+  margin-inline: auto;
+}
+
+.hp-guide-page h1 {
+  font-size: clamp(1.7rem, 5vw, 2.2rem);
+  line-height: 1.2;
+}
+
+.hp-guide-page h2 {
+  font-size: 1.35rem;
+  line-height: 1.35;
+}
+
+.hp-guide-page section,
+.hp-guide-toc {
+  scroll-margin-top: 1rem;
+}
+
+.hp-guide-section,
+.hp-guide-toc {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+@media (prefers-color-scheme: dark) {
+  .hp-guide-page {
+    --txt: #e6edf3;
+    --acc: #91caff;
+    --line: #53616e;
+    --panel: #17212b;
+  }
+}
+
+@media (max-width: 40rem) {
+  #workspaceGuide { margin-inline: .75rem; }
+  .hp-guide-page { padding: 1rem; }
+}
+
+@media print {
+  .hp-guide-page {
+    --txt: #000;
+    --acc: #000;
+    --panel: #fff;
+  }
+  .hp-guide-page .hp-guide-footer { display: none; }
+}

@@ -179,14 +179,31 @@ revoked on replacement, invalidation, image failure and disposal. Print at
 100% / Actual size. Paper, orientation, physical scale and units are grouped
 under **Print settings**, whose collapsed summary always shows their values.
 
-The findings table includes **all selected drainage findings**, including
-other-floor and project scopes, severity and the complete message. Qualified
+The findings table includes **all selected drainage finding scopes**, including
+other-floor and project scopes and severity; complete original messages remain
+in technical details. Qualified
 `entityRefs` have floor-labelled selection buttons when the bridge supports
 selection; nodes/routes/fixtures open their authoring record, while supported
 walls/structural references select the shared model. Unsaved work requires a
 discard confirmation before finding-driven selection. Unknown references
 remain inspectable in collapsed raw-ID details; the UI never guesses a floor
 from a bare ID. Schedules keep all raw records regardless of analysis filters.
+
+The normal display uses plain missing-input explanations, separate quantity/unit
+columns and named connection points rather than schema fields or issue-code
+lists. **Not supplied** is not zero: invert, ground and finished-floor levels
+need drawing/survey evidence using the project datum. The short form help
+distinguishes an early sketch from the endpoint/waypoint levels required for a
+gravity profile. Coordinate conventions stay in a closed disclosure after the
+drawing, not a new setup introduction.
+
+Full original findings, messages, codes and qualified references remain in
+initially closed **Technical details**. Only exact repeated warnings with matching
+code, scope, qualified references, related IDs, message and severity are collapsed
+for display. A same-named object on another floor is never merged by bare ID;
+different evidence remains visible. Original controller records and exports do
+not change. Unrecognized finding types keep their original warning text.
+Finding disclosures remain open during unrelated draft typing.
 
 ## Verification
 

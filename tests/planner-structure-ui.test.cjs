@@ -257,6 +257,46 @@ function documentFor(planner) {
   return { document, host, find, urls, revoked };
 }
 
+test('structural summaries are readable, complete raw evidence stays closed, and duplicate findings are presentation-only', () => {
+  const first = { ...record('ground:authored:plain-a', [null]), label: 'Column A' };
+  const second = { ...record('ground:authored:plain-b', [null]), label: 'Column B' };
+  const { planner, ui: unused } = setup([first, second]); unused.dispose();
+  const { document, host, find } = documentFor(planner);
+  document.defaultView.HomePlannerStructure = { build(scene) {
+    const result = Structure.build(scene);
+    const duplicate = result.findings.find(item => item.code === 'unknown-dimensions');
+    return { ...result, findings: [...result.findings, copy(duplicate),
+      { code: 'future-check', floorId: 'ground', elementIds: [first.id], message: 'Unrecognized geometry needs review.', severity: 'warning' }] };
+  } };
+  const ui = UI.mount(document), before = planner.exportProject();
+  ui.select(first.id); ui.setPreviewSettings({ paper: 'A2' }); assert.ok(ui.refresh(), ui.getState().error);
+  const visible = node => node.hidden ? '' : [node.textContent || '', ...(node.tagName === 'DETAILS'
+    ? node.children.filter(child => child.tagName === 'SUMMARY') : node.children).map(visible)].join(' ');
+  const schedule = find(host, node => node.className === 'hp-structure-schedule');
+  assert.match(visible(schedule), /Not supplied/);
+  assert.match(visible(schedule), /Width \(m\).*Depth \(m\).*Height \(m\)/);
+  assert.doesNotMatch(visible(schedule), /widthM|heightM|plain-a|Unspecified \(absent\)|\{"|\[object Object\]/);
+  const raw = find(schedule, node => node.tagName === 'PRE');
+  assert.deepEqual(JSON.parse(raw.textContent).authored, first);
+  const disclosures = find(schedule, node => node.tagName === 'DETAILS');
+  assert.ok(!disclosures.open);
+  const findings = find(host, node => node.tagName === 'UL');
+  assert.equal(findings.children.filter(node => /Dimensions not supplied/.test(node.textContent)).length, 2, 'different owners stay visible, exact duplicate is hidden');
+  assert.equal(ui.getState().findings.filter(item => item.code === 'unknown-dimensions').length, 3, 'raw controller evidence is unchanged');
+  assert.match(visible(findings), /engineer’s specification|engineer's specification/);
+  assert.match(visible(findings), /Place or repair the referenced object/);
+  assert.match(visible(findings), /Unrecognized geometry needs review/);
+  assert.doesNotMatch(visible(findings), /widthM|unknown-dimensions|plain-a/);
+  const detail = find(findings, node => node.tagName === 'DETAILS'); detail.open = true;
+  const field = document.getElementById('hp-structure-label');
+  field.value = 'Pending'; field.dispatch('input');
+  assert.equal(find(findings, node => node.tagName === 'DETAILS'), detail);
+  assert.equal(detail.open, true);
+  assert.equal(document.getElementById('hp-structure-label'), field);
+  assert.equal(planner.exportProject(), before);
+  ui.dispose();
+});
+
 test('mounted workbench performs keyboard submission, explicit host replacement/deletion and lifecycle cleanup', () => {
   const { planner, ui: unused } = setup([record('ground:authored:host', [null])]);
   unused.dispose();

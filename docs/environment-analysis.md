@@ -13,6 +13,11 @@ to Report. The original module root and delegated event handlers remain mounted
 once while its sections change visibility. See
 [workspace navigation](workspace-navigation.md) for routes and lifecycle details.
 
+Warnings show deduplicated, readable messages; structured source records remain
+in closed **Technical warning records**. A proposed window displays its width,
+height, sill and opening percentage before the Apply action. Its exact command
+is retained under **Technical command**, not shown as the primary explanation.
+
 ## Integration
 
 Mount `#environmentWorkspace` in the Environment app page. Load
@@ -67,6 +72,23 @@ Pressure and thermal displays also restore only results matching their saved
 input, notes and geometry; no analysis runs on Undo, replacement or rendering.
 Their unapplied drafts retain a project/floor owner, and replacing a pending
 scenario with a newly prepared template requires explicit confirmation.
+
+Solar tables/shadows, wind roses and window proposals likewise follow the saved
+input/result pair after Undo/Redo, same-ID replacement and explicit draft discard.
+Restored pending fields are applied to the display **before** checking evidence,
+so they cannot inherit a saved calculation for different fields. Changing the
+saved wind evidence also revokes its unapplied window preview. A project rename
+does not rerun a study or revoke an otherwise matching preview.
+
+Solar evidence checks the selected source interval's radiation and provenance,
+in addition to selection, glazing and geometry. Weather wind evidence records
+a content key for wind values, timestamps, quality flags and source/filter-clock
+metadata; a reused weather ID alone is insufficient. Older imported weather
+roses without this key remain preserved but visibly stale until explicitly rebuilt.
+Clear weather withdraws dependent displays; Undo Clear can display the restored,
+matching evidence without recalculation. Missing or malformed outputs are
+unavailable/unsupported, not a zero result. Explicit zero beam fractions and
+calm winds remain zero, while unknown fractions remain **Not evaluated**.
 
 ### State owned inside `project.environment`
 
@@ -374,7 +396,15 @@ field or occupant airspeed. Free area is distinct from discharge coefficient.
   are displayed, not suppressed.
 - **Monthly 09/12/15** samples the 21st of twelve months at three local times.
   These are 36 snapshots per selected floor, not integrated annual direct-sun
-  hours, seasonal energy or a weather history. Date/time edits cancel stale work.
+  hours, seasonal energy or a weather history. The result captures its reviewed
+  controls, occurrence choice, site and floor scope in the same result transaction.
+  It does not silently apply a separate instantaneous-solar draft. Matching monthly
+  evidence can be restored from history without running the comparison again.
+  Date/time edits, draft discard and restoration of different solar inputs or
+  evidence cancel pending work, including same-ID replacements. A superseded
+  callback cannot publish into that restored state or unlock a newer comparison.
+- **Use record midpoint as solar time** creates a project-owned pending solar
+  draft; it survives a project round trip and still requires explicit calculation.
 - All-floor mode evaluates individual scenes at their actual elevations.
   **Mutual storey shading is not supported by this contract** and is labelled so;
   roof/overhang/terrain detail is not invented.
@@ -448,7 +478,7 @@ Normalized weather also has its own local export.
 Run the existing Node built-in runner:
 
 ```powershell
-node --test tests\environment-data.test.cjs
+node --test tests\environment-data.test.cjs tests\environment-ui-state.test.cjs
 node --check environment-ui.js
 ```
 
@@ -459,14 +489,23 @@ roses, calm/missing/filter states, UTC/DST request bounds, partial boundary hour
 real-wall/operating-path proposals, rotation, manual-opening preservation,
 complete-input gates and source-specific presets.
 
+`tests\environment-history-browser.cjs` exports a reusable `(browser, url)`
+full-app check for an isolated browser context served unchanged production files.
+It exercises actual solar/wind/pressure/thermal forms, the real coordinator's
+Undo/Redo and replacement paths, weather Clear, owned drafts, saved monthly
+snapshots and cancellation while monthly work yields. Pass-through numerical API
+counters verify restoration does not rerun studies. Synthetic records and
+explicit scenarios are fixtures, not measurements or performance validation.
+
 Browser contract-fixture checks use synthetic coordinates/records, the actual
 local model/physics/SunCalc modules, a coordinator-compatible command façade and
 intercepted provider/geolocation responses. They exercise real controls, import,
 source escaping, exposure, material comparison, preview/Apply, assumption gates,
 pressure/thermal output, rate limits, cancellation, local export and no automatic
-location/network calls. Final full-app coordinator/persistence integration is a
-separate owner responsibility; no live provider or real-device location was used
-to claim site accuracy.
+location/network calls. The real-coordinator history checks above complement these
+earlier façades; neither replaces the storage/persistence suites or establishes
+browser-save durability. No live provider or real-device location was used to
+claim site accuracy.
 
 Reference material (reviewed 2026-09-08):
 

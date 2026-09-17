@@ -29,7 +29,7 @@
 }
 .homePlannerLight button { cursor: pointer; white-space: normal; margin: 4px 6px 4px 0; }
 .homePlannerLight .light-actions button { margin: 0; font-size: .85rem; }
-.homePlannerLight #light-run { color: var(--panel, #fff); background: var(--txt, #20242a); border-color: var(--txt, #20242a); }
+.homePlannerLight #light-whole-house { color: var(--panel, #fff); background: var(--txt, #20242a); border-color: var(--txt, #20242a); }
 .homePlannerLight button:hover:not(:disabled) { text-decoration: underline; }
 .homePlannerLight button:disabled, .homePlannerLight input:disabled, .homePlannerLight select:disabled { cursor: not-allowed; opacity: .65; }
 .homePlannerLight :focus-visible { outline: 3px solid var(--txt, #20242a); outline-offset: 3px; }
@@ -64,6 +64,7 @@
 .homePlannerLight legend { font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
 .homePlannerLight li { margin: 8px 0; overflow-wrap: anywhere; }
 .homePlannerLight pre { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.homePlannerLight #light-reading-guide p, .homePlannerLight #light-reading-guide li { max-width: 75ch; }
 .homePlannerLight textarea { width: 100%; resize: vertical; }
 .homePlannerLight .light-table-region { overflow-x: auto; max-width: 100%; margin: 12px 0; border: 1px solid var(--line, #707880); }
 .homePlannerLight table { border-collapse: collapse; min-width: 680px; width: 100%; font-size: .85rem; }

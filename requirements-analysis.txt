@@ -1,0 +1,6 @@
+# Optional local density / solar-position service, in the existing Python 3.11+ venv.
+# Install requirements.txt first. No pvlib extras, external engines or frontend packages.
+psychrolib==2.5.0
+pvlib==0.15.2
+# Required for IANA civil days on Windows (zoneinfo has no bundled zone database).
+tzdata>=2025.2,<2027

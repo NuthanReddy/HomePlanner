@@ -87,7 +87,7 @@
     function options(name) {
       return project.floors.map(f => ({ floorId: f.id, floorName: f.name,
         entries: (f.authored?.[name] || []).map((r, i) => ({ value: pair({ floorId: f.id, entityId: r.id }),
-          floorId: f.id, entityId: r.id, label: `${r.label || r.kind || 'route'} · #${i + 1} · ${r.system || r.kind}${r.circuit ? ` / ${r.circuit}` : ''}` })) }));
+          floorId: f.id, entityId: r.id, label: `${r.label || `${r.kind || 'route'} ${i + 1}`}${r.system ? ` · ${r.circuit || r.system}` : ''}` })) }));
     }
     function getState() {
       return { domain: config.domain, projectId: project.id, revision: project.revision, floorId: project.activeFloorId, floorName: floor()?.name,
@@ -368,8 +368,9 @@
     if (drainage) warning.textContent = 'Engineering NOT ASSESSED. Geometric intent only; not capacity, compliance or construction approval.';
     const context = el('p'), status = el('p'), error = el('p', '', 'hp-service-error');
     status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); error.setAttribute('role', 'alert');
-    const help = el('p', 'Point coordinates and replacement waypoints are metres in the selected owner floor’s PLATE-LOCAL x/y frame; z is relative to that floor’s elevation. They are not site coordinates. Blank dimensions, diameter, invert, slope, circuit and role mean unknown. Fixtures create no ports: author each node and its fixture anchor explicitly. From → to is proposed direction only.');
-    if (drainage) help.textContent += ' Invert, ground and finished-floor levels are independent signed PROJECT-RELATIVE metres, not owner-floor offsets or anchor z. Claimed source/reference is unverified. Blank new scalar metadata means unknown; untouched saved absent fields remain absent. Access/clearance distances are review intent, not compliant allowances. No discharge destination is inferred.';
+    const help = el('p', `Add fixtures, connection points, then routes. Save applies edits; Refresh reviews saved ${config.domain} only. Blank values can stay Not supplied for a sketch. Use drawing dimensions and specified pipe diameters. ${drainage ? 'For a gravity profile, supply endpoint and waypoint invert levels from a level survey.' : 'Pressure and flow are not calculated; Drainage reviews gravity profiles.'}`);
+    const coordinateHelp = el('details');
+    coordinateHelp.append(el('summary', 'Coordinates, levels and connection conventions'), el('p', 'Point and replacement waypoint coordinates are metres: x/y from the owner floor’s plate origin, z relative to that floor. Invert means the inside bottom of the pipe; invert, ground and finished-floor levels are independently supplied project-relative metres, not anchor z or floor offsets. Fixtures do not create connection points automatically. From → to records proposed direction, not verified flow. Source/reference claims are unverified; access and clearance distances are supplied review intent, not approved allowances.'));
     const form = el('form', '', 'hp-service-form'), fields = {}, wrappers = {};
     function field(name, label, values, tag) {
       const wrapper = el('label', label), input = el(tag || (values ? 'select' : 'input'));
@@ -381,29 +382,29 @@
     field('collection', 'Record type', [['fixtures', 'Fixtures'], ['serviceNodes', 'Nodes / explicit fixture ports'], ['serviceRoutes', 'Directed routes']]);
     field('selectedId', 'Saved record to edit', []);
     const draftStatus = el('p', '', 'hp-service-draft'); draftStatus.id = `${prefix}-draft-status`; form.append(draftStatus);
-    field('kind', 'Explicit kind', []);
+    field('kind', 'Object type', []);
     field('system', 'System', [['water', 'Water'], ['waste', 'Waste']]);
-    field('label', 'Label (blank = unknown)');
+    field('label', 'Name (optional)');
     field('role', 'Node role (compatible with kind)', []);
     field('circuit', 'Circuit (compatible with system)', []);
-    field('anchorMode', 'Explicit anchor type', [['point', 'Point on owner floor'], ['fixture', 'Existing fixture on any floor']]);
-    field('fixtureRef', 'Fixture anchor (exact floor + fixture)', []);
+    field('anchorMode', 'Position attached to', [['point', 'Point on owner floor'], ['fixture', 'Existing fixture on any floor']]);
+    field('fixtureRef', 'Referenced fixture (choose its floor and name)', []);
     for (const axis of ['x', 'y', 'z']) field(axis, `Anchor ${axis} (m, owner-floor plate-local / floor-relative)`).inputMode = 'decimal';
     for (const [name, label] of [['widthM', 'Width (m)'], ['depthM', 'Depth (m)'], ['heightM', 'Height (m)'],
-      ['diameterMm', 'Diameter (mm)'], ['invertM', 'Invert (m; independently supplied, not anchor z)'], ['slope', 'Slope (fall/run, e.g. 0.02; not enforced)']])
-      field(name, `${label}; blank = unknown`).inputMode = 'decimal';
+      ['diameterMm', 'Diameter (mm; from specification)'], ['invertM', 'Invert level (m; pipe inside bottom, from survey)'], ['slope', 'Slope (fall/run; from design, not enforced)']])
+      field(name, `${label}; blank = Not supplied`).inputMode = 'decimal';
     field('from', 'From node — proposed direction', []); field('to', 'To node — proposed direction', []);
     field('waypoints', 'Optional waypoints: one x,y,z triple per line (metres, owner-floor PLATE-LOCAL x/y; floor-relative z). Blank = no vias.', null, 'textarea').rows = 4;
     for (const [name, label] of [['groundM', 'Ground level'], ['finishedFloorM', 'Finished-floor level']])
-      field(name, `${label} (signed project-relative m; blank = unknown)`).inputMode = 'decimal';
-    field('accessRadiusM', 'Access review radius (nonnegative m; blank = unknown)').inputMode = 'decimal';
-    field('clearanceM', 'Route review clearance (nonnegative m; blank = unknown)').inputMode = 'decimal';
+      field(name, `${label} (signed project-relative m; from survey; blank = Not supplied)`).inputMode = 'decimal';
+    field('accessRadiusM', 'Access review radius (nonnegative m; blank = Not supplied)').inputMode = 'decimal';
+    field('clearanceM', 'Route review clearance (nonnegative m; blank = Not supplied)').inputMode = 'decimal';
     for (const scope of ['level', 'slope']) {
-      field(`${scope}Source`, `Claimed ${scope} source (unverified)`, [['', 'Unknown'], ...sources.map(s => [s, s])]);
-      field(`${scope}Reference`, `${scope === 'level' ? 'Level' : 'Slope'} reference (unverified; blank = unknown)`);
+      field(`${scope}Source`, `Claimed ${scope} source (unverified)`, [['', 'Not supplied'], ...sources.map(s => [s, s])]);
+      field(`${scope}Reference`, `${scope === 'level' ? 'Level' : 'Slope'} reference (optional; unverified)`);
     }
-    field('dischargeKind', 'Outlet discharge kind (explicit; blank = unknown)', [['', 'Unknown — no destination inferred'], ...discharges.map(s => [s, s])]);
-    field('dischargeReference', 'Outlet discharge reference (unverified; blank = unknown)');
+    field('dischargeKind', 'Outlet discharge destination (blank = Not supplied)', [['', 'Not supplied — no destination inferred'], ...discharges.map(s => [s, s])]);
+    field('dischargeReference', 'Outlet discharge reference (optional; unverified)');
     field('viaInvertsM', 'Ordered via invert levels: one signed project-relative number or ? per waypoint. Exact count required; no interpolation.', null, 'textarea').rows = 4;
     for (const [name, label] of [['replaceAnchors', 'Explicitly replace existing anchor (otherwise preserve exact host / unknown)'],
       ['replaceWaypoints', 'Explicitly replace existing waypoints (otherwise preserve exact anchors, including unresolved)'],
@@ -412,7 +413,7 @@
       const input = field(name, label); input.type = 'checkbox';
     }
     const summary = el('details', '', 'hp-service-record-details'), summaryBody = el('pre');
-    summary.append(el('summary', 'Saved raw record and identifiers (preserved until Save)'), summaryBody); form.append(summary);
+    summary.append(el('summary', 'Technical details — saved record and identifiers (preserved until Save)'), summaryBody); form.append(summary);
     const actions = el('div', '', 'hp-service-actions'), save = el('button', 'Save fixture'), remove = el('button', 'Delete saved record'), reset = el('button', 'Discard draft / reload fields');
     save.type = 'submit'; remove.type = reset.type = 'button'; actions.append(save, remove, reset); form.append(actions);
     const confirmDiscard = () => {
@@ -476,13 +477,13 @@
     const scheduleHeading = el('h3', 'Current-floor schedule — all authored fixtures, nodes and routes');
     const findingsHeading = el('h3', 'Coordination findings — project engineering NOT ASSESSED');
     if (drainage) host.replaceChildren(el('h2', 'Drainage intent workbench'), warning, reviewSettings, refresh, error,
-      preview, context, status, printHelp, links, el('h3', 'Author drainage intent'), help, form, findingsHeading, findings,
+      preview, context, status, printHelp, links, el('h3', 'Author drainage intent'), help, coordinateHelp, form, findingsHeading, findings,
       scheduleHeading, el('p', 'Analysis filters never hide or edit raw records. Water records remain available for compatible metadata repair.'), schedules);
-    else host.replaceChildren(el('h2', 'Plumbing intent workbench'), warning, context, help, form, previewControls, links, status, error,
-      el('h3', 'Current-floor schedule — all authored fixtures, nodes and routes'), el('p', 'System filtering affects analysis and sheets only. All raw authored records remain below; external endpoints retain their own floor. Unknown and absent values are not engineered defaults.'), schedules,
+    else host.replaceChildren(el('h2', 'Plumbing intent workbench'), warning, context, help, coordinateHelp, form, previewControls, links, status, error,
+      el('h3', 'Current-floor schedule — fixtures, connection points and routes'), el('p', 'System filtering affects analysis and sheets only. These view-only tables keep every saved record; use Edit to change one. Not supplied means no value was entered, never zero. Technical details retain original fields and identifiers.'), schedules,
       el('h3', 'Coordination findings — project engineering NOT ASSESSED'), findings,
       printHelp, preview);
-    let priorPreview, url = null, scheduleKey = '', optionKey = '', pageKey = '';
+    let priorPreview, url = null, scheduleKey = '', optionKey = '', pageKey = '', findingsKey = '';
     function setOptions(input, values, selectedValue) {
       input.replaceChildren(...values.map(([value, title]) => { const option = el('option', title); option.value = value; return option; }));
       if (selectedValue && !values.some(([value]) => value === selectedValue)) {
@@ -494,7 +495,7 @@
       const unknown = el('option', `Choose ${label} explicitly`); unknown.value = '';
       input.replaceChildren(unknown);
       for (const group of groups) {
-        const node = el('optgroup'); node.label = `${group.floorName} (${group.floorId})`;
+        const node = el('optgroup'); node.label = group.floorName || 'Unnamed floor';
         for (const entry of group.entries) { const option = el('option', entry.label); option.value = entry.value; node.append(option); }
         input.append(node);
       }
@@ -503,13 +504,38 @@
       }
       input.value = value;
     }
-    const showValue = value => value === undefined ? 'Unspecified (absent)' : value === null ? 'Unknown' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-    function details(value, title = 'Raw fields / IDs') {
+    const showValue = value => value == null ? 'Not supplied' : String(value);
+    const readable = value => String(value).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ');
+    const collectionNames = { fixtures: 'Fixtures', serviceNodes: 'Connection points', serviceRoutes: 'Routes' };
+    const findingText = finding => ({
+      'unresolved-anchor': 'Position cannot be resolved. Place or repair the referenced object, or explicitly replace its position. No location is guessed.',
+      'unknown-level': 'Position or connection level cannot be resolved. Supply its coordinates from the drawing or repair the referenced object.',
+      'unknown-fixture-size': 'Fixture dimensions: Not supplied. Enter measured or drawing dimensions to show its extent; an early sketch can leave them blank.',
+      'unknown-diameter': 'Pipe diameter: Not supplied. Obtain it from the engineer’s specification; the drawing uses a line or marker, not a sized pipe.',
+      'unknown-invert': 'Invert level: Not supplied. Obtain the pipe inside-bottom level from a survey using the project datum; it is independent of the position height.',
+      'unknown-outfall-level': 'Outlet invert level: Not supplied. Obtain its level from a survey to review the drain’s connection; no external level is guessed.',
+      'unknown-ground-level': 'Ground level: Not supplied. Obtain a local level survey using the project datum; the floor plane is not ground evidence.',
+      'unknown-finished-floor-level': 'Finished-floor level: Not supplied. Use the drawing or surveyed level relative to the project datum.',
+      'unknown-slope': drainage ? 'Design slope: Not supplied. Enter the intended fall/run from the drainage design to compare it with surveyed levels; measured geometry does not choose a design slope.'
+        : 'Design slope: Not supplied. Obtain the fall/run from the drainage design; this plumbing view does not calculate gravity profiles.',
+      'unknown-circuit': 'Circuit: Not supplied. Choose the intended cold/hot water, soil/waste/vent, or storm circuit in the record form.',
+      'unknown-discharge-destination': 'Discharge destination: Not supplied. Record the intended outlet and its reference from the drainage design; a sewer connection is not assumed.',
+      'unknown-access-radius': 'Access review radius: Not supplied. Obtain the required review distance from the design brief or engineer; no allowance is assumed.',
+      'unknown-clearance': 'Route review clearance: Not supplied. Obtain the review distance from the design brief or engineer; blank does not mean zero or safe.'
+    }[finding.code] || finding.message);
+    function uniqueFindings(items) {
+      const seen = new Set();
+      return items.filter(item => {
+        const refs = (item.entityRefs || []).map(ref => [ref.floorId, ref.entityId]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+        const key = JSON.stringify([item.code, item.floorId, item.componentId, refs, [...(item.entityIds || [])].sort(), item.message, item.severity]);
+        if (seen.has(key)) return false; seen.add(key); return true;
+      });
+    }
+    function details(value, title = 'Technical details — fields and identifiers') {
       const node = el('details'); node.append(el('summary', title), el('pre', JSON.stringify(value, null, 2))); return node;
     }
     function render(state) {
-      context.textContent = drainage ? `${state.floorName} · Revision ${state.revision}`
-        : `${state.floorName} (${state.floorId}) · Project ${state.projectId} · Revision ${state.revision}`;
+      context.textContent = `${state.floorName} · Revision ${state.revision}`;
       context.title = `Floor ${state.floorId} · Project ${state.projectId}`;
       status.textContent = state.message; error.textContent = state.error; error.hidden = !state.error;
       const isFixture = state.collection === 'fixtures', isNode = state.collection === 'serviceNodes', isRoute = state.collection === 'serviceRoutes';
@@ -524,11 +550,11 @@
           ...state.retainedDraftIds.map(id => [id, `Unavailable record — input draft ${id}`])], state.selectedId);
         setOptions(fields.kind, (isFixture ? fixtureKinds : Object.keys(roles)).map(v => [v, v]), state.draft.kind);
         setOptions(fields.system, config.systems.map(s => [s, s === 'rain' ? 'Rain / storm' : s === 'waste' ? 'Waste / soil / vent' : 'Water']), state.draft.system);
-        setOptions(fields.role, [['', 'Unknown'], ...(roles[state.draft.kind] || []).map(v => [v, v])], state.draft.role);
-        setOptions(fields.circuit, [['', 'Unknown'], ...(circuits[state.draft.system] || []).map(v => [v, v])], state.draft.circuit);
+        setOptions(fields.role, [['', 'Not supplied'], ...(roles[state.draft.kind] || []).map(v => [v, readable(v)])], state.draft.role);
+        setOptions(fields.circuit, [['', 'Not supplied'], ...(circuits[state.draft.system] || []).map(v => [v, readable(v)])], state.draft.circuit);
         for (const key of ['levelSource', 'slopeSource'])
-          setOptions(fields[key], [['', 'Unknown'], ...sources.map(v => [v, v])], state.draft[key]);
-        setOptions(fields.dischargeKind, [['', 'Unknown — no destination inferred'], ...discharges.map(v => [v, v])], state.draft.dischargeKind);
+          setOptions(fields[key], [['', 'Not supplied'], ...sources.map(v => [v, readable(v)])], state.draft[key]);
+        setOptions(fields.dischargeKind, [['', 'Not supplied — no destination inferred'], ...discharges.map(v => [v, readable(v)])], state.draft.dischargeKind);
         grouped(fields.fixtureRef, state.fixtureOptions, state.draft.fixtureRef, 'fixture');
         grouped(fields.from, state.nodeOptions, state.draft.from, 'from node'); grouped(fields.to, state.nodeOptions, state.draft.to, 'to node');
         optionKey = nextOptions;
@@ -581,29 +607,30 @@
         schedules.replaceChildren();
         for (const name of collections) {
           const region = el('div', '', 'hp-service-table-region'); region.tabIndex = 0; region.setAttribute('role', 'region');
-          region.setAttribute('aria-label', `Scrollable ${name} schedule`);
+          region.setAttribute('aria-label', `Scrollable ${collectionNames[name]} schedule`);
           const table = el('table'), head = el('thead'), header = el('tr'), body = el('tbody');
-          const columns = name === 'fixtures' ? ['Fixture', 'Anchor', 'Width / depth / height (m)', 'Issues', 'Edit / raw fields']
-            : name === 'serviceNodes' ? ['Node', 'System / circuit', 'Kind / role', 'Anchor', 'Diameter mm / invert m', 'Issues', 'Edit / raw fields']
-              : ['Route', 'System / circuit', 'From → to (floor annotated)', 'Diameter mm / slope', 'Vias / length', 'Issues', 'Edit / raw fields'];
+          const columns = name === 'fixtures' ? ['Fixture', 'Saved position', 'Width (m)', 'Depth (m)', 'Height (m)', 'Review', 'Edit / technical details']
+            : name === 'serviceNodes' ? ['Connection point', 'System / circuit', 'Type / role', 'Saved position', 'Diameter (mm)', 'Invert level (m)', 'Review', 'Edit / technical details']
+              : ['Route', 'System / circuit', 'From → to (with floor)', 'Diameter (mm)', 'Slope (fall/run)', 'Waypoints', 'Length (m)', 'Review', 'Edit / technical details'];
           columns.forEach(title => { const cell = el('th', title); cell.scope = 'col'; header.append(cell); }); head.append(header);
           function anchorDescription(anchor) {
-            if (!anchor) return 'Unknown anchor';
+            if (!anchor) return 'Not supplied — place or repair position';
             const f = state.fixtureOptions.find(g => g.floorId === anchor.floorId);
-            return anchor.kind === 'point' ? `Point · ${f?.floorName || anchor.floorId}: ${anchor.point.x}, ${anchor.point.y}, ${anchor.point.z} m (plate-local)`
-              : `${anchor.kind}${anchor.entityKind ? ` / ${anchor.entityKind}` : ''} · ${f?.floorName || anchor.floorId} (host retained; details below)`;
+            const label = f?.entries.find(entry => entry.entityId === anchor.entityId)?.label;
+            return anchor.kind === 'point' ? `${f?.floorName || 'Unavailable floor'} · x ${anchor.point.x}, y ${anchor.point.y}, z ${anchor.point.z} m (floor-local)`
+              : `${f?.floorName || 'Unavailable floor'} · ${label || `${readable(anchor.entityKind || anchor.kind)} reference`}`;
           }
           function endpoint(ref) {
             const group = state.nodeOptions.find(g => g.floorId === ref.floorId), entry = group?.entries.find(e => e.entityId === ref.entityId);
-            return `${group?.floorName || ref.floorId} (${ref.floorId}) / ${entry?.label || 'unavailable node — repair reference'}`;
+            return `${group?.floorName || 'Unavailable floor'} · ${entry?.label || 'Unavailable connection — repair reference'}`;
           }
           state.schedule[name].forEach(({ record: r, projected }, index) => {
             const row = el('tr'), label = r.label || `${r.kind || 'route'} ${index + 1}`;
-            const values = name === 'fixtures' ? [label, anchorDescription(r.anchor), [r.widthM, r.depthM, r.heightM].map(showValue).join(' / ')]
-              : name === 'serviceNodes' ? [label, `${r.system} / ${showValue(r.circuit)}`, `${r.kind} / ${showValue(r.role)}`, anchorDescription(r.anchor), `${showValue(r.diameterMm)} / ${showValue(r.invertM)}`]
-                : [label, `${r.system} / ${showValue(r.circuit)}`, `${endpoint(r.from)} → ${endpoint(r.to)}`, `${showValue(r.diameterMm)} / ${showValue(r.slope)}`,
-                  `${r.via.length} vias / ${projected ? `${showValue(projected.lengthM)} m` : 'not refreshed / not selected'}`];
-            values.push(projected ? projected.issues.join(', ') || 'No local findings; NOT ASSESSED' : 'Not refreshed / not selected');
+            const values = name === 'fixtures' ? [label, anchorDescription(r.anchor), ...[r.widthM, r.depthM, r.heightM].map(showValue)]
+              : name === 'serviceNodes' ? [label, `${r.system} / ${showValue(r.circuit)}`, `${r.kind} / ${readable(showValue(r.role))}`, anchorDescription(r.anchor), showValue(r.diameterMm), showValue(r.invertM)]
+                : [label, `${r.system} / ${showValue(r.circuit)}`, `${endpoint(r.from)} → ${endpoint(r.to)}`, showValue(r.diameterMm), showValue(r.slope),
+                  String(r.via.length), projected ? projected.lengthM == null ? 'Cannot calculate — repair route positions' : showValue(projected.lengthM) : 'Not refreshed / not selected'];
+            values.push(projected ? projected.issues.length ? `${projected.issues.length} review items — see findings below` : 'No local findings; NOT ASSESSED' : 'Not refreshed / not selected');
             values.forEach(value => row.append(el('td', value)));
             const cell = el('td'), edit = el('button', `Edit ${label}`); edit.type = 'button';
             edit.addEventListener('click', () => {
@@ -612,18 +639,19 @@
             cell.append(edit, details({ authored: r, projected })); row.append(cell); body.append(row);
           });
           if (!state.schedule[name].length) { const row = el('tr'), cell = el('td', 'No authored records on this floor. Choose a record type above and enter explicit intent, then Save.'); cell.colSpan = columns.length; row.append(cell); body.append(row); }
-          table.append(el('caption', `${name} · ${state.schedule[name].length} authored records on ${state.floorName}`), head, body);
+          table.append(el('caption', `${collectionNames[name]} · ${state.schedule[name].length} saved records on ${state.floorName}`), head, body);
           region.append(table); schedules.append(region);
         }
         scheduleKey = nextSchedule;
       }
-      if (drainage) {
+      const nextFindings = JSON.stringify([state.stale, state.findings, state.nodeOptions, nextSchedule]);
+      if (findingsKey !== nextFindings && drainage) {
         const table = el('table'), head = el('thead'), header = el('tr'), body = el('tbody');
         for (const label of ['Finding / severity', 'Scope', 'Review', 'Related records']) { const cell = el('th', label); cell.scope = 'col'; header.append(cell); }
         head.append(header);
-        for (const finding of state.findings) {
+        for (const finding of uniqueFindings(state.findings)) {
           const row = el('tr'), refs = el('td');
-          row.append(el('td', `${finding.code} · ${finding.severity}`), el('td', finding.floorId || 'Project'), el('td', finding.message), refs);
+          row.append(el('td', readable(finding.severity)), el('td', state.nodeOptions.find(group => group.floorId === finding.floorId)?.floorName || finding.floorId || 'Project'), el('td', findingText(finding)), refs);
           for (const ref of finding.entityRefs || []) {
             const group = state.nodeOptions.find(g => g.floorId === ref.floorId);
             const button = el('button', `${group?.floorName || ref.floorId} · ${group?.entries.find(e => e.entityId === ref.entityId)?.label || 'Related record'}`);
@@ -652,13 +680,20 @@
             });
             refs.append(button);
           }
-          refs.append(details({ entityRefs: finding.entityRefs, entityIds: finding.entityIds, componentId: finding.componentId }, 'Qualified references / raw IDs'));
+          refs.append(details(finding, 'Technical details — finding and qualified references'));
           body.append(row);
         }
         if (state.stale || !state.findings.length) { const row = el('tr'), cell = el('td', state.stale ? 'Not refreshed / stale. Refresh explicitly; engineering remains NOT ASSESSED.' : 'No selected findings. Engineering remains NOT ASSESSED.'); cell.colSpan = 4; row.append(cell); body.append(row); }
         table.append(el('caption', 'All selected drainage findings, including other-floor and project scope'), head, body); findings.replaceChildren(table);
-      } else findings.replaceChildren(...(state.stale ? [el('li', 'Not refreshed / stale. Engineering remains NOT ASSESSED.')]
-        : state.findings.map(f => { const item = el('li', `${f.code} · ${f.floorId || 'Project'}: ${f.message}`); item.append(details(f.entityIds, 'Related identifiers')); return item; })));
+      } else if (findingsKey !== nextFindings) findings.replaceChildren(...(state.stale ? [el('li', 'Not refreshed / stale. Engineering remains NOT ASSESSED.')]
+        : uniqueFindings(state.findings).map(f => {
+          const scope = state.nodeOptions.find(group => group.floorId === f.floorId)?.floorName || f.floorId || 'Project';
+          const labels = (f.entityIds || []).map(id => Object.values(state.schedule).flat().find(row => row.record.id === id)?.record)
+            .filter(Boolean).map(record => record.label || readable(record.kind || 'route'));
+          const item = el('li', `${scope}${labels.length ? ` · ${labels.join(', ')}` : ''}: ${findingText(f)}`);
+          item.append(details(f)); return item;
+        })));
+      findingsKey = nextFindings;
       if (priorPreview !== state.preview) {
         if (url) view.URL.revokeObjectURL(url); url = null; priorPreview = state.preview; preview.replaceChildren();
         if (state.preview) {

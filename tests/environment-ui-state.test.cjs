@@ -281,3 +281,145 @@ for (const reject of [false, true]) test(`device location uses one compound comm
   assert.equal(siteForm.dataset.dirty, reject ? 'true' : '');
   assert.equal(detect.disabled, false);
 });
+
+function evidenceMatchers() {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
+  const start = source.indexOf('  function fingerprint('), end = source.indexOf('  function dateParts(', start);
+  let api;
+  vm.runInNewContext(source.slice(start, end) + '\ncapture({matchesSolar,matchesWind,windWeatherKey});', {
+    same: (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null),
+    finite: value => typeof value === 'number' && Number.isFinite(value),
+    capture: value => { api = value; }
+  });
+  return api;
+}
+
+function weatherEvidence() {
+  const weather = require('../environment-data.js').parseWeatherJSON(JSON.stringify({
+    kind: 'scenario', source: { label: 'Synthetic restoration fixture' },
+    records: [{ timestamp: '2024-06-21T10:00:00Z', durationSeconds: 3600,
+      dniWm2: 500, dhiWm2: 100, ghiWm2: 600, windSpeedMps: 3, windFromDeg: 90 }]
+  }));
+  const site = { latitude: 0, longitude: 0, timeZone: 'UTC' };
+  const selection = { date: '2024-06-21', time: '09:30', occurrence: '', scope: 'active',
+    radiationMode: 'weather', groundAlbedo: 0 };
+  const row = weather.records[0];
+  const entry = { input: { selection: structuredClone(selection), site: { ...site }, glazing: null,
+    radiation: { dniWm2: row.dniWm2, dhiWm2: row.dhiWm2, ghiWm2: row.ghiWm2, groundAlbedo: 0 },
+    weatherRecord: { id: weather.id, kind: weather.kind, timestamp: row.timestamp, durationSeconds: row.durationSeconds,
+      intervalStartUTC: '2024-06-21T09:00:00.000Z', source: structuredClone(weather.source), units: { ...weather.units } } },
+    output: { instantUTC: '2024-06-21T09:30:00.000Z' } };
+  return { entry, project: { id: 'project', revision: 3, site, environment: { solar: selection, weather } } };
+}
+
+test('saved Solar evidence follows the exact selection, glazing and source interval, not a weather ID alone', () => {
+  const { matchesSolar } = evidenceMatchers();
+  const fixture = weatherEvidence(), before = structuredClone(fixture);
+  assert.equal(matchesSolar(fixture.entry, fixture.project), true);
+  fixture.project.revision++;
+  assert.equal(matchesSolar(fixture.entry, fixture.project), true, 'Unrelated revisions do not invalidate physical evidence');
+  for (const change of [
+    project => { project.environment.solar.time = '10:30'; },
+    project => { project.environment.glazing = { shgc: 0 }; },
+    project => { project.environment.weather.records[0].dniWm2 = 750; },
+    project => { project.environment.weather.records[0].dniWm2 = null; },
+    project => { project.environment.weather.records[0].missing.push('dniWm2'); },
+    project => { project.environment.weather.kind = 'historical'; },
+    project => { project.environment.weather = null; }
+  ]) {
+    const project = structuredClone(before.project); change(project);
+    assert.equal(matchesSolar(before.entry, project), false);
+  }
+  const unrelated = structuredClone(before.project);
+  unrelated.environment.weather.records[0].windSpeedMps = 9;
+  assert.equal(matchesSolar(before.entry, unrelated), true, 'The selected irradiance interval does not depend on wind speed');
+  assert.deepEqual(fixture.entry, before.entry, 'Checking freshness never rewrites stored evidence');
+});
+
+test('wind evidence binds source wind values and missing flags while retaining manual and unrelated-input behavior', () => {
+  const { matchesWind, windWeatherKey } = evidenceMatchers();
+  const { project } = weatherEvidence();
+  project.environment.wind = { source: 'weather', months: [], window: { widthM: 1 } };
+  const input = { config: structuredClone(project.environment.wind), weatherId: project.environment.weather.id,
+    weatherKey: windWeatherKey(project.environment.weather) }, entry = { input };
+  assert.equal(matchesWind(entry, project), true);
+  const legacy = structuredClone(entry); delete legacy.input.weatherKey;
+  assert.equal(matchesWind(legacy, project), false, 'Old weather IDs cannot prove which wind records produced a rose');
+  for (const change of [
+    weather => { weather.records[0].windFromDeg = 270; },
+    weather => { weather.records[0].windSpeedMps = 0; },
+    weather => { weather.records[0].missing.push('windFromDeg'); },
+    weather => { weather.records[0].timestamp = '2024-07-21T10:00:00Z'; }
+  ]) {
+    const changed = structuredClone(project); change(changed.environment.weather);
+    assert.equal(matchesWind(entry, changed), false);
+  }
+  const unrelated = structuredClone(project);
+  unrelated.environment.weather.records[0].temperatureC = 0;
+  unrelated.environment.weather.records[0].dniWm2 = null;
+  unrelated.environment.weather.records[0].missing.push('dniWm2');
+  assert.equal(matchesWind(entry, unrelated), true);
+  const manual = { source: 'manual', windSpeedMps: 0, windFromDeg: 0 };
+  assert.equal(matchesWind({ input: { config: manual, weatherId: null } },
+    { environment: { wind: manual, weather: null } }), true, 'A calm hypothetical input remains explicit zero, not missing weather');
+});
+
+test('Solar output rendering distinguishes an unknown fraction from zero and rejects incomplete saved output', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
+  const start = source.indexOf('    function renderSolar('), end = source.indexOf('    function renderMonthly(', start);
+  const active = { floorId: 'ground', floorElevationM: 0, openings: [] }, nodes = new Map(), rows = [];
+  let render;
+  vm.runInNewContext(source.slice(start, end) + '\ncapture(renderSolar);', {
+    scene: () => active, scenes: () => [active],
+    planner: { getProject: () => ({ floors: [{ id: 'ground', name: 'Ground' }] }) },
+    same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    finite: value => typeof value === 'number' && Number.isFinite(value),
+    by: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
+    esc: String, nice: String, planSVG: () => '<svg/>', warnList: () => '',
+    table(headers, values) { rows.push(...values); return '<table/>'; }, setStatus() {},
+    capture: fn => { render = fn; }
+  });
+  const entry = { schemaVersion: 1, input: { selection: { date: '2024-06-21', time: '00:00', scope: 'active', radiationMode: 'none' },
+    site: { timeZone: 'UTC' }, radiation: null, glazing: null },
+    output: { instantUTC: '2024-06-21T00:00:00Z', azimuth: 0, altitude: -30, floors: [{ floorId: 'ground',
+      shadow: { receivers: [{ id: 'roof', type: 'roof', areaM2: 1, sunlitFraction: null }], warnings: [], groundPolygons: [] } }] } };
+  assert.equal(render(entry), true);
+  assert.equal(rows[0][4], 'Not evaluated');
+  entry.output.floors[0].shadow.receivers[0].sunlitFraction = 0;
+  assert.equal(render(entry), true);
+  assert.equal(rows[1][4], '0%');
+  entry.output = {};
+  assert.equal(render(entry), false);
+  assert.match(nodes.get('env-solar-results').innerHTML, /incomplete or unsupported/);
+});
+
+test('a superseded monthly callback cannot publish or re-enable a newer comparison', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'environment-ui.js'), 'utf8');
+  const start = source.indexOf("      bindClick('env-monthly'"), end = source.indexOf("      bindClick('env-material-use'", start);
+  const button = { disabled: false }, queue = [], stores = [];
+  const selection = { date: '2024-06-21', time: '09:00', occurrence: '', scope: 'active' };
+  let run, cancel, key = 'first', calculations = 0;
+  vm.runInNewContext('let monthlyOperation=0,monthlyRequest=null,destroyed=false;\n' + source.slice(start, end) +
+    '\ncaptureCancel(()=>{monthlyOperation++;monthlyRequest=null;});', {
+    bindClick(id, error, handler) { run = handler; }, captureCancel: fn => { cancel = fn; },
+    assertFormOwner() {}, monthlySelection: () => structuredClone(selection), monthlyStateKey: () => key,
+    planner: { getProject: () => ({ site: { latitude: 0, longitude: 0, timeZone: 'UTC' } }) },
+    copy: value => structuredClone(value), scene: () => ({ floorId: 'ground' }), studyKeys: new Map(),
+    Sun: { validate() {}, calculate: () => ({ vector: {}, instant: new Date('2024-06-21T09:00:00Z'), altitude: 0 }) },
+    needPhysics: () => ({ shadowAt() { calculations++; return { receivers: [{ areaM2: 1, sunlitFraction: 0 }], warnings: [] }; } }),
+    by: id => id === 'env-monthly' ? button : {}, root: { setTimeout: callback => { queue.push(callback); } },
+    setStatus() {}, storeResult: (...args) => stores.push(args)
+  });
+  const old = run(); assert.equal(button.disabled, true);
+  cancel(); key = 'second'; selection.date = '2025-06-21';
+  const current = run();
+  queue.shift()(); await old;
+  assert.equal(button.disabled, true, 'The old finally block must not unlock the newer run');
+  assert.equal(calculations, 0); assert.equal(stores.length, 0);
+  for (let month = 0; month < 12; month++) { queue.shift()(); await Promise.resolve(); }
+  await current;
+  assert.equal(button.disabled, false); assert.equal(calculations, 36); assert.equal(stores.length, 1);
+  assert.equal(stores[0][1].year, 2025);
+  assert.equal(stores[0][1].selection.date, '2025-06-21');
+  assert.equal(stores[0][2].rows.length, 36);
+});

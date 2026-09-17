@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory
@@ -13,6 +14,9 @@ from prohibited_properties.ocr import OCRError, TesseractOCR
 from prohibited_properties.service import QueueFullError, ReportService
 from prohibited_properties.store import CacheError, ReportStore
 from telangana_prohibited_properties import TelanganaPortal
+from python_analysis import (
+    AnalysisError, MAX_PAYLOAD_BYTES, calculate_density, calculate_solar, capabilities,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -54,6 +58,7 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
             app.logger.error("%s", exc)
             catalog_error = str(exc)
     app.extensions["prohibited_reports"] = service
+    analysis_slots = threading.BoundedSemaphore(2)
 
     def reports() -> ReportService:
         if service is None:
@@ -74,6 +79,10 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
         if request.method == "POST" and request.path.startswith("/api/"):
             origin = request.headers.get("Origin")
             if origin and origin != request.host_url.rstrip("/"):
+                abort(403, "Only same-origin API requests are accepted.")
+        if request.path.startswith("/api/analysis/") and request.method == "POST":
+            request.max_content_length = min(app.config["MAX_CONTENT_LENGTH"] or MAX_PAYLOAD_BYTES, MAX_PAYLOAD_BYTES)
+            if request.headers.get("Sec-Fetch-Site") == "cross-site":
                 abort(403, "Only same-origin API requests are accepted.")
 
     @app.after_request
@@ -117,6 +126,38 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
     @app.get("/prohibited-properties")
     def prohibited_workspace():
         return redirect("/?workspace=prohibited")
+
+    @app.get("/api/analysis/capabilities")
+    def analysis_capabilities():
+        return jsonify(capabilities())
+
+    def run_analysis(calculation):
+        try:
+            data = request.get_json()
+        except RecursionError:
+            return jsonify(error={"code": "invalid_input", "message": "Calculation JSON is nested too deeply."}), 400
+        if not analysis_slots.acquire(blocking=False):
+            return jsonify(error={"code": "analysis_busy", "message": "Local calculations are busy. Try again shortly."}), 429
+        try:
+            return jsonify(calculation(data))
+        except AnalysisError as exc:
+            return jsonify(exc.public()), exc.status
+        except Exception:
+            app.logger.exception("Local analysis failed")
+            return jsonify(status="error", error={
+                "code": "calculation_failed",
+                "message": "Local calculation failed. Review the supplied inputs and the local service log, then retry.",
+            }), 500
+        finally:
+            analysis_slots.release()
+
+    @app.post("/api/analysis/air-density")
+    def analysis_density():
+        return run_analysis(calculate_density)
+
+    @app.post("/api/analysis/solar-position")
+    def analysis_solar():
+        return run_analysis(calculate_solar)
 
     @app.get("/api/prohibited/options")
     def options():

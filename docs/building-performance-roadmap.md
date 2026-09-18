@@ -29,6 +29,13 @@ described later in this roadmap. Programme Apply/Enter, result-restoration,
 stair representation and concise 3D layer corrections are recorded in the
 updated gap review.
 
+**18 September coupled-CFD increment:** the user selected a single current room
+and approved implementing the adapter before virtualization becomes available.
+[Coupled thermal / CFD](coupled-cfd.md) now documents the case compiler, explicit
+input workbench and managed local execution/result contracts. Real OpenCFD
+execution and numerical verification are still pending; this does not complete
+the whole-building simulation, turbulence, HVAC or moisture roadmap below.
+
 **Scoped delivery amendment:** the local workbench now includes conceptual
 architectural/structural sheets, elevations/sections, plumbing/drainage drawings,
 native reduced-model airflow and light studies, and coordinated document packages.

@@ -16,6 +16,7 @@ and the shared active-floor toolbar remain available throughout. See
 | Sun Path (Environment) | Local SunCalc angles, daylight/twilight/golden-hour summary, monthly and seasonal paths, same-clock-time curves, 1 ft pole-shadow length, neighbour-blocked roof/exterior-wall sunlight hours, coordinate detection on request and CSV export. Exploratory overrides apply to the project only on explicit request. |
 | Environment | Local weather import, opt-in historical-weather fetch, geometric shadows, layer comparisons, wind proposals and explicitly supplied reduced-model experiments. |
 | Airflow (Environment) | Room/opening pressure scenarios, signed opening arrows, optional depth-averaged potential-flow fields, residuals, cancellation and local evidence. Optional Python air-density calculation from supplied or explicitly requested location weather; not validated CFD or measured occupant airspeed. |
+| Thermal / CFD (Environment) | Current-room OpenCFD v2606 case preparation/download, explicit thermal/flow inputs, managed local Run/Cancel and sampled-result integration. Real solver execution and numerical verification are pending runtime setup; no placeholder simulation results. |
 | Python calculations (optional local service) | Real PsychroLib air density and pvlib solar position/day-path charts. Explicit Open-Meteo weather retrieval keeps imports intact. No automatic requests or whole-building energy/CFD engine. |
 | Light (Environment) | Room workplane direct-sun masks, presence/transmitted-equivalent hours, normalized cosine-weighted sky access, scenarios, local evidence and opt-in 3D cells. Real electrical-point intent remains a separate non-emitting layer. Not lux, daylight factor or lighting adequacy. |
 | Electrical | Per-floor points, wall/surface anchors, unknown-height states and ergonomic/professional-review guidance. |
@@ -58,6 +59,15 @@ Python solar chart. **Get weather for this location** explicitly sends the
 saved coordinates to Open-Meteo; nothing fetches on page load. See
 [Python calculations](docs/python-analysis.md) for units, provenance and limits.
 Keep a project JSON backup before changing origin or browser profile.
+
+### Coupled thermal / CFD preparation
+
+The same Flask service exposes **Environment > Thermal / CFD**. Preparing and
+downloading a single-room case needs no virtualization or additional Python
+package. Actual runs need the separately installed OpenCFD OpenFOAM v2606
+runtime, explicit server opt-in and an available engine. See
+[coupled CFD](docs/coupled-cfd.md) for geometry gates, supplied inputs, local job
+controls and the outstanding numerical-verification boundary.
 
 ### Prohibited-property reports
 
@@ -139,8 +149,9 @@ review, certification, or legal opinion. Confirm current rules and site
 requirements with TG-bPASS, GHMC/HMDA, and qualified professionals.
 
 Environmental results are uncalibrated scenarios for the supplied inputs.
-The application does not provide CFD, measured microclimate/tree cooling,
-automatic weather/airflow-to-thermal coupling or calibrated whole-building
+The optional single-room CFD integration is unvalidated and has not yet passed
+real-engine execution. The application does not provide measured microclimate/tree
+cooling, automatic weather/airflow-to-thermal coupling or calibrated whole-building
 temperature predictions. Environment's original shadow snapshots evaluate one
 scene at a time; Sun Path's explicit whole-house sunlight study includes the
 modeled storeys together. Multiple editable floors do not establish structural

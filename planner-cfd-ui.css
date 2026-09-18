@@ -1,0 +1,46 @@
+.hp-cfd { color: var(--txt, #1f2328); min-width: 0; padding: 16px; }
+.hp-cfd *, .hp-cfd *::before, .hp-cfd *::after { box-sizing: border-box; }
+.hp-cfd [hidden] { display: none !important; }
+.hp-cfd h2 { margin: 0 0 8px; }
+.hp-cfd h3 { font-size: .95rem; margin: 0 0 8px; }
+.hp-cfd p, .hp-cfd li { line-height: 1.5; overflow-wrap: anywhere; }
+.hp-cfd .hp-cfd-help { font-size: .83rem; color: var(--dim, #59636e); }
+.hp-cfd-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 12px 0; }
+.hp-cfd label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: .85rem; }
+.hp-cfd input, .hp-cfd select, .hp-cfd textarea, .hp-cfd button {
+  min-width: 0; max-width: 100%; min-height: 44px; font: inherit; color: inherit;
+  border: 1px solid var(--line, #d0d7de); border-radius: 6px; padding: 8px;
+  background: var(--panel2, #f6f8fa);
+}
+.hp-cfd select { width: 100%; }
+.hp-cfd textarea { resize: vertical; }
+.hp-cfd button { cursor: pointer; white-space: normal; }
+.hp-cfd button:disabled { cursor: not-allowed; opacity: .55; }
+.hp-cfd [data-cfd-action="prepare"] { background: var(--acc, #0969da); color: #fff; }
+.hp-cfd :focus-visible { outline: 3px solid var(--acc, #0969da); outline-offset: 3px; }
+.hp-cfd-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.hp-cfd svg { display: block; width: 100%; height: auto; max-height: 460px; }
+.hp-cfd svg text { font: 11px system-ui, sans-serif; fill: var(--txt, #1f2328); }
+.hp-cfd-room { fill: var(--panel, #fff); stroke: var(--txt, #1f2328); stroke-width: 5; }
+.hp-cfd-aperture { fill: none; stroke: var(--acc, #0969da); stroke-width: 7; }
+.hp-cfd-aperture.closed { stroke-dasharray: 3 2; stroke: var(--dim, #59636e); }
+.hp-cfd-vector { fill: none; stroke: var(--txt, #1f2328); stroke-width: 1; }
+.hp-cfd fieldset { min-width: 0; margin: 14px 0; padding: 12px; border: 1px solid var(--line, #d0d7de); border-radius: 8px; }
+.hp-cfd legend { padding: 0 5px; font-weight: 600; }
+.hp-cfd-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 12px; }
+.hp-cfd-opening { padding: 12px 0; border-bottom: 1px solid var(--line, #d0d7de); }
+.hp-cfd-opening:last-child { border-bottom: 0; }
+.hp-cfd-acks { display: grid; gap: 10px; margin: 16px 0; }
+.hp-cfd-acks label { flex-direction: row; align-items: start; line-height: 1.5; }
+.hp-cfd-acks input { width: 24px; min-height: 24px; margin: 0; flex: 0 0 24px; }
+.hp-cfd summary { cursor: pointer; padding: 12px 0; min-height: 44px; }
+.hp-cfd pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: .76rem; }
+.hp-cfd-table { overflow: auto; max-height: 340px; }
+.hp-cfd-table table { border-collapse: collapse; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.hp-cfd-table th, .hp-cfd-table td { padding: 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line, #d0d7de); }
+.hp-cfd[data-state="failed"] [data-cfd-status], .hp-cfd [role="alert"] { color: var(--bad, #b42318); }
+@media (max-width: 700px) {
+  .hp-cfd { padding: 12px; }
+  .hp-cfd-overview { grid-template-columns: minmax(0, 1fr); }
+  .hp-cfd-fields { grid-template-columns: minmax(0, 1fr); }
+}

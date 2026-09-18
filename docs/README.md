@@ -73,6 +73,9 @@ layouts in the GHMC/HMDA context.
 - [Airflow workbench](airflow-workbench.md): explicit room/opening scenarios,
   [numerical meanings](airflow-visualizer.md), [cancellable local workers](airflow-worker.md)
   and [opening-linked arrows with table alternatives](airflow-display.md).
+- [Coupled thermal / CFD](coupled-cfd.md): current-room OpenFOAM case preparation,
+  explicit physical inputs, bounded local jobs and provenance-bound result
+  integration. Real-engine execution and numerical verification remain pending.
 - [Building physics](building-physics.md): supported equations, units, assumptions
   and numerical limits.
 - [Room light workbench](light-workbench.md): explicit sunlight and sky-access

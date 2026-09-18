@@ -18,7 +18,7 @@
     }) }),
     design: Object.freeze({ label: 'Design', sections: Object.freeze({ layout: 'Layout · 2D / 3D', structure: 'Structure', elevations: 'Elevations & sections', plumbing: 'Plumbing', drainage: 'Drainage', electrical: 'Electrical', review: 'Issues & guidance' }) }),
     environment: Object.freeze({ label: 'Environment', sections: Object.freeze({
-      sun: 'Sun Path & shading', solar: 'Solar exposure', airflow: 'Airflow & windows', light: 'Light · sunlight & sky access', models: 'Reduced models'
+      sun: 'Sun Path & shading', solar: 'Solar exposure', airflow: 'Airflow & windows', cfd: 'Thermal / CFD', light: 'Light · sunlight & sky access', models: 'Reduced models'
     }) }),
     compare: Object.freeze({ label: 'Compare', sections: Object.freeze({ plot: 'Plot comparisons', envelope: 'Envelope comparisons' }) }),
     report: Object.freeze({ label: 'Report', sections: Object.freeze({ drawings: 'Drawings', package: 'Document package', schedules: 'Room schedule', electrical: 'Point schedule', exports: 'JSON & analysis exports' }) })
@@ -275,7 +275,7 @@
       all('.app-page').forEach(page => { page.classList.remove('on'); page.hidden = true; });
       const page = ['optimizer', 'rooms', 'sun', 'prohibited'].includes(view) ? view :
         view === 'electrical' || view === 'electrical-schedule' ? 'electrical' :
-          (view.startsWith('env-') && view !== 'env-light') || view === 'site-context' ? 'environment' : null;
+          (view.startsWith('env-') && view !== 'env-light' && view !== 'env-cfd') || view === 'site-context' ? 'environment' : null;
       if (page) { by(`page-${page}`).hidden = false; by(`page-${page}`).classList.add('on'); }
       show(by('workspaceOverview'), view === 'overview');
       show(by('workspaceReport'), next.destination === 'report');
@@ -288,6 +288,7 @@
       show(by('workspacePlumbing'), view === 'plumbing');
       show(by('workspaceDrainage'), view === 'drainage');
       show(by('workspaceAirflow'), view === 'env-airflow');
+      show(by('workspaceCfd'), view === 'env-cfd');
       show(by('python-density-analysis'), view === 'env-airflow');
       show(by('workspaceElevations'), view === 'elevations');
       show(by('workspaceLight'), view === 'env-light');

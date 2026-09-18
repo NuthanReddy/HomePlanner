@@ -92,6 +92,24 @@ Old enclosure intent is not silently overwritten on loading a backup.
 
 ## Architecture recommendation
 
+### Subsequent coupled-CFD implementation (18 September 2026)
+
+The user approved a local OpenCFD OpenFOAM runtime, then explicitly authorized
+implementation while Windows virtualization/restart remains pending. They
+selected one current room, not a whole-floor first release.
+[The single-room workbench](coupled-cfd.md) adds source-bound rectangular
+enclosure preparation, physical-input drafts with Save/Undo, generated case
+downloads, bounded local job APIs and actual-output parsing/display contracts.
+It targets transient laminar ideal-gas airflow coupled to a homogeneous solid
+shell; closed panels have supplied surface temperatures.
+
+**Not yet established:** successful real-engine execution, conservation or
+mesh/time convergence of this generated profile. No generated case, fake
+process test or synthetic result fixture is a real CFD result. Whole-building,
+turbulence, radiation, HVAC and moisture capabilities remain missing. The
+following original review tables and R1-R7 gates are historical scope evidence;
+this bounded adapter does not complete those wider gates.
+
 **Keep Three.js and the current SVG editor. Keep Blender optional.**
 The authoritative object is the existing structured HomePlanner project, not
 a Three.js scene, Blender mesh, rendered image or external engine input.

@@ -17,8 +17,8 @@ Use the existing Python 3.11+ virtual environment, from the HomePlanner folder:
 
 The existing property-service `requirements.txt` is also required. Open
 **http://127.0.0.1:8000/**, not `file://`, a different static server, or an older
-running service. Restart the local process after installing/updating the
-optional requirements. `HOMEPLANNER_PORT` can explicitly select another port.
+running service. Restart the local process after updating Python application
+code or installing/updating the optional requirements. `HOMEPLANNER_PORT` can explicitly select another port.
 The UI makes only same-origin requests on loopback hosts.
 
 Optional libraries are imported lazily. Missing or incompatible packages do not
@@ -57,7 +57,9 @@ future transitive dependency combination.
    input; missing fields/quality flags are not converted to zero.
 2. Alternatively choose **Manual temperature, pressure & RH**, supplying °C,
    **hPa absolute station pressure**, and RH %. Manual hPa is converted to Pa
-   once. Sea-level-reduced meteorological pressure is not station pressure.
+   once. Manual validation errors also use hPa (10–1200), matching the field;
+   the local API continues to receive Pa. Sea-level-reduced meteorological
+   pressure is not station pressure.
 3. **Calculate & use density** runs PsychroLib and explicitly updates the current
    airflow scenario's `densityKgM3` and its source note. This does not run
    airflow, change geometry, save the project or create a new model.

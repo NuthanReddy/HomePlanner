@@ -227,6 +227,20 @@
       result: 'Arrows show solved opening flow direction. A velocity field, when available, is a reduced depth-averaged estimate, not measured occupant airspeed or validated CFD. Failure or unknown is not zero flow.',
       sources: ['docs/airflow-workbench.md', 'docs/airflow-field.md']
     },
+    'environment/cfd': {
+      title: 'Prepare a coupled thermal and airflow case',
+      task: 'Use one current room and explicit physical inputs. A prepared OpenFOAM case is not a simulation result.',
+      steps: [
+        'Choose a room on the active floor and review its actual inner wall faces, opening states and geometry findings.',
+        'Supply solid and air properties, initial and boundary temperatures, absolute reference pressure and any inlet/outlet conditions. Record their sources; blank does not mean zero.',
+        'Review the empty-room and laminar-model assumptions, then choose Prepare case. Download OpenFOAM case works without virtualization or an installed engine.',
+        'Save inputs to project separately for JSON and Undo. Check local engine and Run OpenFOAM require the explicitly configured matching local runtime; Cancel run stops only that job.'
+      ],
+      required: 'A supported rectangular enclosure, complete supplied physical boundaries and properties, and explicit acknowledgements. On Windows, execution additionally needs WSL2 and OpenCFD OpenFOAM v2606; preparation does not.',
+      optional: 'CFD is not needed for floor planning. Unknown physical inputs may remain saved as null. Adjacent rooms, turbulence, radiation, HVAC, moisture and furniture are outside the first profile.',
+      result: 'The generated profile has not yet passed real-engine or numerical verification. Only completed, matching solver samples can produce a field plot; no placeholder output appears while the engine is unavailable.',
+      sources: ['docs/coupled-cfd.md', 'docs/airflow-workbench.md']
+    },
     'environment/light': {
       title: 'See sky access across the whole house',
       task: 'Calculate from your current house geometry; this does not calculate lux.',

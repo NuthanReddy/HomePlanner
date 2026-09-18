@@ -202,7 +202,9 @@
       const pressurePa = fromWeather ? weatherValue(row, 'pressurePa') : pressure === null ? null : pressure * 100;
       requireNumber(temperatureC, 'Temperature (°C)', -100, 200);
       requireNumber(rhPct, 'Relative humidity (%)', 0, 100);
-      requireNumber(pressurePa, 'Absolute pressure (Pa)', 1000, 120000);
+      requireNumber(fromWeather ? pressurePa : pressure,
+        fromWeather ? 'Absolute pressure (Pa)' : 'Absolute station pressure (hPa)',
+        fromWeather ? 1000 : 10, fromWeather ? 120000 : 1200);
       return { temperatureC, rhPct, pressurePa,
         source: fromWeather ? weatherSource(weather, row)
           : { kind: 'manual', label: short(form.sourceNote) || 'Manually supplied scenario; not measured indoor conditions' } };

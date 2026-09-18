@@ -18,6 +18,7 @@ from python_analysis import (
     AnalysisError, MAX_PAYLOAD_BYTES, calculate_density, calculate_solar, capabilities,
     calculate_current_weather_density,
 )
+from cfd_runtime import CfdError, CfdService, MAX_PAYLOAD_BYTES as CFD_MAX_PAYLOAD_BYTES, decode_json
 
 
 ROOT = Path(__file__).resolve().parent
@@ -59,7 +60,17 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
             app.logger.error("%s", exc)
             catalog_error = str(exc)
     app.extensions["prohibited_reports"] = service
+    app.extensions["coupled_cfd"] = app.config.get("CFD_SERVICE")
+    cfd_service_lock = threading.Lock()
     analysis_slots = threading.BoundedSemaphore(2)
+
+    def coupled_cfd():
+        with cfd_service_lock:
+            current = app.extensions["coupled_cfd"]
+            if current is None:
+                current = CfdService()
+                app.extensions["coupled_cfd"] = current
+            return current
 
     def reports() -> ReportService:
         if service is None:
@@ -77,6 +88,12 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
 
     @app.before_request
     def same_origin_writes():
+        if request.path.startswith("/api/cfd/"):
+            origin = request.headers.get("Origin")
+            if (origin and origin != request.host_url.rstrip("/")) or request.headers.get("Sec-Fetch-Site") == "cross-site":
+                abort(403, "Only same-origin API requests are accepted.")
+            if request.method == "POST":
+                request.max_content_length = CFD_MAX_PAYLOAD_BYTES
         if request.method == "POST" and request.path.startswith("/api/"):
             origin = request.headers.get("Origin")
             if origin and origin != request.host_url.rstrip("/"):
@@ -116,6 +133,13 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
 
     @app.errorhandler(HTTPException)
     def http_error(exc):
+        if request.path.startswith("/api/cfd/"):
+            codes = {400: "invalid_input", 403: "forbidden", 404: "not_found",
+                     405: "method_not_allowed", 413: "payload_too_large", 415: "unsupported_media_type"}
+            return jsonify(status="error", error={
+                "code": codes.get(exc.code, "cfd_request_failed"),
+                "message": exc.description if exc.code < 500 else "The local CFD request failed. Review the local service log.",
+            }), exc.code
         if request.path.startswith("/api/"):
             return jsonify(error={"code": exc.name, "message": exc.description}), exc.code
         return exc
@@ -167,6 +191,72 @@ def create_app(config: dict | None = None, service: ReportService | None = None)
     @app.post("/api/analysis/solar-position")
     def analysis_solar():
         return run_analysis(calculate_solar)
+
+    def run_cfd(operation, *, body=False, empty=False):
+        try:
+            data = None
+            if body:
+                if not request.is_json:
+                    raise CfdError("CFD requests require application/json.", "unsupported_media_type", 415)
+                data = decode_json(request.get_data(cache=False))
+                if type(data) is not dict:
+                    raise CfdError("Supply a JSON object for this CFD operation.")
+                if empty and data:
+                    raise CfdError("This CFD operation accepts only an empty JSON object.")
+            return operation(coupled_cfd(), data)
+        except CfdError as exc:
+            if exc.status >= 500:
+                app.logger.exception("Local CFD request failed")
+            if exc.status == 500:
+                return jsonify(status="error", error={
+                    "code": "cfd_failed",
+                    "message": "The local CFD request failed. Review the local service log; no computed result was substituted.",
+                }), 500
+            return jsonify(exc.public()), exc.status
+        except HTTPException:
+            raise
+        except Exception:
+            app.logger.exception("Local CFD request failed")
+            return jsonify(status="error", error={
+                "code": "cfd_failed",
+                "message": "The local CFD request failed. Review the local service log; no computed result was substituted.",
+            }), 500
+
+    @app.get("/api/cfd/capabilities")
+    def cfd_capabilities():
+        return run_cfd(lambda current, _: jsonify(current.capabilities()))
+
+    @app.post("/api/cfd/runtime")
+    def cfd_runtime():
+        return run_cfd(lambda current, _: jsonify(current.probe()), body=True, empty=True)
+
+    @app.post("/api/cfd/prepare")
+    def cfd_prepare():
+        return run_cfd(lambda current, data: jsonify(current.prepare(data)), body=True)
+
+    @app.post("/api/cfd/package")
+    def cfd_package():
+        def package(current, data):
+            response = app.response_class(current.package(data), mimetype="application/zip")
+            response.headers["Content-Disposition"] = 'attachment; filename="homeplanner-cfd-single-room-cht-v1.zip"'
+            return response
+        return run_cfd(package, body=True)
+
+    @app.post("/api/cfd/jobs")
+    def cfd_submit():
+        return run_cfd(lambda current, data: (jsonify(job=current.submit(data)), 202), body=True)
+
+    @app.get("/api/cfd/jobs/<job_id>")
+    def cfd_job(job_id: str):
+        return run_cfd(lambda current, _: jsonify(job=current.get_job(job_id)))
+
+    @app.post("/api/cfd/jobs/<job_id>/cancel")
+    def cfd_cancel(job_id: str):
+        return run_cfd(lambda current, _: jsonify(job=current.cancel(job_id)), body=True, empty=True)
+
+    @app.get("/api/cfd/jobs/<job_id>/result")
+    def cfd_result(job_id: str):
+        return run_cfd(lambda current, _: jsonify(current.get_result(job_id)))
 
     @app.get("/api/prohibited/options")
     def options():
@@ -289,5 +379,10 @@ if __name__ == "__main__":
         serve(application, host="127.0.0.1", port=port, threads=4)
     finally:
         report_service = application.extensions.get("prohibited_reports")
-        if report_service is not None:
-            report_service.shutdown()
+        try:
+            if report_service is not None:
+                report_service.shutdown()
+        finally:
+            cfd_service = application.extensions.get("coupled_cfd")
+            if cfd_service is not None:
+                cfd_service.shutdown()

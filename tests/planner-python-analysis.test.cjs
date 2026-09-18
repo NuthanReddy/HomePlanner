@@ -121,6 +121,21 @@ test('manual familiar hPa inputs convert once; blanks are not zeros; compute-onl
   assert.equal(ui.getState().density.status, 'failed'); dispose();
 });
 
+test('manual density pressure errors use the hPa input unit rather than internal Pa', async () => {
+  const { ui, airflow, requests, dispose } = setup({ weather: false });
+  try {
+    for (const pressureHpa of ['', '0', '10000', 'invalid']) {
+      ui.setDensityInputs({ temperatureC: '25', rhPct: '40', pressureHpa });
+      await ui.calculateDensity();
+      assert.equal(ui.getState().density.status, 'failed');
+      assert.match(ui.getState().density.message, /Absolute station pressure \(hPa\).*10.*1200/);
+      assert.doesNotMatch(ui.getState().density.message, /\(Pa\)/);
+    }
+    assert.equal(requests.length, 0);
+    assert.equal(airflow.getState().draft.densityKgM3, null);
+  } finally { dispose(); }
+});
+
 test('unknown weather inputs block instead of fabricating density from location', async () => {
   const { ui, requests, mutate, dispose } = setup();
   mutate(project => {

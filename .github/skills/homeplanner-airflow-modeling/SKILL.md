@@ -34,6 +34,11 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
   [the live Python contract](../../../docs/python-analysis.md); this is a
   supplied/modelled-weather property estimate, not measured indoor density or
   a pressure-forcing value. Apply only to the matching current scenario draft.
+- `planner-cfd.js`, `planner-cfd-ui.js`, `cfd_case.py`, `cfd_runtime.py`: the
+  separate single-room OpenCFD case/job adapter. Read
+  [coupled CFD](../../../docs/coupled-cfd.md) before changing it. Generated cases
+  and synthetic job/parser tests are not real-engine execution or numerical
+  verification; preserve the pending verification state and explicit limitations.
 - Read [foundation](../../../docs/airflow-visualizer.md),
   [field](../../../docs/airflow-field.md), [display](../../../docs/airflow-display.md),
   [worker](../../../docs/airflow-worker.md), and [workbench](../../../docs/airflow-workbench.md).

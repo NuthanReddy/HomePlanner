@@ -25,6 +25,12 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
 - `planner-bridge.js`: `HomePlanner.getProject`, `getScene`, `getScenes`, `execute`.
   `planner-model.js`: `HomePlannerModel.buildScene`, `inputFingerprint`.
   `planner-regions.js`: `HomePlannerRegions.area`, `reservationBounds`.
+- `planner-cfd.js`, `planner-cfd-ui.js`, `cfd_case.py`, `cfd_runtime.py`: a
+  separate bounded single-room conjugate heat-transfer adapter, not automatic
+  RC/weather coupling. Read [coupled CFD](../../../docs/coupled-cfd.md). Actual
+  engine execution, interface conservation and refinement verification remain
+  pending; closed panels have prescribed temperatures, not inferred glazing
+  constructions, and a homogeneous shell is an explicit scenario assumption.
 - Read [physics](../../../docs/building-physics.md),
   [environment](../../../docs/environment-analysis.md),
   [project geometry](../../../docs/project-model.md), and

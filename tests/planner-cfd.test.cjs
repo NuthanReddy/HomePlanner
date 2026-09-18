@@ -138,3 +138,14 @@ test('sampling plane is height resolved, bounded and cannot produce fabricated r
   assert.equal(UI.bearingSide('N', { headingDeg: 90 }), 'E');
   assert.equal(UI.bearingSide('W', { headingDeg: 270 }), 'S');
 });
+
+test('UI ranges match the pinned physical profile and reject nonpositive gas heat capacity', () => {
+  const inventory = inspect(drawing()), form = inputs(inventory.geometry);
+  form.air.cpJkgK = 100;
+  assert.throws(() => CFD.request(inventory, form), /positive Cv/);
+  form.air.cpJkgK = 1006; form.floorThicknessM = .01;
+  assert.throws(() => CFD.request(inventory, form), /between 0.02 and 1/);
+  form.floorThicknessM = .15; form.sampling.heightM = inventory.geometry.heightM - .001;
+  assert.throws(() => CFD.request(inventory, form), /at least 0.005/);
+  assert.match(CFD.FIELDS.find(field => field.path === 'numerics.deltaTSeconds').label, /Fixed time/);
+});

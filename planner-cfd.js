@@ -19,30 +19,30 @@
     return value;
   };
   const FIELDS = Object.freeze([
-    ['floorThicknessM', 'Floor slab thickness (m)', 'Solid', .005, 2],
-    ['ceilingThicknessM', 'Ceiling slab thickness (m)', 'Solid', .005, 2],
-    ['solid.conductivityWmK', 'Solid conductivity (W/m K)', 'Solid', .001, 1000],
-    ['solid.densityKgM3', 'Solid density (kg/m3)', 'Solid', .01, 30000],
-    ['solid.cpJkgK', 'Solid specific heat (J/kg K)', 'Solid', 1, 20000],
-    ['solid.initialC', 'Initial solid temperature (C)', 'Solid', -100, 200],
-    ['air.initialC', 'Initial air temperature (C)', 'Air', -100, 200],
+    ['floorThicknessM', 'Floor slab thickness (m)', 'Solid', .02, 1],
+    ['ceilingThicknessM', 'Ceiling slab thickness (m)', 'Solid', .02, 1],
+    ['solid.conductivityWmK', 'Solid conductivity (W/m K)', 'Solid', .001, 500],
+    ['solid.densityKgM3', 'Solid density (kg/m3)', 'Solid', 1, 30000],
+    ['solid.cpJkgK', 'Solid specific heat (J/kg K)', 'Solid', 1, 10000],
+    ['solid.initialC', 'Initial solid temperature (C)', 'Solid', -100, 300],
+    ['air.initialC', 'Initial air temperature (C)', 'Air', -100, 300],
     ['air.pressurePa', 'Reference absolute pressure (Pa)', 'Air', 1000, 2000000],
-    ['air.molarMassGmol', 'Gas molar mass (g/mol)', 'Air', 1, 300],
-    ['air.cpJkgK', 'Gas specific heat (J/kg K)', 'Air', 1, 20000],
-    ['air.muPaS', 'Dynamic viscosity (Pa s)', 'Air', 1e-8, .1],
-    ['air.prandtl', 'Prandtl number', 'Air', .01, 100],
+    ['air.molarMassGmol', 'Gas molar mass (g/mol)', 'Air', 1, 200],
+    ['air.cpJkgK', 'Gas specific heat (J/kg K)', 'Air', 100, 10000],
+    ['air.muPaS', 'Dynamic viscosity (Pa s)', 'Air', 1e-7, .001],
+    ['air.prandtl', 'Prandtl number', 'Air', .05, 100],
     ...[...SIDES, 'floor', 'ceiling'].map(side =>
-      [`boundaries.${side}`, `${side.length === 1 ? side + ' wall' : side} outer-face temperature (C)`, 'Boundaries', -100, 200]),
-    ['sampling.heightM', 'Receiver height above room floor (m)', 'Sampling', .001, 20],
-    ['sampling.columns', 'Sample columns', 'Sampling', 1, 64, true, 8],
-    ['sampling.rows', 'Sample rows', 'Sampling', 1, 64, true, 8],
-    ['numerics.spacingM', 'Maximum air-cell spacing (m)', 'Numerics', .01, 2, false, .25],
-    ['numerics.solidCells', 'Minimum cells through each solid layer', 'Numerics', 2, 20, true, 2],
-    ['numerics.deltaTSeconds', 'Initial time step (s)', 'Numerics', .0001, 10, false, .1],
-    ['numerics.endTimeSeconds', 'Simulation duration (s)', 'Numerics', .001, 86400, false, 10],
-    ['numerics.writeIntervalSeconds', 'Output interval (s)', 'Numerics', .001, 86400, false, 1],
+      [`boundaries.${side}`, `${side.length === 1 ? side + ' wall' : side} outer-face temperature (C)`, 'Boundaries', -100, 300]),
+    ['sampling.heightM', 'Receiver height above room floor (m)', 'Sampling', .005, 10],
+    ['sampling.columns', 'Sample columns', 'Sampling', 1, 512, true, 8],
+    ['sampling.rows', 'Sample rows', 'Sampling', 1, 512, true, 8],
+    ['numerics.spacingM', 'Maximum air-cell spacing (m)', 'Numerics', .02, 2, false, .25],
+    ['numerics.solidCells', 'Minimum cells through each solid layer', 'Numerics', 2, 16, true, 2],
+    ['numerics.deltaTSeconds', 'Fixed time step (s)', 'Numerics', .00001, 10, false, .1],
+    ['numerics.endTimeSeconds', 'Simulation duration (s)', 'Numerics', .00001, 3600, false, 10],
+    ['numerics.writeIntervalSeconds', 'Output interval (s)', 'Numerics', .00001, 3600, false, 1],
     ['numerics.maxCo', 'Maximum Courant number', 'Numerics', .01, 1, false, .5],
-    ['numerics.maxRuntimeSeconds', 'Wall-clock run limit (s)', 'Numerics', 1, 1800, true, 300]
+    ['numerics.maxRuntimeSeconds', 'Wall-clock run limit (s)', 'Numerics', 1, 1800, false, 300]
   ].map(([path, label, group, min, max, integer = false, initial = null]) =>
     Object.freeze({ path, label, group, min, max, integer, initial })));
   function getPath(value, path) { return path.split('.').reduce((item, part) => item?.[part], value); }
@@ -229,8 +229,11 @@
     for (const name of ['acknowledgeGeometry', 'acknowledgeEmptyRoom', 'acknowledgeModel'])
       if (typeof result[name] !== 'boolean' || complete && !result[name])
         throw new Error('Review and acknowledge the geometry, empty-room assumption and supported physics before preparing a case.');
-    if (complete && result.sampling.heightM >= geometry.heightM)
-      throw new Error('Receiver height must be strictly inside the current room height.');
+    if (complete && result.sampling.heightM > geometry.heightM - .005)
+      throw new Error('Receiver height must be strictly inside the room, at least 0.005 m from floor and ceiling.');
+    if (result.air.cpJkgK !== null && result.air.molarMassGmol !== null &&
+        result.air.cpJkgK <= 8314.46261815324 / result.air.molarMassGmol)
+      throw new Error('The supplied gas specific heat must give positive Cv = Cp - R.');
     if (result.sampling.columns * result.sampling.rows > 512)
       throw new Error('Use at most 512 sampling points; the grid is not silently reduced.');
     const current = new Set(geometry?.openings.map(opening => opening.id) || []);
@@ -243,12 +246,13 @@
         if (!['inlet', 'outlet', 'closed'].includes(row.mode)) throw new Error('Choose an inlet, outlet or closed-surface condition for every opening.');
         if ((row.mode === 'closed') !== (opening.openFraction === 0) || ![0, 1].includes(opening.openFraction))
           throw new Error(`${opening.side} opening condition disagrees with its actual saved operating state.`);
-        if (row.temperatureC === null || row.temperatureC < -100 || row.temperatureC > 200)
-          throw new Error(`${opening.side} opening requires a temperature between -100 and 200 C.`);
-        if (row.mode === 'inlet' && !(row.speedMps > 0 && row.speedMps <= 100))
-          throw new Error(`${opening.side} inlet requires an inward normal speed greater than zero and at most 100 m/s.`);
-        if (row.mode === 'outlet' && (row.gaugePressurePa === null || result.air.pressurePa + row.gaugePressurePa <= 0))
-          throw new Error(`${opening.side} outlet requires an explicit gauge pressure with positive absolute pressure.`);
+        if (row.temperatureC === null || row.temperatureC < -100 || row.temperatureC > 300)
+          throw new Error(`${opening.side} opening requires a temperature between -100 and 300 C.`);
+        if (row.mode === 'inlet' && !(row.speedMps >= .000001 && row.speedMps <= 20))
+          throw new Error(`${opening.side} inlet requires an inward normal speed between 0.000001 and 20 m/s.`);
+        if (row.mode === 'outlet' && (row.gaugePressurePa === null || Math.abs(row.gaugePressurePa) > 2000000 ||
+            result.air.pressurePa + row.gaugePressurePa <= 0))
+          throw new Error(`${opening.side} outlet requires gauge pressure within +/-2000000 Pa and positive absolute pressure.`);
         if (row.mode !== 'inlet') row.speedMps = null;
         if (row.mode !== 'outlet') row.gaugePressurePa = null;
       }

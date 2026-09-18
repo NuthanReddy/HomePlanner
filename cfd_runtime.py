@@ -891,7 +891,7 @@ def _validate_manifest(manifest, limits: Limits) -> None:
             not isinstance(source[key], str) or not source[key]
             for key in SOURCE_KEYS - {"revision"}
         )
-        or any(len(source[key]) > 512 for key in ("projectId", "floorId", "roomId"))
+        or any(len(source[key]) > 16384 for key in ("projectId", "floorId", "roomId"))
     ):
         raise CfdError("The compiled source identity is incomplete.", "invalid_compiled_case", 500)
     probes = manifest.get("probeLocations")

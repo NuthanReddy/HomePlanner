@@ -274,11 +274,11 @@ class InputContractTests(unittest.TestCase):
             (("source", "revision"), 9007199254740992),
             (("source", "projectId"), ""),
             (("source", "roomId"), " "),
-            (("source", "floorId"), "x" * 257),
+            (("source", "floorId"), "x" * 16385),
             (("source", "inputFingerprint"), ""),
             (("source", "geometryFingerprint"), " "),
             (("source", "projectId"), "\ud800"),
-            (("source", "roomId"), "😀" * 65),
+            (("source", "roomId"), "😀" * 4097),
             (("scenario", "sourceNote"), ""),
             (("scenario", "sourceNote"), "x" * 4097),
         ):
@@ -657,6 +657,24 @@ class CompilerOutputTests(unittest.TestCase):
         self.assertNotEqual(first["manifest"]["caseHash"], second["manifest"]["caseHash"])
         self.assertEqual(second["manifest"]["runtimeVerification"], "pending")
 
+    def test_long_model_lineage_ids_remain_opaque_without_changing_case_geometry(self):
+        payload = request()
+        before = cfd.prepare_case(payload)
+        payload["source"]["roomId"] = "ground:" + "room-lineage-" * 100
+        mapping = {}
+        for wall in payload["geometry"]["walls"]:
+            wall["sourceIds"] = [
+                mapping.setdefault(identity, identity + ":lineage:" + "x" * 900)
+                for identity in wall["sourceIds"]
+            ]
+        for opening in payload["geometry"]["openings"]:
+            opening["wallId"] = mapping[opening["wallId"]]
+        prepared = cfd.prepare_case(payload)
+        self.assertEqual(prepared["manifest"]["source"], payload["source"])
+        self.assertEqual(prepared["manifest"]["geometry"], payload["geometry"])
+        self.assertEqual(prepared["files"], before["files"])
+        self.assertNotEqual(prepared["manifest"]["caseHash"], before["manifest"]["caseHash"])
+
     def test_hash_captures_geometry_even_if_client_fingerprints_are_reused(self):
         payload = request()
         first = cfd.prepare_case(payload)["manifest"]["caseHash"]
@@ -991,6 +1009,34 @@ class GeometryAndTopologyTests(unittest.TestCase):
         with self.assertRaises(cfd.CfdInputError) as caught:
             cfd.prepare_case(payload)
         self.assertEqual(caught.exception.code, "unsupported_feature")
+
+    def test_profile_minimum_room_dimension_keeps_a_roundoff_fractional_value(self):
+        payload = sealed_request()
+        payload["geometry"]["rect"]["w"] = 0.1999999999999
+        payload["geometry"]["sourceRoomRect"]["w"] = 0.1999999999999
+        prepared = cfd.prepare_case(payload)
+        vertices, _, _ = self.assert_topology(prepared)
+        self.assertIn(0.1999999999999, {point[0] for point in vertices})
+        self.assertEqual(prepared["manifest"]["geometry"], payload["geometry"])
+
+    def test_site_coordinate_precision_alignment_reports_meshed_area_and_volume(self):
+        payload = fractional_request()
+        payload["geometry"]["rect"]["x"] = 999999.125
+        first, second = payload["geometry"]["openings"][:2]
+        second["offsetM"] = first["offsetM"] + first["widthM"] + 2e-9
+        prepared = cfd.prepare_case(payload)
+        vertices, _, patches = self.assert_topology(prepared)
+        mesh = prepared["manifest"]["mesh"]
+        self.assertGreater(mesh["maximumFeatureAlignmentM"], 1e-9)
+        self.assertLessEqual(mesh["maximumFeatureAlignmentM"], mesh["geometryAlignmentToleranceM"])
+        self.assertEqual(prepared["manifest"]["geometry"], payload["geometry"])
+        for opening in prepared["manifest"]["openings"]:
+            area = sum(face_area(vertices, face) for face in patches[opening["patch"]]["faces"])
+            self.assertAlmostEqual(area, opening["meshedAreaM2"], places=12)
+        self.assertAlmostEqual(
+            mesh["volumesM3"]["air"] + mesh["volumesM3"]["solid"] + mesh["volumesM3"]["excludedClosedSleeves"],
+            mesh["volumesM3"]["outerBox"], places=11,
+        )
 
     def test_all_closed_and_no_opening_meshes_are_connected_and_complete(self):
         for payload in (closed_request(), sealed_request()):

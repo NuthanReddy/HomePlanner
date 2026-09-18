@@ -277,8 +277,10 @@ class CfdAPITests(OwnedFixtureTest):
 
     def test_real_compiler_preparation_and_zip_integrate_without_runtime_or_filesystem_effects(self):
         payload = json.loads(Path(__file__).parent.joinpath("fixtures", "cfd-request.json").read_text(encoding="utf-8"))
-        payload["source"]["inputFingerprint"] = "caller-current-input:" + "a" * 8192
-        payload["source"]["geometryFingerprint"] = "caller-current-geometry:" + "b" * 8192
+        payload["source"]["inputFingerprint"] = json.dumps({"canonicalProjectText": "a" * 190_000}, separators=(",", ":"))
+        payload["source"]["geometryFingerprint"] = json.dumps({"canonicalSelectedGeometryText": "b" * 40_000}, separators=(",", ":"))
+        payload["source"]["roomId"] = "ground:" + "room-lineage-" * 100
+        self.assertLess(len(json.dumps(payload).encode("utf-8")), cfd.MAX_PAYLOAD_BYTES)
         before = copy.deepcopy(payload)
         runtime = cfd.LocalRuntime(cfd.RuntimeConfig.from_env({"HOMEPLANNER_CFD_ENABLED": "0"}))
         service = self.make_service(runtime=runtime, compiler=None)

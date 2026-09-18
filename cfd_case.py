@@ -212,7 +212,7 @@ def _validate_request(payload):
         "source",
     )
     for name in ("projectId", "floorId", "roomId"):
-        _string(source[name], f"source.{name}")
+        _string(source[name], f"source.{name}", 16384)
     for name in ("inputFingerprint", "geometryFingerprint"):
         _opaque_fingerprint(source[name], f"source.{name}")
     _integer(source["revision"], "source.revision", 0, 9007199254740991)
@@ -239,7 +239,7 @@ def _validate_request(payload):
             raise CfdInputError("Each of N, E, S, W must have exactly one wall.")
         _number(wall["thicknessM"], f"{path}.thicknessM", 0.02, 1)
         for identity in _list(wall["sourceIds"], f"{path}.sourceIds", 64, 1):
-            _string(identity, f"{path}.sourceIds entry")
+            _string(identity, f"{path}.sourceIds entry", 16384)
             if identity in wall_ids:
                 raise CfdInputError("Wall sourceIds must be unique, including across sides.")
             wall_ids.add(identity)
@@ -255,12 +255,12 @@ def _validate_request(payload):
             "id wallId side offsetM widthM sillM heightM openFraction kind adjacent",
             path,
         )
-        identity = _string(opening["id"], f"{path}.id")
+        identity = _string(opening["id"], f"{path}.id", 16384)
         if identity in opening_ids:
             raise CfdInputError("Geometric opening IDs must be unique.")
         opening_ids.add(identity)
         side = _enum(opening["side"], _SIDES, f"{path}.side")
-        wall_id = _string(opening["wallId"], f"{path}.wallId")
+        wall_id = _string(opening["wallId"], f"{path}.wallId", 16384)
         if wall_id not in walls[side]["sourceIds"]:
             raise CfdInputError(f"{path}.wallId must resolve to its declared wall side.")
         _string(opening["kind"], f"{path}.kind", 64)
@@ -341,7 +341,7 @@ def _validate_request(payload):
     for i, condition in enumerate(_list(scenario["openings"], "scenario.openings", MAX_OPENINGS)):
         path = f"scenario.openings[{i}]"
         _object(condition, "id mode temperatureC speedMps gaugePressurePa", path)
-        identity = _string(condition["id"], f"{path}.id")
+        identity = _string(condition["id"], f"{path}.id", 16384)
         if identity in condition_ids or identity not in by_id:
             raise CfdInputError("Opening conditions must have unique, resolved geometric IDs.")
         condition_ids.add(identity)

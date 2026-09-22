@@ -9,11 +9,11 @@ The planner creates an access graph after room placement:
   passage/flex space.
 - The perimeter corridor is entry-only for the dwelling; it is not used as a
   fake detour to make internal rooms appear connected.
-- Bathroom 1 is the common bathroom and must open to reachable internal
-  passage/flex space.
+- The first bathroom uses shared access and must open to reachable internal
+  passage/flex space; all bathrooms remain ordinary bathroom requests.
 - Later bathrooms are assigned one per bedroom as ensuites.
 - A bedroom receives at most one ensuite.
-- Requests above one common bathroom plus one per bedroom remain unplaced and
+- Requests above one shared-access bathroom plus one per bedroom remain unplaced and
   are reported.
 - Lifts and stairs can move inside the dwelling and reserve footprints within
   ordinary rooms. Their full wall-inclusive footprints are removed from host

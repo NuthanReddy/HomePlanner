@@ -2345,7 +2345,7 @@ function makeRoomRequests(cfg){
     const i=Number(id.slice(5));
     const bedroomIndex=i-1;
     const accessMode=i===1?'shared':bedroomIndex<(roomIdentityState.bed?.next||1)?'ensuite':'overflow';
-    req.push({id,label:i===1?`${names.bathroom} 1 (Common)`:`${names.bathroom} ${i}`,
+    req.push({id,label:`${names.bathroom} ${i}`,
       type:'bathroom',range:cfg.bathroom,priority:4,seq:seq++,accessMode,
       bedroomId:accessMode==='ensuite'?`bed-${bedroomIndex}`:null});
   }

@@ -79,7 +79,7 @@ test('generated room labels follow the Vastu room-name catalogue without changin
   assert.equal(requests.find(item=>item.id==='bed-2').label,`${names.other_bedroom} 2`);
   assert.equal(requests.find(item=>item.id==='kitchen-1').label,names.kitchen);
   assert.equal(requests.find(item=>item.id==='pooja-1').label,names.pooja);
-  assert.equal(requests.find(item=>item.id==='bath-1').label,`${names.bathroom} 1 (Common)`);
+  assert.equal(requests.find(item=>item.id==='bath-1').label,`${names.bathroom} 1`);
   assert.equal(requests.find(item=>item.id==='stair-1').label,`${names.stairs} 1`);
 });
 

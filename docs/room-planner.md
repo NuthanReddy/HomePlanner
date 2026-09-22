@@ -6,7 +6,7 @@ The Room Planner turns the currently selected whole-plot or split-plot
 buildable envelope into a deterministic, editable schematic. Fresh browser/new
 projects start with one bedroom, one kitchen and two bathrooms. Suggestions
 prefer a northwest bedroom (northeast is also accepted), southeast kitchen,
-south common bathroom and west second bathroom, using geographic directions
+south first bathroom and west second bathroom, using geographic directions
 after the plot's frontage rotation. Existing saved/manual layouts are not
 replaced by these defaults; **Add empty floor** remains explicitly empty.
 

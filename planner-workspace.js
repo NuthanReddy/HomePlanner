@@ -121,6 +121,7 @@
     if (exportButton) by('workspaceExportProject')?.replaceWith(exportButton);
     move(by('plannerProjectTools'), by('workspaceTools'));
     const tools = by('plannerProjectTools'), toolsBody = tools?.querySelector('.hp-editor-body');
+    let floorTool = null;
     if (toolsBody) {
       const compact = create('div', 'hp-workspace-tool-row hp-editor-actions hp-workspace-floor-only');
       const floor = by('hp-editor-floor-select');
@@ -128,6 +129,7 @@
         move(toolsBody.querySelector(`label[for="${floor.id}"]`), compact);
         move(floor, compact);
         by('workspaceTools').append(compact);
+        floorTool = compact;
       }
       show(tools, false);
     }
@@ -276,7 +278,8 @@
       show(by('workspaceElevations'), view === 'elevations');
       show(by('workspaceLight'), view === 'env-light');
       show(sunWorkspace, view === 'env-sun');
-      show(by('plotSources'), view === 'optimizer');
+      show(floorTool, next.destination === 'design' || next.destination === 'report');
+      show(by('plotSources'), view === 'optimizer' && next.section === 'references');
       if (view === 'optimizer') {
         const pane = next.section === 'comparisons' ? 'insights' : next.section === 'references' ? 'refs' : 'calc';
         all('#plotResults .pane').forEach(node => {

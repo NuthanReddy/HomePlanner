@@ -117,6 +117,15 @@ test('routing does not invoke project editing, remount consumers, or initiate re
   assert.match(shell, /homePlannerWorkspace\) return document\.body\.homePlannerWorkspace/);
   assert.match(shell, /closest\?\.\('button\[data-workspace\], a\[data-workspace\]/,
     'The body data-workspace CSS hook must not intercept ordinary form/button clicks');
+  assert.match(shell, /show\(floorTool, next\.destination === 'design' \|\| next\.destination === 'report'\)/,
+    'The active editable-floor selector must stay out of Site and Environment workspaces');
+});
+
+test('editable floor selector follows planned floor count without fabricating floors', () => {
+  const editor = source('planner-editor.js');
+  assert.match(editor, /const planned = typeof window === 'object' \? window\.__last : null/);
+  assert.match(editor, /const floors = authoredFloors\.slice\(0, plannedFloors\)/);
+  assert.match(editor, /const activeFloorId = floors\.some\(floor => floor\.id === state\.project\.activeFloorId\)/);
 });
 
 test('property startup is explicit, not coupled to navigation or legacy deep-link clicks', () => {

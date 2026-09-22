@@ -6,6 +6,10 @@ const path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const plain=value=>JSON.parse(JSON.stringify(value));
 
+test('side/rear compounding is enabled by default in the plot planner',()=>{
+  assert.ok(html.includes('<input type="checkbox" id="dev" checked>'));
+});
+
 function field(value='',checked=false){
   let text='',current=String(value),options=[];
   return {checked,dataset:{},

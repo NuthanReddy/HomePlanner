@@ -94,6 +94,11 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .b-tdr{background:rgba(188,140,255,.15);color:var(--tdr)}
 .note{font-size:12px;color:var(--dim);margin-top:10px;padding-left:10px;border-left:2px solid var(--line)}
 .verdict{padding:12px 14px;border-radius:8px;margin-bottom:10px;font-size:13.5px;line-height:1.5}
+.field-info{display:inline-block;position:relative;margin-left:6px;vertical-align:middle}
+.field-info summary{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:1px solid var(--line);border-radius:50%;color:var(--acc);font-size:12px;font-weight:700;cursor:pointer;list-style:none}
+.field-info summary::-webkit-details-marker{display:none}
+.field-info[open] summary{background:var(--acc);color:var(--bg)}
+.field-info-body{position:absolute;z-index:10;top:24px;left:0;width:min(360px,calc(100vw - 48px));padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:12px;line-height:1.5;font-weight:400}
 .v-ok{background:rgba(63,185,80,.09);border:1px solid rgba(63,185,80,.35)}
 .v-info{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.3)}
 .v-warn{background:rgba(210,153,34,.09);border:1px solid rgba(210,153,34,.35)}
@@ -441,6 +446,7 @@ body.room-plan-lock{overflow:hidden}
           <option value="NW">North-West corner</option>
         </optgroup>
       </select>
+      <span id="cornerPlotInfo"></span>
 
       <label for="dunit">Units</label>
       <select id="dunit">
@@ -459,6 +465,7 @@ body.room-plan-lock{overflow:hidden}
       <h2>Roads</h2>
       <div id="roadInputs"></div>
       <div class="mini" id="roadEcho" style="margin-top:8px"></div>
+      <span id="roadRuleInfo"></span>
     </div>
 
     <div class="card">
@@ -514,7 +521,7 @@ body.room-plan-lock{overflow:hidden}
 
       <div class="chk"><input type="checkbox" id="stilt" checked><label for="stilt" style="margin:0">Stilt parking floor <span class="mini">— excluded from the Table III height</span></label></div>
       <div class="chk"><input type="checkbox" id="tdr"><label for="tdr" style="margin:0">Use <b style="color:var(--tdr)">TDR</b> — GO 95 relaxations &amp; extra floors <span class="mini">(750–2,000 sq m plots: 18–21 m band; extra floors: above 2,000 sq m with qualifying roads)</span></label></div>
-      <div class="chk"><input type="checkbox" id="dev"><label for="dev" style="margin:0">Show 10% side/rear compounding (Rule 26(d))</label></div>
+      <div class="chk"><input type="checkbox" id="dev" checked><label for="dev" style="margin:0">Show 10% side/rear compounding (Rule 26(d))</label><span id="devRuleInfo"></span></div>
       <div class="chk"><input type="checkbox" id="customSetbacks"><label for="customSetbacks" style="margin:0">Allow setback violations <span class="mini">— custom what-if scenario only</span></label></div>
       <div id="customSetbackFields" hidden>
         <p class="mini">Enter setbacks in metres, relative to the selected road/front. Values below the rule minimum are flagged as non-compliant. Road widening, height limits and open-space deductions still apply.</p>
@@ -630,18 +637,6 @@ body.room-plan-lock{overflow:hidden}
     </div>
 
     <div class="card">
-      <h2>G.O.Ms.No.95 dt. 21.03.2026 — What Changed</h2>
-      <div class="table-scroll"><table id="go95Table"></table></div>
-      <div class="note">Verbatim from the gazette scan in the Telangana GO Issue Register. GO 95 amended <b>Rule 2(f)</b> and inserted <b>Rule 17(d)(viii)–(xii)</b> and substituted <b>Rule 17(f)(xii)</b>. It did <b>not</b> reprint Table II, Table III or Table IV, so the road-width categories and the setback tables below are still the 2012 values.</div>
-    </div>
-
-    <div class="card">
-      <h2>Permission Route — TG-bPASS</h2>
-      <table id="permTable"></table>
-      <div class="note" id="permNote"></div>
-    </div>
-
-    <div class="card">
       <h2>Other Area-Consuming Requirements</h2>
       <table id="extraTable"></table>
     </div>
@@ -720,6 +715,22 @@ body.room-plan-lock{overflow:hidden}
       <h2>Official Documents</h2>
       <div class="table-scroll"><table id="docsTable"></table></div>
       <div class="note">All links checked reachable. Telangana GO PDFs are scanned images, so text search inside them generally will not work — GO 95 above was read via the OCR text layer in the Government Order Issue Register archive.</div>
+    </div>
+    <div class="card">
+      <h2>G.O.Ms.No.95 dt. 21.03.2026 — What Changed</h2>
+      <div class="table-scroll"><table id="go95Table"></table></div>
+      <div class="note">Verbatim from the gazette scan in the Telangana GO Issue Register. GO 95 amended <b>Rule 2(f)</b> and inserted <b>Rule 17(d)(viii)–(xii)</b> and substituted <b>Rule 17(f)(xii)</b>. It did <b>not</b> reprint Table II, Table III or Table IV, so the road-width categories and the setback tables below are still the 2012 values.</div>
+    </div>
+    <div class="card">
+      <h2>Permission Route — TG-bPASS</h2>
+      <table id="permTable"></table>
+      <div class="note" id="permNote"></div>
+    </div>
+    <div class="foot" id="plotSources">
+      <b>Sources.</b> G.O.Ms.No.168 MA&amp;UD dt. 07.04.2012 — Rule 2(f) definitions, Rule 4 &amp; Table II (approach road), Rule 5 &amp; Table III (setbacks &amp; height), Rule 6 (projections), Rule 7 &amp; Table IV (high-rise), Rule 13 &amp; Table V (parking), Rule 26 (occupancy certificate &amp; compounding), Rule 27 (enforcement).
+      G.O.Ms.No.95 MA&amp;UD dt. 21.03.2026 — Rule 2(f) substituted, Rule 17(d)(viii)–(xii) inserted, Rule 17(f)(xii) substituted.
+      TG-bPASS Act 12 of 2020 s.7 (permission tiers); Telangana Municipalities Act 2019 s.174 (enforcement).
+      <br><b>Caveat.</b> Master-plan land use, Annexure I/II restrictions, Banjara &amp; Jubilee Hills special rules, heritage and religious-structure buffers, FTL/buffer zones, HMDA layout conditions, airport funnel zones and local road-widening proposals can all override these figures. GO 95 takes effect on publication in the Telangana Gazette. Other amendment GOs since 2014 are published as scanned images and were not machine-readable, so Table II/III/IV cell values here are the 2012 originals. Confirm on TG-bPASS before you design or buy.
     </div>
     </div><!-- /pane-refs -->
   </div>
@@ -1031,7 +1042,9 @@ body.room-plan-lock{overflow:hidden}
                   <span class="component-shape">DOOR</span><span><b>Door</b><small id="componentDoorSize">3 ft clear · snap to room wall</small></span>
                 </button>
                 <label>Clear width (ft)<input id="manualDoorW" type="number" min="2.25" max="8" step="0.25" value="3"></label>
-                <div class="library-note">Drop near a room wall. The opening snaps to that wall and can be removed from the plan.</div>
+                <label>Clear height (ft)<input id="manualDoorH" type="number" min="6" max="12" step="0.25" value="7"></label>
+                <label>Offset from wall start (ft)<input id="manualDoorOffset" type="number" min="0" step="0.25" value="0"></label>
+                <div class="library-note">Drop near a room wall. The opening is added to that wall at this offset and can be moved along the wall.</div>
               </div>
               <div class="component-entry component-config" data-component-panel="window" hidden>
                 <button type="button" class="component-item" draggable="true" data-component="window">
@@ -1087,6 +1100,7 @@ body.room-plan-lock{overflow:hidden}
               <button type="button" class="room-tool" id="roomAddDoor" disabled>Add door</button>
               <button type="button" class="room-tool" id="roomAddWindow" disabled>Add window</button>
               <button type="button" class="room-tool" id="roomWallEnds" disabled>Wall ends</button>
+              <button type="button" class="room-tool" id="roomRotateSelection" disabled>Rotate</button>
               <button type="button" class="room-tool" id="roomDeleteSelection" data-hp-editor-action="delete-room" disabled>Delete</button>
             </div>
             <div class="room-zoom-controls" role="group" aria-label="Zoom controls">
@@ -1294,13 +1308,6 @@ body.room-plan-lock{overflow:hidden}
       <p class="mini">Sun paths, pole-shadow length and house sunlight hours are geometric estimates, not measured sunshine, solar energy, weather or indoor temperature. House sunlight includes the supplied scene and explicit full-side neighbour assumptions; the room planner's daylight and ventilation checks remain separate heuristics.</p>
     </div>
   </div>
-</div>
-
-<div class="foot" id="plotSources">
-  <b>Sources.</b> G.O.Ms.No.168 MA&amp;UD dt. 07.04.2012 — Rule 2(f) definitions, Rule 4 &amp; Table II (approach road), Rule 5 &amp; Table III (setbacks &amp; height), Rule 6 (projections), Rule 7 &amp; Table IV (high-rise), Rule 13 &amp; Table V (parking), Rule 26 (occupancy certificate &amp; compounding), Rule 27 (enforcement).
-  G.O.Ms.No.95 MA&amp;UD dt. 21.03.2026 — Rule 2(f) substituted, Rule 17(d)(viii)–(xii) inserted, Rule 17(f)(xii) substituted.
-  TG-bPASS Act 12 of 2020 s.7 (permission tiers); Telangana Municipalities Act 2019 s.174 (enforcement).
-  <br><b>Caveat.</b> Master-plan land use, Annexure I/II restrictions, Banjara &amp; Jubilee Hills special rules, heritage and religious-structure buffers, FTL/buffer zones, HMDA layout conditions, airport funnel zones and local road-widening proposals can all override these figures. GO 95 takes effect on publication in the Telangana Gazette. Other amendment GOs since 2014 are published as scanned images and were not machine-readable, so Table II/III/IV cell values here are the 2012 originals. Confirm on TG-bPASS before you design or buy.
 </div>
 
 <script>
@@ -1753,6 +1760,16 @@ function render(){
     + (r.widenStrip>0
         ? `<br><b style="color:var(--warn)">Road under 9 m — ${f1(r.widenStrip)} m widening strip deducted automatically.</b> Rule 4(b)/(c) makes this mandatory: land up to 4.5 m from the road centre line must be surrendered free of cost, and setbacks are measured after it.`
         : '');
+  const infoTip = text => `<details class="field-info"><summary aria-label="More information">i</summary><div class="field-info-body">${text}</div></details>`;
+  $('cornerPlotInfo').innerHTML = r.corner ? infoTip(
+    `<b>Corner plot — ${r.face}.</b> Roads on the ${r.edges.map(d=>DIRNAME[d]).join(' and ')} edges. Rule 5(f)(ii) puts the front setback on the wider road (<b>${DIRNAME[r.frontEdge]}</b>, ${f1(r.rawRd)} m); the Column-10 setback applies on every remaining edge. A junction splay of ${r.rawRd<12?'3 × 3 m':r.rawRd<=24?'4.5 × 4.5 m':'6 × 6 m'} is required and counts as part of the road junction (Rule 5(f)(xiv)). For an individual residential building you may elect the front on the other road instead — but then you get no access from the first.`
+  ) : '';
+  $('roadRuleInfo').innerHTML = r.rawRd >= 9 && r.effRoad < 12 ? infoTip(
+    `<b>9 m (30 ft) road → 5 floors maximum.</b> Table II category B1 permits "cellar and/or stilt as permissible + <b>maximum up to 5 floors</b>". Table III caps height at <b>15 m</b>, and the 15–18 m band needs a <b>minimum 12 m road</b>. GO 95 did not change this — its extra-floor benefit needs a 40 ft road <i>and</i> a plot above 2 000 sq m. A 6th habitable floor needs a <b>12 m (40 ft)</b> road.`
+  ) : '';
+  $('devRuleInfo').innerHTML = r.devOn ? infoTip(
+    `<b>10% compounding shown on side &amp; rear only.</b> Rule 26(d) lets the authority compound setback violations <b>other than the front</b>, for <b>non-high-rise only</b>, up to 10%. Fee = <b>100% of the Registration Department land value of the violated portion</b>. This is discretionary post-facto relief at occupancy-certificate stage — <b>not</b> something to design to. No compounding at all if built without a sanctioned plan. Distinct from the GO 95 TDR relaxation, which is a design-stage entitlement you pay for in development rights.`
+  ) : '';
 
   $('floorEcho').innerHTML = `<b>${r.stilt?'Stilt + ':''}${floorLabel(r.floors)}</b> = ${r.floors} selected habitable floor${r.floors===1?'':'s'} at ${r.ffh} m each; up to ${floorLabel(r.maxFloors)} in the ${r.selH} m band`
     + (r.stilt?`. The stilt parking floor sits below and is <b>excluded</b> from the ${r.selH} m (Rule 5(c), min 2.5 m clear).`:'.')
@@ -1767,12 +1784,8 @@ function render(){
     : '<b>Custom setback scenario.</b> These entered setbacks are not below the modeled minimum, but no legal compliance or building permission is certified.']);
   if (r.rawRd < 9)
     V.push(['v-warn', `<b>Road under 9 m.</b> Rule 4(b)/(c): permitted only after surrendering land up to <b>4.5 m from the road centre line</b> free of cost, with setbacks measured after that strip. Maximum height then ${r.cat==='A'?'10 m':'12 m (individual residential only)'}. <b>No relaxations permissible.</b>`]);
-  if (r.rawRd >= 9 && r.effRoad < 12)
-    V.push(['v-warn', `<b>9 m (30 ft) road → 5 floors maximum.</b> Table II category B1 permits "cellar and/or stilt as permissible + <b>maximum up to 5 floors</b>". Table III caps height at <b>15 m</b>, and the 15–18 m band needs a <b>minimum 12 m road</b>. GO 95 did not change this — its extra-floor benefit needs a 40 ft road <i>and</i> a plot above 2 000 sq m. A 6th habitable floor needs a <b>12 m (40 ft)</b> road.`]);
   if (r.effRoad >= 12 && r.effRoad < 18)
     V.push(['v-ok', `<b>12 m (40 ft) road.</b> Table II category B2 — group housing up to <b>6 floors</b>; high-rise up to 24 m permitted.`]);
-  if (r.corner)
-    V.push(['v-ok', `<b>Corner plot — ${r.face}.</b> Roads on the ${r.edges.map(d=>DIRNAME[d]).join(' and ')} edges. Rule 5(f)(ii) puts the front setback on the wider road (<b>${DIRNAME[r.frontEdge]}</b>, ${f1(r.rawRd)} m); the Column-10 setback applies on every remaining edge. A junction splay of ${r.rawRd<12?'3 × 3 m':r.rawRd<=24?'4.5 × 4.5 m':'6 × 6 m'} is required and counts as part of the road junction (Rule 5(f)(xiv)). For an individual residential building you may elect the front on the other road instead — but then you get no access from the first.`]);
   if (r.highRise){
     const need = r.hrRow ? r.hrRow.road : 30;
     V.push([r.netA>=2000 && r.effRoad>=need ? 'v-ok':'v-bad',
@@ -1786,8 +1799,6 @@ function render(){
     V.push(['v-warn', `<b>TDR is enabled but gives no geometric benefit in this scenario.</b> The selected plot, road and height do not activate an extra-floor band or a usable high-rise setback relaxation, so built-up area and cost per sq ft correctly remain unchanged.`]);
   if (r.F.bw<=0 || r.F.bd<=0)
     V.push(['v-bad', `<b>No buildable envelope.</b> Mandatory setbacks exceed the plot at this height. Drop to a lower height band, or look at the narrow-plot and setback-transfer provisions.`]);
-  if (r.devOn)
-    V.push(['v-warn', `<b>10% compounding shown on side &amp; rear only.</b> Rule 26(d) lets the authority compound setback violations <b>other than the front</b>, for <b>non-high-rise only</b>, up to 10%. Fee = <b>100% of the Registration Department land value of the violated portion</b>. This is discretionary post-facto relief at occupancy-certificate stage — <b>not</b> something to design to. No compounding at all if built without a sanctioned plan. Distinct from the GO 95 TDR relaxation, which is a design-stage entitlement you pay for in development rights.`]);
   if (r.devBlocked)
     V.push(['v-bad', `<b>Rule 26(d) compounding does not apply.</b> It is limited to non-high-rise buildings. For this high-rise, the route is the GO 95 Rule 17(d)(x) TDR relaxation — up to 10% of permissible setbacks, floored at 7 m all round.`]);
   if (r.netA<=400 && r.D>=4*r.W)
@@ -2097,7 +2108,7 @@ function roomPlannerConfig(){
     pooja:roomCount('poojaCount',2),bathroom:roomCount('bathCount',8),balcony:roomCount('balconyCount',4),
     lift:roomCount('liftCount',3),staircase:roomCount('stairCount',2)};
   if(counts.bathroom>counts.bedroom+1)
-    warnings.push(`${counts.bathroom-counts.bedroom-1} bathroom request${counts.bathroom-counts.bedroom-1===1?'':'s'} exceed the one-common-plus-one-per-bedroom access limit and will remain unplaced.`);
+    warnings.push(`${counts.bathroom-counts.bedroom-1} bathroom request${counts.bathroom-counts.bedroom-1===1?'':'s'} exceed the shared-access-plus-one-per-bedroom access limit and will remain unplaced.`);
   $('stairWidthEcho').innerHTML=`Two <b>${f1(stairFlightW/FT)} ft</b> flights = <b>${f1(2*stairFlightW/FT)} ft</b> total stair-block width.`;
   return {
     warnings,
@@ -2133,6 +2144,7 @@ function roomPlannerConfig(){
     },
     openingComponents:{
       doorWidth:roomFt('manualDoorW'),
+      doorHeight:roomFt('manualDoorH'),
       windowWidth:roomFt('manualWindowW'),
       windowHeight:roomFt('manualWindowH'),
       wallWidth:roomFt('manualWallOpeningW'),
@@ -2332,7 +2344,7 @@ function makeRoomRequests(cfg){
   for(const id of roomStableIds('bath',cfg.counts.bathroom)){
     const i=Number(id.slice(5));
     const bedroomIndex=i-1;
-    const accessMode=i===1?'common':bedroomIndex<(roomIdentityState.bed?.next||1)?'ensuite':'overflow';
+    const accessMode=i===1?'shared':bedroomIndex<(roomIdentityState.bed?.next||1)?'ensuite':'overflow';
     req.push({id,label:i===1?`${names.bathroom} 1 (Common)`:`${names.bathroom} ${i}`,
       type:'bathroom',range:cfg.bathroom,priority:4,seq:seq++,accessMode,
       bedroomId:accessMode==='ensuite'?`bed-${bedroomIndex}`:null});
@@ -2520,7 +2532,7 @@ function roomRolePenalty(req,x,y,w,h,g){
 function roomPreferredDirections(req){
   if(req.type==='kitchen')return [['S','E']];
   if(req.type==='bedroom')return [['N','W'],['N','E']];
-  if(req.type==='bathroom')return req.accessMode==='common'?[['S']]:[['W']];
+  if(req.type==='bathroom')return req.accessMode==='shared'?[['S']]:[['W']];
   return [];
 }
 
@@ -3361,7 +3373,7 @@ function roomCirculationAnalysis(g,plan){
     const passage=passages.map((r,i)=>{
       if(!internalNetwork.reachable.has(i))return null;
       const opening=roomSharedOpening(p.module,r,width,ROOM_DOOR_MIN,
-        p.req.type==='bathroom'&&p.req.accessMode==='common'?FT+.001:INT_WALL+.001);
+        p.req.type==='bathroom'&&p.req.accessMode==='shared'?FT+.001:INT_WALL+.001);
       if(p.req.stairEnclosure!==undefined&&opening?.edge!==roomStairEntryEdge(p,g))return null;
       return opening?{...opening,targetType:'passage',targetLabel:'Passage',target:r,
         distance:internalNetwork.distance.get(i)||1}:null;
@@ -3369,7 +3381,7 @@ function roomCirculationAnalysis(g,plan){
     let hall=living&&livingAccessible?roomSharedOpening(p.module,living.module,width):null;
     if(p.req.stairEnclosure!==undefined&&hall?.edge!==roomStairEntryEdge(p,g))hall=null;
     const hallAccess=hall?[{...hall,targetType:'living',targetLabel:'Living / Dining',target:living}]:[];
-    const candidates=p.req.type==='bathroom'&&p.req.accessMode==='common'?passage:[...hallAccess,...passage];
+    const candidates=p.req.type==='bathroom'&&p.req.accessMode==='shared'?passage:[...hallAccess,...passage];
     if(candidates[0])accessByRoom.set(p.req.id,candidates[0]);
   });
   plan.placed.filter(p=>p.req.type==='bathroom'&&p.req.accessMode==='ensuite').forEach(p=>{
@@ -3735,6 +3747,46 @@ function roomDropOpeningComponent(ctx,type,point){
     return true;
   }
   const width=type==='window'?cfg.openingComponents.windowWidth:cfg.openingComponents.doorWidth;
+  if(type==='door'){
+    const scene=window.HomePlanner?.getScene?.();
+    const roomId=candidate.p.req.id;
+    const wallCandidates=(scene?.walls||[]).filter(wall=>Array.isArray(wall.roomIds)&&wall.roomIds.includes(roomId))
+      .map(wall=>{
+        const segment=roomOpeningSegmentFromRecord({edge:candidate.edge,fraction:candidate.fraction,width},candidate.p).segment;
+        return {wall,distance:roomPointToSegmentDistance(
+          {x:(segment.x1+segment.x2)/2,y:(segment.y1+segment.y2)/2},
+          {x1:wall.start.x,y1:wall.start.y,x2:wall.end.x,y2:wall.end.y})};
+      }).sort((a,b)=>a.distance-b.distance);
+    const host=wallCandidates[0]?.wall;
+    const offsetFt=Number($('manualDoorOffset')?.value);
+    const widthFt=Number($('manualDoorW')?.value);
+    if(!host){
+      status.innerHTML='<b style="color:var(--bad)">No canonical wall host was found for this room.</b> Select the wall and use Add door in the shared inspector.';
+      return false;
+    }
+    if(!Number.isFinite(offsetFt)||offsetFt<0){
+      status.innerHTML='<b style="color:var(--bad)">Enter a non-negative wall-start offset for the door.</b>';
+      $('manualDoorOffset')?.focus();
+      return false;
+    }
+    if(!Number.isFinite(widthFt)||widthFt<=0){
+      status.innerHTML='<b style="color:var(--bad)">Enter a positive door width.</b>';
+      $('manualDoorW')?.focus();
+      return false;
+    }
+    try{
+      const length=Math.hypot(host.end.x-host.start.x,host.end.y-host.start.y);
+      const offsetM=offsetFt*FT,widthM=widthFt*FT;
+      if(offsetM+widthM>length+1e-7)throw new Error('The door must fit within the selected wall span.');
+      window.HomePlanner.execute({type:'add-door',wallId:host.id,offsetM,widthM,heightM:cfg.openingComponents.doorHeight,
+        openFraction:0,hinge:'start',swing:'left'});
+      status.innerHTML=`<b style="color:var(--ok)">Door added to the wall.</b> Offset ${f1(offsetFt)} ft from wall start. Drag the door on the plan to move it.`;
+      return true;
+    }catch(error){
+      status.innerHTML=`<b style="color:var(--bad)">Door could not be added.</b> ${roomEscapeMarkup(error.message)}`;
+      return false;
+    }
+  }
   const record={id,type,roomId:candidate.p.req.id,edge:candidate.edge,fraction:candidate.fraction,width,
     label:type==='window'?`${candidate.p.req.label} custom window`:candidate.p.req.label};
   if(type==='window')Object.assign(record,{height:cfg.openingComponents.windowHeight,
@@ -5326,6 +5378,7 @@ function initRoomViewport(){
     ['roomAddDoor','canAddDoor','requestAddOpening',['door']],
     ['roomAddWindow','canAddWindow','requestAddOpening',['window']],
     ['roomWallEnds','canEditWallSpan','requestEditSelection',[{section:'wall-span'}]],
+    ['roomRotateSelection','canRotate','requestRotateSelection',[]],
     ['roomDeleteSelection','canDelete','requestDeleteSelection',[]]
   ];
   const syncHistory=()=>{
@@ -5385,6 +5438,31 @@ function initRoomViewport(){
     const r=viewport.getBoundingClientRect();
     roomSetZoom(roomPlanZoom+(ev.deltaY<0?.1:-.1),{x:ev.clientX-r.left,y:ev.clientY-r.top});
   },{passive:false});
+  let pinchDistance=0;
+  viewport.addEventListener('touchmove',ev=>{
+    if(ev.touches.length!==2)return;
+    const [a,b]=ev.touches;
+    const dx=b.clientX-a.clientX,dy=b.clientY-a.clientY;
+    const distance=Math.hypot(dx,dy);
+    if(!pinchDistance){pinchDistance=distance;return;}
+    const rect=viewport.getBoundingClientRect();
+    const anchor={x:(a.clientX+b.clientX)/2-rect.left,y:(a.clientY+b.clientY)/2-rect.top};
+    roomSetZoom(roomPlanZoom+(distance-pinchDistance)/240,anchor);
+    pinchDistance=distance;
+    ev.preventDefault();
+    ev.stopPropagation();
+  },{passive:false,capture:true});
+  viewport.addEventListener('touchstart',ev=>{
+    if(ev.touches.length===2){
+      const [a,b]=ev.touches;
+      pinchDistance=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
+      ev.stopPropagation();
+    }
+  },{passive:false,capture:true});
+  viewport.addEventListener('touchend',ev=>{
+    if(ev.touches.length<2)pinchDistance=0;
+  },{passive:true,capture:true});
+  viewport.addEventListener('touchcancel',()=>{pinchDistance=0;},{passive:true,capture:true});
   viewport.addEventListener('keydown',ev=>{
     if(ev.key==='+'||ev.key==='='){roomSetZoom(roomPlanZoom+.1);ev.preventDefault();}
     else if(ev.key==='-'){roomSetZoom(roomPlanZoom-.1);ev.preventDefault();}
@@ -5797,7 +5875,7 @@ function renderRoomPlanner(r){
   const scheduleRows=rows.length?rows.join(''):'<tr><td colspan="6" class="mini">No rooms or services requested yet. Add them from the right sidebar.</td></tr>';
   $('roomTable').innerHTML=`<tr><th>Space</th><th class="n">Size / bounding dimensions</th><th class="n">Usable carpet area</th><th>Requested range</th><th>Openings</th><th>Status</th></tr>${scheduleRows}`;
   $('roomNote').innerHTML=`Front / side / rear external corridor bands are <b>${f1(g.F/FT)} / ${f1(g.S/FT)} / ${f1(g.B/FT)} ft</b> and remain inside the statutory envelope. Lifts and staircases can be positioned over rooms inside the dwelling; their complete footprints are reserved from host usable area. `+
-    `Internal flex / circulation after room expansion: <b>${f0(plan.unassigned*M2SF)} sq ft</b>. ${cfg.counts.living?'Living/dining receives the dwelling entry. ':'When no living room is requested, rooms connect to an internal passage reached from the dwelling entry. '}The common bathroom opens only to reachable internal flex / passage; each other bathroom is assigned to one bedroom, with no bedroom receiving more than one ensuite. Lift/stair access may use a corridor or a valid internal connection; missing access is flagged without forcing the service back to a fixed location. Pooja rooms and bathrooms are prevented from sharing a wall. External walls use <b>${f1(cfg.walls.external/IN)} in</b>; internal wall modules reserve <b>${f1(cfg.walls.internal/IN)} in</b>. `+
+    `Internal flex / circulation after room expansion: <b>${f0(plan.unassigned*M2SF)} sq ft</b>. ${cfg.counts.living?'Living/dining receives the dwelling entry. ':'When no living room is requested, rooms connect to an internal passage reached from the dwelling entry. '}The first bathroom uses reachable internal flex / passage access; each additional bathroom is assigned to one bedroom, with no bedroom receiving more than one ensuite. Lift/stair access may use a corridor or a valid internal connection; missing access is flagged without forcing the service back to a fixed location. Pooja rooms and bathrooms are prevented from sharing a wall. External walls use <b>${f1(cfg.walls.external/IN)} in</b>; internal wall modules reserve <b>${f1(cfg.walls.internal/IN)} in</b>. `+
     `The enclosed dwelling shell is rectangular; balconies remain outside it and may cross the statutory envelope only when the selected high-rise floor is at least 6 m above ground, capped at 2 m and the available setback. `+
     `Wall figures are plan-footprint estimates, not vertical wall surface area.<br><br>`+
     `<b>Planning limit.</b> This is a deterministic packing heuristic, not an architectural, structural, fire-safety, accessibility, cultural-guidance or sanction drawing. Structural columns, stair rise/run and landing calculations, lift machinery/pits, ducts, plumbing stacks, detailed door swings, parking and escape-path widths still need an architect and engineer.`;

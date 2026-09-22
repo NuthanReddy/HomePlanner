@@ -46,6 +46,7 @@
     const canDeleteOpening = opening && openingHostAvailable(openingHost, true);
     return {
       canEdit: !!entity,
+      canRotate: selection?.kind === 'furniture' && !!entity,
       canDelete: !!entity && (['room', 'balcony', 'furniture'].includes(selection.kind) || !!canDeleteOpening
         || !!partition && !wall.removed),
       canAddDoor: !!host, canAddWindow: !!host,
@@ -1713,13 +1714,19 @@
 
     function renderTools(state) {
       if (!tools) return;
-      const floors = state.project.floors || [];
+      const authoredFloors = state.project.floors || [];
+      const planned = typeof window === 'object' ? window.__last : null;
+      const plannedFloors = Number.isSafeInteger(planned?.floors) && planned.floors > 0
+        ? planned.floors : authoredFloors.length;
+      const floors = authoredFloors.slice(0, plannedFloors);
       const options = floors.map((floor, index) => {
         let elevation;
         try { elevation = metreText(floorElevation(state.project, floor.id)); } catch (_) { elevation = 'Elevation unavailable'; }
         return { value: floor.id, label: `${index + 1}. ${floor.name} · ${elevation}` };
       });
-      selectOptions(floorSelect, options, state.project.activeFloorId);
+      const activeFloorId = floors.some(floor => floor.id === state.project.activeFloorId)
+        ? state.project.activeFloorId : floors[0]?.id;
+      selectOptions(floorSelect, options, activeFloorId);
       const key = JSON.stringify([state.project.id, state.project.activeFloorId]);
       if (floors.some(floor => floor.id === state.project.activeFloorId)) {
         if (floorKey !== key) buildFloor(state, key);
@@ -1808,6 +1815,14 @@
         canUndo: planner.canUndo(), canRedo: planner.canRedo(),
         reason: otherFloor ? 'Choose the selected object’s floor explicitly in Active editable floor before editing. Picking does not switch floors.' : actions.reason
       };
+    }
+    function requestRotateSelection() {
+      if (destroyed || !inspector) return false;
+      return retainInputs(() => run(inspector, () => {
+        const state = getActionState();
+        if (!state.canRotate) throw new Error(state.reason || 'Select a furniture component to rotate.');
+        planner.execute({ type: 'rotate-furniture', id: state.selection.id });
+      }, 'Component rotated.'));
     }
     function requestChooseFloor() {
       if (destroyed || !tools || !floorSelect) return false;
@@ -1899,6 +1914,7 @@
     render();
     return {
       render, getActionState, requestAddOpening, requestEditSelection, requestDeleteSelection, requestChooseFloor,
+      requestRotateSelection,
       getPendingDrafts: () => drafts.scopes().map(scope => ({ ...scope, draft: drafts.get(scope) })),
       destroy() {
         destroyed = true;

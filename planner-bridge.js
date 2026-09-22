@@ -1142,17 +1142,26 @@
     const openingGuide=(opening,wall)=>{
       const wallStart=point(wall.start.x,wall.start.y);
       const openingStart=Model.wallPoint(wall,opening.offsetM);
-      const start=point(openingStart.x,openingStart.y);
-      const dx=start.x-wallStart.x,dy=start.y-wallStart.y,length=Math.max(Math.hypot(dx,dy),1);
-      const nx=-dy/length*12,ny=dx/length*12;
-      const a={x:wallStart.x+nx,y:wallStart.y+ny},b={x:start.x+nx,y:start.y+ny};
-      const label=`${(opening.offsetM/.3048).toFixed(1)} ft (${opening.offsetM.toFixed(2)} m) from wall start`;
+      const openingEnd=Model.wallPoint(wall,opening.offsetM+opening.widthM);
+      const wallLength=Math.max(Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y),0);
+      const start=point(openingStart.x,openingStart.y),end=point(openingEnd.x,openingEnd.y);
+      const dx=(wall.end.x-wall.start.x)/Math.max(wallLength,1),dy=(wall.end.y-wall.start.y)/Math.max(wallLength,1);
+      const nx=-dy*14,ny=dx*14;
+      const dimension=(a,b,label,offset)=>{
+        const aa={x:a.x+nx,y:a.y+ny+offset},bb={x:b.x+nx,y:b.y+ny+offset};
+        return `<line x1="${aa.x}" y1="${aa.y}" x2="${bb.x}" y2="${bb.y}" stroke="var(--acc)" stroke-width="1.2" stroke-dasharray="4 3"/>`+
+          `<line x1="${a.x}" y1="${a.y}" x2="${aa.x}" y2="${aa.y}" stroke="var(--acc)" stroke-width="1"/>`+
+          `<line x1="${b.x}" y1="${b.y}" x2="${bb.x}" y2="${bb.y}" stroke="var(--acc)" stroke-width="1"/>`+
+          `<text x="${(aa.x+bb.x)/2}" y="${(aa.y+bb.y)/2-4}" text-anchor="middle" fill="var(--acc)" stroke="var(--svg-bg)" stroke-width="3" paint-order="stroke" font-size="9">${escape(label)}</text>`;
+      };
+      const leftEnd=wallStart;
+      const rightEnd=point(wall.end.x,wall.end.y);
+      const left=opening.offsetM,clear=opening.widthM,right=Math.max(0,wallLength-opening.offsetM-opening.widthM);
       return `<g class="hp-opening-offset-guide" pointer-events="none">`+
-        `<line x1="${wallStart.x}" y1="${wallStart.y}" x2="${a.x}" y2="${a.y}" stroke="var(--acc)" stroke-width="1"/>`+
-        `<line x1="${start.x}" y1="${start.y}" x2="${b.x}" y2="${b.y}" stroke="var(--acc)" stroke-width="1"/>`+
-        `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="4 3"/>`+
-        `<circle cx="${a.x}" cy="${a.y}" r="2.4" fill="var(--acc)"/><circle cx="${b.x}" cy="${b.y}" r="2.4" fill="var(--acc)"/>`+
-        `<text x="${(a.x+b.x)/2}" y="${(a.y+b.y)/2-5}" text-anchor="middle" fill="var(--acc)" stroke="var(--svg-bg)" stroke-width="3" paint-order="stroke" font-size="9">${escape(label)}</text></g>`;
+        dimension(leftEnd,start,`${(left/.3048).toFixed(1)} ft`,0)+
+        dimension(start,end,`${(clear/.3048).toFixed(1)} ft`,18)+
+        dimension(end,rightEnd,`${(right/.3048).toFixed(1)} ft`,0)+
+        `<circle cx="${start.x}" cy="${start.y}" r="2.4" fill="var(--acc)"/><circle cx="${end.x}" cy="${end.y}" r="2.4" fill="var(--acc)"/></g>`;
     };
     if(layer==='walls'){
       scene.walls.forEach(wall=>{

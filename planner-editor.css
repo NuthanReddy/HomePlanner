@@ -173,6 +173,25 @@
   border-radius: 7px;
   background: var(--panel);
 }
+.hp-editor-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 18px;
+  background: rgba(0, 0, 0, .62);
+}
+.hp-editor-modal-dialog {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  max-height: min(720px, calc(100vh - 36px));
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  box-shadow: 0 18px 55px rgba(0, 0, 0, .42);
+}
 .hp-editor-subheading { margin: 0 0 6px; font-size: 12px; }
 .hp-editor-diagnostics { margin: 8px 0 0; padding-left: 18px; color: var(--warn); font-size: 11px; }
 .hp-editor-diagnostic { margin: 4px 0; overflow-wrap: anywhere; }

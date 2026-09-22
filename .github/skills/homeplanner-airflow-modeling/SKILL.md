@@ -39,6 +39,10 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
   [coupled CFD](../../../docs/coupled-cfd.md) before changing it. Generated cases
   and synthetic job/parser tests are not real-engine execution or numerical
   verification; preserve the pending verification state and explicit limitations.
+  `cfd_conservation.py` supplies versioned every-step integral evidence: signed
+  mass flux, pressure/gravity work and open-patch diffusion must not disappear
+  from a coupled energy budget. Explicit comparisons require the same physical
+  case/receivers; two runs are not a convergence order or error bound.
 - Read [foundation](../../../docs/airflow-visualizer.md),
   [field](../../../docs/airflow-field.md), [display](../../../docs/airflow-display.md),
   [worker](../../../docs/airflow-worker.md), and [workbench](../../../docs/airflow-workbench.md).

@@ -65,10 +65,22 @@
   margin: 0;
 }
 
-.hp-workspace #workspaceHeading {
+.hp-workspace .hp-workspace-heading-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
   margin: .75rem var(--hp-workspace-inset) 0;
+}
+
+.hp-workspace #workspaceHeading {
+  margin: 0;
   font-size: 1rem;
   line-height: 1.4;
+}
+
+.hp-workspace-floor-only {
+  margin: 0;
+  padding: .35rem var(--hp-workspace-inset);
 }
 
 .hp-workspace .hp-project-bar p {

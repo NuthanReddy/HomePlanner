@@ -322,6 +322,10 @@
     return Number.isFinite(value) ? `${Number(value.toFixed(4))} m` : 'Not available';
   }
 
+  function footText(value) {
+    return Number.isFinite(value) ? `${Number((value / 0.3048).toFixed(4))} ft` : 'Not available';
+  }
+
   function init(planner, document, model) {
     if (!document) return null;
     const inspectorRoot = document.getElementById('plannerInspector');
@@ -527,7 +531,8 @@
       const pending = owner.pending;
       if (!pending) return;
       owner.pending = null;
-      owner.confirmation.replaceChildren();
+      if (pending.container) pending.container.remove();
+      else owner.confirmation.replaceChildren();
       if (restoreFocus) restoreConfirmationFocus(owner, pending);
     }
     function confirmationIsCurrent(pending, state) {
@@ -539,8 +544,12 @@
     function confirmAction(owner, trigger, options) {
       cancelConfirmation(owner, false);
       const state = snapshot();
-      const group = element('section', 'hp-editor-confirm', undefined, owner.confirmation);
-      group.setAttribute('role', 'group');
+      const container = options.modal ? element('div', 'hp-editor-modal', undefined,
+        document.body || owner.root.parentElement || owner.root) : null;
+      const group = element('section', options.modal ? 'hp-editor-confirm hp-editor-modal-dialog' : 'hp-editor-confirm',
+        undefined, container || owner.confirmation);
+      group.setAttribute('role', options.modal ? 'dialog' : 'group');
+      if (options.modal) group.setAttribute('aria-modal', 'true');
       const title = element('h3', 'hp-editor-subheading', options.title, group);
       title.id = `${owner.heading.id}-confirmation`;
       group.setAttribute('aria-labelledby', title.id);
@@ -564,15 +573,26 @@
       owner.pending = {
         projectId: state.project.id, revision: state.project.revision, floorId: state.project.activeFloorId,
         sourceKey: JSON.stringify(state.project), selectionKey: owner === inspector ? keyFor(state) : null,
-        trigger, stale, approve
+        trigger, stale, approve, container
       };
       group.addEventListener('keydown', event => {
         if (event.key === 'Escape' && !event.isComposing) {
           event.preventDefault();
           cancelConfirmation(owner, true);
+        } else if (options.modal && event.key === 'Tab') {
+          const controls = [...group.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')];
+          if (!controls.length) return;
+          const first = controls[0], last = controls.at(-1);
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); focus(last); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); focus(first); }
         }
       });
       retainInputs(() => focus(approve));
+    }
+
+    function actionTrigger(owner) {
+      const active = document.activeElement;
+      return active && active !== document.body ? active : owner.heading;
     }
 
     function field(owner, parent, specification) {
@@ -1032,17 +1052,10 @@
         if (nominalLeaf) text(nominalLeaf, metreText(ctx.entity.nominalLeafWidthM));
         for (const control of inputs) control.input.disabled = !ctx.wall;
       });
-      const actions = element('div', 'hp-editor-actions', undefined, opening);
-      const remove = button(actions, `Delete ${kind}…`, 'delete-opening', () => requestDeleteSelection());
-      remove.classList.add('hp-editor-caution-button');
-      fields.push(ctx => {
-        const state = selectionActions(ctx.scene, ctx.selection);
-        remove.disabled = !state.canDelete;
-        remove.title = state.canDelete ? '' : state.reason;
-      });
       selectionRequests.delete = () => run(inspector, () => {
         const ctx = selectedContext(key);
-        confirmAction(inspector, remove, {
+        confirmAction(inspector, actionTrigger(inspector), {
+          modal: true,
           title: `Delete this ${kind}?`, label: `Confirm ${kind} deletion`,
           description: `Suppress the selected opening's source(s) (${ctx.entity.id}) on this floor, including any fragments sharing those sources. `
             + 'Original generated or added source records and existing edit metadata remain in project backups. '
@@ -1264,7 +1277,7 @@
     }
 
     function wallFields(parent, key, fields, firstContext) {
-      const wallGroup = group(parent, 'Physical partition');
+      const wallGroup = group(parent, 'Physical partition · feet');
       const values = {};
       for (const [name, label] of [['length', 'Span length'], ['heightM', 'Wall height'], ['thicknessM', 'Thickness'],
         ['baseM', 'Base elevation'], ['classification', 'Classification'], ['state', 'Connection state'], ['rooms', 'Adjoining rooms']]) {
@@ -1278,7 +1291,7 @@
         wallOpeningCommand(ctx.entity, { full: true });
         confirmAction(inspector, remove, {
           title: 'Delete this internal partition?', label: 'Confirm conceptual wall deletion',
-          description: `Open the full retained ${metreText(span.endM - span.startM)} span, through the full wall height. `
+          description: `Open the full retained ${footText(span.endM - span.startM)} span, through the full wall height. `
             + `Wall ID: ${ctx.entity.id}. Room boundaries are not moved. Related openings and independent references are retained for review.`,
           caution: WALL_CAUTION, success: 'Internal partition opened in both views. Use Undo or Restore wall to reverse it.',
           execute: () => planner.execute(wallOpeningCommand(selectedContext(key).entity, { full: true }))
@@ -1317,16 +1330,16 @@
         try {
           const span = retainedSpan(latestWall);
           if (mode.value === 'full') {
-            text(remaining, `Full retained span: ${metreText(span.endM - span.startM)}. No partial-width entry needed.`);
+            text(remaining, `Full retained span: ${footText(span.endM - span.startM)}. No partial-width entry needed.`);
             return;
           }
           const offset = numberValue(staged.offsetM.value, { label: 'Opening offset', min: span.startM, max: span.endM });
           const width = span.endM - offset;
-          let note = `Exact remaining span to wall end: ${metreText(width)}. `;
+          let note = `Exact remaining span to wall end: ${footText(width)}. `;
           if (mode.value === 'to-end') note += 'The end follows the effective host span after later edits.';
           else if (staged.widthM.value !== '') {
             const entered = numberValue(staged.widthM.value, { label: 'Opening width', positive: true });
-            note += entered <= width ? `${metreText(width - entered)} deliberately remains at this end. Choose “To wall end” to remove it exactly.`
+            note += entered <= width ? `${footText(width - entered)} deliberately remains at this end. Choose “To wall end” to remove it exactly.`
               : 'The entered width exceeds the available span; it will be rejected.';
           } else note += 'Enter a deliberate width, or choose “To wall end”.';
           text(remaining, note);
@@ -1373,8 +1386,8 @@
         } catch (error) { connectionStage.reject(error); }
         const span = retainedSpan(ctx.entity);
         const description = command.full
-          ? `Open the full ${metreText(span.endM - span.startM)} retained span and full wall height.`
-          : `Open ${metreText(command.toEnd ? span.endM - command.offsetM : command.widthM)} starting ${metreText(command.offsetM)} `
+          ? `Open the full ${footText(span.endM - span.startM)} retained span and full wall height.`
+          : `Open ${footText(command.toEnd ? span.endM - command.offsetM : command.widthM)} starting ${footText(command.offsetM)} `
             + `from the original wall start, through the full wall height${command.toEnd ? ', exactly to the wall end (persistent intent)' : ''}.`;
         confirmAction(inspector, review, {
           title: 'Review internal connection', label: 'Confirm conceptual opening',
@@ -1430,8 +1443,8 @@
         catch (error) { trimStage.reject(error); }
         confirmAction(inspector, trimReview, {
           title: 'Review internal wall trim', label: 'Confirm retained wall ends',
-          description: `Retain only ${metreText(command.startM)} to ${metreText(command.endM)} within the original `
-            + `${metreText(wallLength(ctx.entity))} wall span. Existing full-height openings within that interval remain. `
+          description: `Retain only ${footText(command.startM)} to ${footText(command.endM)} within the original `
+            + `${footText(wallLength(ctx.entity))} wall span. Existing full-height openings within that interval remain. `
             + 'Door/window and independent attachment records are not deleted or silently moved.',
           caution: WALL_CAUTION, success: 'Retained wall ends applied. Review attachments in removed material.',
           execute: () => trimStage.commit(() => planner.execute(command), pending)
@@ -1443,14 +1456,14 @@
         latestWall = wall;
         let length;
         try { length = wallLength(wall); } catch (_) { length = null; }
-        text(values.length, metreText(length));
-        for (const name of ['heightM', 'thicknessM', 'baseM']) text(values[name], metreText(wall[name]));
+        text(values.length, footText(length));
+        for (const name of ['heightM', 'thicknessM', 'baseM']) text(values[name], footText(wall[name]));
         text(values.classification, `${wall.exterior === true ? 'Exterior' : wall.exterior === false ? 'Internal' : 'Unclassified'} · structural role: ${wall.structuralRole || 'unknown'}`);
         const edit = ctx.project.wallEdits && ctx.project.wallEdits[wall.id];
         const passages = (ctx.scene.openings || []).filter(item => item.wallId === wall.id && item.kind === 'passage');
         const retainsAperture = (ctx.scene.openings || []).some(item => item.wallId === wall.id && ['hinged', 'sliding', 'window'].includes(item.kind));
         text(values.state, wall.removed ? retainsAperture ? 'No surviving masonry; door/window aperture retained' : 'Full-height partition removed'
-          : edit?.retainedSpan ? `Retained interval ${metreText(wall.retainedSpan?.startM)} → ${metreText(wall.retainedSpan?.endM)}`
+          : edit?.retainedSpan ? `Retained interval ${footText(wall.retainedSpan?.startM)} → ${footText(wall.retainedSpan?.endM)}`
             : passages.length ? 'Partial-span opening' : 'No open-connection override');
         text(values.rooms, (wall.roomIds || []).map(id => (ctx.scene.rooms || []).find(room => room.id === id)?.label || id).join(' ↔ ') || 'Not recorded');
         const protectedWall = wall.exterior !== false || !['unknown', 'non-structural'].includes(wall.structuralRole) || !length;
@@ -1494,18 +1507,16 @@
           text(serviceFootprint,footprint&&Number.isFinite(footprint.w*footprint.h)?
             `${(footprint.w*footprint.h).toFixed(2)} m²`:'Not available');
         });
-        const actions=element('div','hp-editor-actions',undefined,selectionFields);
-        const remove=button(actions,'Delete room…','delete-room',()=>requestDeleteSelection());
         selectionRequests.delete=()=>run(inspector,()=>{
           const current=selectedContext(key);
-          confirmAction(inspector,remove,{
+          confirmAction(inspector,actionTrigger(inspector),{
+            modal:true,
             title:'Delete this room?',label:'Confirm room deletion',
             description:`Remove “${current.entity.label || current.entity.id}” from this floor's programme, along with its furniture and room-owned openings. Other rooms and floors keep their identities and positions. Independent electrical, structural and annotation records remain for host review; an adjoining bathroom is not automatically deleted or reassigned.`,
             success:'Room deleted. Use Undo to restore it and its room-owned components.',
             execute:()=>planner.execute({type:'delete-room',id:selectedContext(key).entity.id,confirmRemoval:true})
           });
         });
-        remove.classList.add('hp-editor-caution-button');
       } else if (kind === 'balcony') {
         const position = readout(selectionFields, 'Balcony footprint');
         const host = readout(selectionFields, 'Attached room');
@@ -1514,11 +1525,10 @@
           text(position, `X ${metreText(rect.x)}, Y ${metreText(rect.y)} · ${metreText(rect.w)} × ${metreText(rect.h)}`);
           text(host, (state.scene.rooms || []).find(room => room.id === state.entity.roomId)?.label || 'Unresolved / not recorded');
         });
-        const actions = element('div', 'hp-editor-actions', undefined, selectionFields);
-        const remove = button(actions, 'Delete balcony…', 'delete-balcony', () => requestDeleteSelection());
         selectionRequests.delete = () => run(inspector, () => {
           const current = selectedContext(key);
-          confirmAction(inspector, remove, {
+          confirmAction(inspector, actionTrigger(inspector), {
+            modal: true,
             title: 'Delete this balcony?', label: 'Confirm balcony deletion',
             description: `Remove “${current.entity.label || current.entity.id}” and its balcony-owned access openings from this floor's programme. `
               + 'Other balconies keep their identities and positions. Independent electrical, structural and annotation records remain for host review.',
@@ -1526,7 +1536,6 @@
             execute: () => planner.execute({ type: 'delete-balcony', id: selectedContext(key).entity.id, confirmRemoval: true })
           });
         });
-        remove.classList.add('hp-editor-caution-button');
       } else if (kind === 'furniture') {
         const host = readout(selectionFields, 'Room');
         updates.push(state => text(host, (state.scene.rooms || []).find(room => room.id === state.entity.roomId)?.label
@@ -1536,17 +1545,16 @@
         button(actions, ctx.entity.type === 'bed' ? 'Reorient head +90°' : 'Rotate 90°', 'rotate-furniture', () => run(inspector, () => {
           planner.execute({ type: 'rotate-furniture', id: selectedContext(key).entity.id });
         }, 'Component reoriented. Actual head and footprint come from the updated scene.'));
-        const remove = button(actions, 'Delete component…', 'delete-furniture', () => requestDeleteSelection());
         selectionRequests.delete = () => run(inspector, () => {
           const ctx = selectedContext(key);
-          confirmAction(inspector, remove, {
+          confirmAction(inspector, actionTrigger(inspector), {
+            modal: true,
             title: 'Delete this component?', label: 'Confirm component deletion',
             description: `Remove “${ctx.entity.label || ctx.entity.type || ctx.entity.id}” (${ctx.entity.id}) from this floor. Other components and pending inputs are unchanged.`,
             success: 'Component deleted. Use Undo to restore it.',
             execute: () => planner.execute({ type: 'delete-furniture', id: selectedContext(key).entity.id })
           });
         });
-        remove.classList.add('hp-editor-caution-button');
       } else if (kind === 'door' || kind === 'window') openingFields(selectionFields, kind, key, updates, ctx);
       else if (kind === 'wall') wallFields(selectionFields, key, updates, ctx);
       else element('p', 'hp-editor-note', 'This electrical point shares the selection. Use the Electrical workspace to edit its properties.', selectionFields);
@@ -1913,6 +1921,6 @@
   return {
     init, numberValue, selectionEntity, selectionFloor, selectionActions, rectCommand, stairEnclosureCommand, headBearing, bedHeadCommand, openingCommand,
     wallLength, retainedSpan, wallOpeningCommand, wallTrimCommand, addOpeningCommand, floorElevation, floorPatchCommand, deleteFloorCommand,
-    floorAllowanceNotice, isTextEntry, historyShortcut
+    floorAllowanceNotice, isTextEntry, historyShortcut, footText
   };
 });

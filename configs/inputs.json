@@ -1,0 +1,181 @@
+// JSONC: comments are allowed, but consumers must parse this as JSON with comments.
+{
+  "version": 1,
+  "userId": 850598171711941,
+  "projectId": "ddsccdscsc",
+  "projectName": "Kuntloor House",
+  "requestId": "6aae36df9f4da108a690b58b0f978369",
+  "timestamp": 1789802207991,
+  "style": "Modern",
+  "vastuEnabled": true,
+  "programme": {
+    "living": 1,
+    "master_bedroom": 1,
+    "childrens_bedroom": 1,
+    "kitchen": 1,
+    "bathroom": 2,
+    "lift": 1,
+    "staircase": 1,
+    "study": 0,
+    "storage": 0,
+    "pooja": 0
+  },
+  "requirements": [
+    {
+      "type": "living",
+      "id": "living-1",
+      "name": "Living Room",
+      "constraints": {
+        "area": {
+          "minAreaFt2": 100,
+          "maxAreaFt2": 215
+        },
+        "dimensions": {
+          "minWidthFt": 7,
+          "minDepthFt": 5,
+          "maxWidthFt": 10,
+          "maxDepthFt": 15
+        }
+      },
+      "preferences": {
+        "directions": [],
+        "requiredAdjacencies": [],
+        "prohibitedAdjacencies": [],
+        "privacyWeight": 0.7
+      }
+    },
+    {
+      "type": "bedroom",
+      "id": "bedroom-1",
+      "name": "Master Bedroom",
+      "constraints": {
+        "dimensions": {
+          "minWidthFt": 7,
+          "minDepthFt": 5,
+          "maxWidthFt": 10,
+          "maxDepthFt": 15
+        },
+        "area": {
+          "minAreaFt2": 161,
+          "maxAreaFt2": 215
+        },
+        "requiredAdjacencies": ["bathroom"]
+      },
+      "preferences": {
+        "directions": ["NW", "NE"],
+        "prohibitedAdjacencies": [],
+        "privacyWeight": 0.7
+      }
+    },
+    {
+      "type": "bedroom",
+      "id": "bedroom-2",
+      "name": "Children Bedroom",
+      "constraints": {
+        "dimensions": {
+          "minWidthFt": 7,
+          "minDepthFt": 5,
+          "maxWidthFt": 10,
+          "maxDepthFt": 15
+        },
+        "area": {
+          "minAreaFt2": 108,
+          "maxAreaFt2": 161
+        },
+        "requiredAdjacencies": ["bathroom"]
+      },
+      "preferences": {
+        "directions": ["NW", "NE"],
+        "prohibitedAdjacencies": [],
+        "privacyWeight": 0.7
+      }
+    },
+    {
+      "type": "kitchen",
+      "id": "kitchen-1",
+      "name": "Kitchen",
+      "constraints": {
+        "dimensions": {
+          "minWidthFt": 7,
+          "minDepthFt": 5,
+          "maxWidthFt": 10,
+          "maxDepthFt": 15
+        },
+        "area": {
+          "minAreaFt2": 100,
+          "maxAreaFt2": 215
+        },
+        "directions": ["SE"],
+        "prohibitedAdjacencies": ["bathroom"]
+      },
+      "preferences": {
+        "rotatable": true,
+        "requiredAdjacencies": ["pooja"],
+        "daylightProxyWeight": 0.8
+      },
+      "details": {
+        "size": "standard",
+        "layoutType": "open"
+      }
+    },
+    {
+      "type": "staircase",
+      "id": "staircase-1",
+      "name": "Staircase",
+      "constraints": {
+        "dimensions": {
+          "minWidthFt": 10,
+          "minDepthFt": 5,
+          "maxWidthFt": 16,
+          "maxDepthFt": 5
+        },
+        "area": {
+          "minAreaFt2": 50,
+          "maxAreaFt2": 80
+        },
+        "directions": ["S", "SW", "W"],
+        "requiredAdjacencies": []
+      },
+      "preferences": {
+        // A rotatable staircase may use 5 ft × 10 ft instead of 10 ft × 5 ft.
+        "rotatable": true,
+        "prohibitedAdjacencies": ["bathroom", "kitchen"]
+      }
+    },
+    {
+      "type": "lift",
+      "id": "lift-1",
+      "name": "Lift",
+      "constraints": {
+        "dimensions": {
+          "minWidthFt": 5,
+          "minDepthFt": 10,
+          "maxWidthFt": 5,
+          "maxDepthFt": 10
+        },
+        "area": {
+          "minAreaFt2": 25,
+          "maxAreaFt2": 30
+        },
+        "directions": [],
+        "requiredAdjacencies": []
+      },
+      "preferences": {
+        // A rotatable lift may use 10 ft × 5 ft instead of 5 ft × 10 ft.
+        "rotatable": true,
+        "prohibitedAdjacencies": []
+      }
+    }
+  ],
+  "assumptions": [
+    "The 45 ft × 60 ft dimensions describe the maximum building envelope.",
+    "The 1,295 ft² value is the total built-up-area target, not the envelope area.",
+    "\"Standard\" kitchen size requires a versioned dimensional policy before geometry generation."
+  ],
+  "unknowns": [
+    "Built-up-area tolerance",
+    "Bathroom count and access relationships",
+    "Minimum kitchen area and dimensions",
+    "Whether the open kitchen requires direct adjacency to living or dining"
+  ]
+}

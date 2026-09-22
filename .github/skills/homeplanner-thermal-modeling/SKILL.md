@@ -31,6 +31,9 @@ description: "Use when implementing, debugging, reviewing, or explaining HomePla
   engine execution, interface conservation and refinement verification remain
   pending; closed panels have prescribed temperatures, not inferred glazing
   constructions, and a homogeneous shell is an explicit scenario assumption.
+  `cfd_conservation.py` reconstructs enthalpy/kinetic budgets from actual
+  bracketed output rows; do not invent a time-zero state. Keep separate fluid,
+  solid and interface residuals and retain pressure, gravity and inlet diffusion.
 - Read [physics](../../../docs/building-physics.md),
   [environment](../../../docs/environment-analysis.md),
   [project geometry](../../../docs/project-model.md), and

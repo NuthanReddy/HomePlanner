@@ -273,6 +273,141 @@
     return canonical({ owner: inventory.source ? [inventory.source.projectId, inventory.source.floorId, inventory.source.roomId] : null,
       geometryFingerprint: inventory.geometryFingerprint, scenario: form });
   }
+  const closeNumber = (a, b) => finite(a) && finite(b) &&
+    Math.abs(a - b) <= Math.max(1e-7, 1e-9 * Math.max(Math.abs(a), Math.abs(b)));
+  function validateResult(result, captured) {
+    Model.assertJSON(result);
+    const manifest = captured.manifest, input = captured.request;
+    if (result?.kind !== 'CoupledCfdResult' || result.version !== 1 ||
+        result.caseHash !== manifest.caseHash || canonical(result.source) !== canonical(input.source) ||
+        canonical(manifest.source) !== canonical(input.source) || canonical(result.engine) !== canonical(manifest.engine) ||
+        result.coordinateSpace !== 'room-right-front-up' || result.validationStatus !== 'unvalidated')
+      throw new Error('The result provenance or coordinate frame does not match this captured case.');
+    if (!closeNumber(result.timeSeconds, input.scenario.numerics.endTimeSeconds) ||
+        result.receiverHeightM !== input.scenario.sampling.heightM ||
+        !Array.isArray(result.samples) || result.samples.length !== manifest.probeLocations.length ||
+        !result.samples.length || result.samples.length > 512)
+      throw new Error('The result is incomplete or has a different sampling plane or end time.');
+    result.samples.forEach((sample, index) => {
+      const point = manifest.probeLocations[index];
+      if (!['x', 'y', 'z'].every(axis => finite(sample.positionM?.[axis]) &&
+          finite(sample.velocityMps?.[axis]) && Math.abs(sample.positionM[axis] - point[axis]) <= 1e-6) ||
+          ![sample.temperatureC, sample.speedMps, sample.absolutePressurePa].every(finite) ||
+          sample.absolutePressurePa <= 0 || sample.speedMps < 0 ||
+          Math.abs(sample.speedMps - Math.hypot(...['x', 'y', 'z'].map(axis => sample.velocityMps[axis]))) > 1e-6)
+        throw new Error('The result contains a nonfinite, misplaced or inconsistent sample. No heatmap is shown.');
+    });
+    const declaredConservation = Object.hasOwn(manifest, 'conservation'), reportedConservation = result.diagnostics?.conservation;
+    if (declaredConservation || reportedConservation && (Object.hasOwn(reportedConservation, 'version') ||
+        ['computed-unvalidated', 'insufficient-history'].includes(reportedConservation.status))) {
+      if (declaredConservation && (!manifest.conservation || manifest.conservation.version !== 1 ||
+          manifest.conservation.method !== 'cht-enthalpy-end-step-v1'))
+        throw new Error('The prepared conservation protocol is unsupported.');
+      const diagnostics = result.diagnostics, report = diagnostics?.conservation, coverage = report?.coverage;
+      const expectedMethod = declaredConservation ? manifest.conservation.method : 'cht-enthalpy-end-step-v1';
+      if (report?.version !== 1 || report.method !== expectedMethod ||
+          !['computed-unvalidated', 'insufficient-history'].includes(report.status) ||
+          !coverage || !finite(coverage.startSeconds) || coverage.startSeconds < 0 ||
+          !closeNumber(coverage.endSeconds, result.timeSeconds) ||
+          !Number.isInteger(coverage.intervals) || coverage.intervals < 0 ||
+          !closeNumber(coverage.endSeconds - coverage.startSeconds, coverage.intervals * input.scenario.numerics.deltaTSeconds))
+        throw new Error('Conservation evidence does not match this case or its complete timestep coverage.');
+      if (report.status === 'computed-unvalidated') {
+        const mass = diagnostics.massBalance, energy = diagnostics.energyBalance;
+        if (coverage.intervals < 1 || mass?.status !== 'computed-unvalidated' || energy?.status !== 'computed-unvalidated' ||
+            ![mass.residualKg, mass.maxAbsStepResidualKg, mass.maxAbsStepResidualKgS,
+              energy.fluid?.residualJ, energy.fluid?.maxAbsStepResidualJ,
+              energy.solid?.residualJ, energy.solid?.maxAbsStepResidualJ,
+              energy.combinedExternal?.residualJ, energy.combinedExternal?.maxAbsStepResidualJ,
+              energy.interface?.maxAbsMismatchW, energy.interface?.signedMismatchJ].every(finite))
+          throw new Error('Required mass, separate fluid/solid energy or interface diagnostics are incomplete.');
+        if ([mass.maxAbsStepResidualKg, mass.maxAbsStepResidualKgS, energy.fluid.maxAbsStepResidualJ,
+          energy.solid.maxAbsStepResidualJ, energy.combinedExternal.maxAbsStepResidualJ, energy.interface.maxAbsMismatchW].some(value => value < 0))
+          throw new Error('Absolute conservation residuals cannot be negative.');
+      } else if (coverage.intervals !== 0 || diagnostics.massBalance?.status !== 'insufficient-history' ||
+          diagnostics.energyBalance?.status !== 'insufficient-history')
+        throw new Error('An insufficient-history diagnostic cannot claim a computed balance.');
+    }
+    return copy(result);
+  }
+  function comparisonPhysics(input) {
+    const physical = copy(input.scenario);
+    for (const name of ['sourceNote', 'acknowledgeGeometry', 'acknowledgeEmptyRoom', 'acknowledgeModel']) delete physical[name];
+    for (const name of ['spacingM', 'solidCells', 'deltaTSeconds', 'writeIntervalSeconds', 'maxRuntimeSeconds'])
+      delete physical.numerics[name];
+    return canonical({ profile: input.profile, geometry: input.geometry, scenario: physical,
+      owner: [input.source.projectId, input.source.floorId, input.source.roomId] });
+  }
+  function compareRuns(baseline, candidate, currentRequest = null) {
+    const first = baseline.manifest, second = candidate.manifest;
+    for (const run of [baseline, candidate]) {
+      const m = run.manifest;
+      if (m?.profile !== PROFILE || m.engine?.id !== 'OpenCFD-OpenFOAM' || m.engine.version !== '2606' ||
+          m.engine.solver !== 'chtMultiRegionFoam' || !/^[a-f0-9]{64}$/.test(m.caseHash))
+        throw new Error('Choose two completed runs of the supported OpenCFD profile.');
+      validateResult(run.result, { manifest: m, request: m });
+      if (!Number.isInteger(m.mesh?.cells) || m.mesh.cells <= 0 ||
+          !Number.isInteger(m.mesh.airCells) || !Number.isInteger(m.mesh.solidCells) ||
+          m.mesh.airCells <= 0 || m.mesh.solidCells <= 0 || m.mesh.cells !== m.mesh.airCells + m.mesh.solidCells)
+        throw new Error('Both runs need complete compiled air/solid mesh counts.');
+      for (const name of ['spacingM', 'solidCells', 'deltaTSeconds', 'endTimeSeconds'])
+        if (!finite(m.scenario.numerics[name]) || m.scenario.numerics[name] <= 0)
+          throw new Error('Both runs need explicit positive numerical settings.');
+    }
+    const numericalMethod = m => Object.fromEntries(['timeStepping', 'spatialAdvection', 'outerCorrectors',
+      'pressureCorrectors', 'linearAbsoluteTolerance', 'linearFinalRelativeTolerance'].map(name => [name, m.numerics?.[name] ?? null]));
+    if (comparisonPhysics(first) !== comparisonPhysics(second) ||
+        canonical(first.engine) !== canonical(second.engine) || canonical(first.model ?? null) !== canonical(second.model ?? null) ||
+        canonical(numericalMethod(first)) !== canonical(numericalMethod(second)) ||
+        canonical(first.probeLocations) !== canonical(second.probeLocations))
+      throw new Error('Runs must have identical room geometry, physical inputs, model, end time and receiver points. Only mesh, timestep and output/resource settings may differ.');
+    if (currentRequest && comparisonPhysics(currentRequest) !== comparisonPhysics(second))
+      throw new Error('These runs do not match the current room and physical scenario. Old evidence is not a current comparison.');
+    const deltas = { temperatureC: [], speedMps: [], velocityDifferenceMps: [], absolutePressurePa: [] };
+    first.probeLocations.forEach((_, index) => {
+      const a = baseline.result.samples[index], b = candidate.result.samples[index];
+      deltas.temperatureC.push(b.temperatureC - a.temperatureC);
+      deltas.speedMps.push(b.speedMps - a.speedMps);
+      deltas.absolutePressurePa.push(b.absolutePressurePa - a.absolutePressurePa);
+      deltas.velocityDifferenceMps.push(Math.hypot(...['x', 'y', 'z'].map(axis => b.velocityMps[axis] - a.velocityMps[axis])));
+    });
+    function statistics(values) {
+      if (!values.every(finite)) throw new Error('Comparison differences exceed the finite numerical range.');
+      const max = Math.max(...values.map(Math.abs)), count = values.length;
+      // Normalization keeps finite RMS/means finite; only roundoff can exceed these unit bounds.
+      const rms = max === 0 ? 0 : max * Math.sqrt(Math.min(1, values.reduce((sum, value) => sum + (value / max) ** 2 / count, 0)));
+      const mean = max === 0 ? 0 : max * Math.max(-1, Math.min(1, values.reduce((sum, value) => sum + value / max / count, 0)));
+      if (![rms, mean].every(finite)) throw new Error('Comparison statistics exceed the finite numerical range.');
+      return { maxAbsolute: max, rootMeanSquare: rms, mean };
+    }
+    const countsChanged = first.mesh.cells !== second.mesh.cells ||
+      first.mesh.airCells !== second.mesh.airCells || first.mesh.solidCells !== second.mesh.solidCells;
+    const meshChanged = countsChanged || canonical(first.mesh.axes ?? null) !== canonical(second.mesh.axes ?? null);
+    const timeChanged = first.scenario.numerics.deltaTSeconds !== second.scenario.numerics.deltaTSeconds;
+    const descriptor = run => ({ jobId: run.id || null, caseHash: run.manifest.caseHash, source: copy(run.manifest.source),
+      mesh: copy(run.manifest.mesh), numerics: copy(run.manifest.scenario.numerics),
+      conservationCoverage: copy(run.result.diagnostics?.conservation?.coverage ?? null) });
+    const finer = second.mesh.airCells >= first.mesh.airCells && second.mesh.solidCells >= first.mesh.solidCells;
+    const coarser = second.mesh.airCells <= first.mesh.airCells && second.mesh.solidCells <= first.mesh.solidCells;
+    return freeze({
+      version: 1, kind: 'CfdRunComparison', status: 'compared-not-validated',
+      comparisonType: meshChanged && timeChanged ? 'mesh-and-time' : meshChanged ? 'mesh' : timeChanged ? 'time-step' : 'repeat',
+      baseline: descriptor(baseline), candidate: descriptor(candidate), sampleCount: first.probeLocations.length,
+      receiverHeightM: first.receiverHeightM, endTimeSeconds: baseline.result.timeSeconds,
+      differences: Object.fromEntries(Object.entries(deltas).map(([name, values]) => [name, statistics(values)])),
+      meshChange: meshChanged ? !countsChanged ? 'redistributed' : finer ? 'more-cells' : coarser ? 'fewer-cells' : 'mixed' : 'unchanged',
+      timestepChange: timeChanged ? second.scenario.numerics.deltaTSeconds < first.scenario.numerics.deltaTSeconds ?
+        'smaller' : 'larger' : 'unchanged',
+      observedOrder: null, gridConvergenceIndex: null, extrapolatedSolution: null,
+      limitations: [
+        'Differences at matching final-time receiver points are not error bounds, a convergence certificate or measured accuracy.',
+        'Two runs do not establish asymptotic order or a Grid Convergence Index. Mesh spacing need not be a uniform refinement ratio.',
+        'Changing mesh and timestep together cannot attribute a difference to either change alone.',
+        'Containing-cell samples can change cell membership on a different mesh. Unsampled regions are not assessed.',
+        'Mass/energy coverage is retained separately for each run; balances over different intervals are not silently compared.',
+      ],
+    });
+  }
   return Object.freeze({ PROFILE, SIDES, FIELDS, inspect, draft, defaultOpening, scenario, request, currentKey,
-    canonical, numeric, getPath, setPath, freeze });
+    canonical, numeric, getPath, setPath, freeze, validateResult, compareRuns });
 });

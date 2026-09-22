@@ -1,8 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const CFD = require('../planner-cfd.js');
-const { inputs } = require('./fixtures/planner-cfd-fixtures.cjs');
+const { inputs, fillBrowser } = require('./fixtures/planner-cfd-fixtures.cjs');
 
 module.exports = async function coupledCfdProduction(browser, url) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 }, acceptDownloads: true });
@@ -28,16 +27,7 @@ module.exports = async function coupledCfdProduction(browser, url) {
     await root.locator('[data-cfd-room]').selectOption(selected);
     const state = await page.evaluate(() => document.getElementById('workspaceCfd').homePlannerCFD.getState());
     const form = inputs(state.inventory.geometry), before = await page.evaluate(() => HomePlanner.getProject());
-    for (const field of CFD.FIELDS)
-      await root.locator(`[data-cfd-input="${field.path}"]`).fill(String(CFD.getPath(form, field.path)));
-    await root.locator('[data-cfd-input="sourceNote"]').fill(form.sourceNote);
-    for (const row of form.openings) {
-      const condition = root.locator(`[data-cfd-opening="${row.id}"][data-cfd-field="mode"]`);
-      await condition.selectOption(row.mode);
-      await root.locator(`[data-cfd-opening="${row.id}"][data-cfd-field="temperatureC"]`).fill(String(row.temperatureC));
-    }
-    for (const field of ['acknowledgeGeometry', 'acknowledgeEmptyRoom', 'acknowledgeModel'])
-      await root.locator(`[data-cfd-input="${field}"]`).check();
+    await fillBrowser(root, form);
     assert.deepEqual(await page.evaluate(() => HomePlanner.getProject()), before, 'Typing must preserve the complete current project');
     assert.equal(requests.length, 0);
     const preparationResponse = page.waitForResponse(response => response.url().endsWith('/api/cfd/prepare'));
@@ -51,6 +41,9 @@ module.exports = async function coupledCfdProduction(browser, url) {
     assert.deepEqual(prepared.manifest.geometry, state.inventory.geometry);
     assert.ok(prepared.manifest.mesh.cells > 0);
     assert.equal(prepared.manifest.runtimeVerification, 'pending');
+    assert.equal(prepared.manifest.conservation.version, 1);
+    assert.equal(prepared.manifest.conservation.method, 'cht-enthalpy-end-step-v1');
+    assert.ok(prepared.manifest.conservation.series.cfdAirExtensive.path.startsWith('postProcessing/air/'));
     assert.equal(await root.locator('[data-cfd-output]').isVisible(), false);
     assert.equal(await root.locator('[data-cfd-plot] circle').count(), 0, 'No fabricated pre-run field');
     const downloadEvent = page.waitForEvent('download');

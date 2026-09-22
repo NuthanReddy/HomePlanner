@@ -1139,6 +1139,21 @@
       const a=point(segment.x1,segment.y1),b=point(segment.x2,segment.y2);
       return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${color}" stroke-width="${width}" ${extra}/>`;
     };
+    const openingGuide=(opening,wall)=>{
+      const wallStart=point(wall.start.x,wall.start.y);
+      const openingStart=Model.wallPoint(wall,opening.offsetM);
+      const start=point(openingStart.x,openingStart.y);
+      const dx=start.x-wallStart.x,dy=start.y-wallStart.y,length=Math.max(Math.hypot(dx,dy),1);
+      const nx=-dy/length*12,ny=dx/length*12;
+      const a={x:wallStart.x+nx,y:wallStart.y+ny},b={x:start.x+nx,y:start.y+ny};
+      const label=`${(opening.offsetM/.3048).toFixed(1)} ft (${opening.offsetM.toFixed(2)} m) from wall start`;
+      return `<g class="hp-opening-offset-guide" pointer-events="none">`+
+        `<line x1="${wallStart.x}" y1="${wallStart.y}" x2="${a.x}" y2="${a.y}" stroke="var(--acc)" stroke-width="1"/>`+
+        `<line x1="${start.x}" y1="${start.y}" x2="${b.x}" y2="${b.y}" stroke="var(--acc)" stroke-width="1"/>`+
+        `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="4 3"/>`+
+        `<circle cx="${a.x}" cy="${a.y}" r="2.4" fill="var(--acc)"/><circle cx="${b.x}" cy="${b.y}" r="2.4" fill="var(--acc)"/>`+
+        `<text x="${(a.x+b.x)/2}" y="${(a.y+b.y)/2-5}" text-anchor="middle" fill="var(--acc)" stroke="var(--svg-bg)" stroke-width="3" paint-order="stroke" font-size="9">${escape(label)}</text></g>`;
+    };
     if(layer==='walls'){
       scene.walls.forEach(wall=>{
         const color=selected?.kind==='wall'&&selected.id===wall.id?'var(--acc)':'var(--svg-wall)';
@@ -1164,7 +1179,9 @@
       const customSource=[opening.sourceId,...(opening.sourceIds||[])].find(id=>
         root.__roomPlanner?.plan.customOpenings?.some(item=>item.id===id));
       const custom=!!customSource,sourceId=customSource||opening.sourceId;
-      out+=`<g ${attrs(kind,opening.id,label)} data-room-id="${escape(sourceId)}">`;
+      const isSelected=selected?.kind===kind&&selected.id===opening.id;
+      out+=`<g ${attrs(kind,opening.id,label)} data-room-id="${escape(sourceId)}"${kind==='door'?' data-opening-drag="door" style="cursor:move;touch-action:none"':''}>`;
+      if(isSelected)out+=openingGuide(opening,wall);
       out+=line(opening.segment,'var(--svg-deep)',Math.max(4,wall.thicknessM*scale+1),'stroke-linecap="butt"');
       if(kind==='window'){
         out+=line(opening.segment,'var(--acc)',4)+line(opening.segment,'var(--svg-on-color)',1.1);
@@ -1182,13 +1199,14 @@
         out+=`<path d="M${closed.x} ${closed.y} A${radius} ${radius} 0 0 ${geometry.arcSweep} ${open.x} ${open.y}" fill="none" stroke="var(--warn)" stroke-width="1.2" pointer-events="none"/>`+
           `<line x1="${hinge.x}" y1="${hinge.y}" x2="${open.x}" y2="${open.y}" stroke="var(--warn)" stroke-width="2"/>`;
       }
-      out+=line(opening.segment,selected?.id===opening.id?'var(--acc)':'transparent',12,
-        selected?.id===opening.id?'opacity=".2"':'pointer-events="stroke"');
-      if(custom){
-        const middle=point((opening.segment.x1+opening.segment.x2)/2,(opening.segment.y1+opening.segment.y2)/2);
-        out+=`<g data-action="delete" data-room-id="${escape(sourceId)}" role="button" aria-label="Delete ${escape(kind)}">`+
-          `<circle cx="${middle.x}" cy="${middle.y}" r="6" fill="var(--panel)" stroke="var(--bad)"/>`+
-          `<path d="M${middle.x-2} ${middle.y-2}L${middle.x+2} ${middle.y+2}M${middle.x+2} ${middle.y-2}L${middle.x-2} ${middle.y+2}" stroke="var(--bad)" pointer-events="none"/></g>`;
+      out+=line(opening.segment,isSelected?'var(--acc)':'transparent',12,
+        isSelected?'opacity=".2"':'pointer-events="stroke"');
+      if(isSelected&&kind==='window'){
+        const first=point(opening.segment.x1,opening.segment.y1),last=point(opening.segment.x2,opening.segment.y2);
+        out+=`<circle cx="${first.x}" cy="${first.y}" r="7" fill="var(--panel)" stroke="var(--acc)" stroke-width="2" `+
+          `data-opening-resize="start" style="cursor:ew-resize;touch-action:none"><title>Resize window from wall-start edge; snaps to 0.1 ft</title></circle>`+
+          `<circle cx="${last.x}" cy="${last.y}" r="7" fill="var(--panel)" stroke="var(--acc)" stroke-width="2" `+
+          `data-opening-resize="end" style="cursor:ew-resize;touch-action:none"><title>Resize window from wall-end edge; snaps to 0.1 ft</title></circle>`;
       }
       out+=`<title>${escape(label)}</title></g>`;
     });

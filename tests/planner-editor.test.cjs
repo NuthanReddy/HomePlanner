@@ -38,6 +38,14 @@ test('CommonJS loading and exported helpers do not require a DOM', () => {
   assert.equal(typeof globalThis.document, 'undefined');
 });
 
+test('wall measurements convert metres to display-only feet without changing numeric inputs', () => {
+  assert.equal(editor.footText(5), '16.4042 ft');
+  assert.equal(editor.footText(2.8), '9.1864 ft');
+  assert.equal(editor.footText(.15), '0.4921 ft');
+  assert.equal(editor.footText(0), '0 ft');
+  assert.equal(editor.footText(null), 'Not available');
+});
+
 test('numeric input accepts finite decimal values without silently clamping', () => {
   for (const [raw, expected] of [['0', 0], ['-2.75', -2.75], ['.5', .5], ['+1.25', 1.25],
     [' 2.3 ', 2.3], ['1e-3', .001], [1.25, 1.25]]) {
@@ -670,6 +678,11 @@ async function browserSmoke(page, directory) {
     check(await browserPage.evaluate(() => Math.abs(__fixture.commands.at(-1).heightM - 1.45) < 1e-8
       && !Object.hasOwn(__fixture.commands.at(-1), 'headM')), 'Window head translates into height');
     await choose('wall', 'f1:wall');
+    check((await inspectorText()).includes('Physical partition · feet')
+      && (await inspectorText()).includes('16.4042 ft')
+      && (await inspectorText()).includes('9.1864 ft')
+      && (await inspectorText()).includes('0.4921 ft'),
+    'Wall physical measurements are displayed in feet');
     const beforeWall = await browserPage.evaluate(() => __fixture.commands.length);
     await action('review-open-wall').click();
     check((await inspectorText()).includes('never permission for safe demolition'), 'Explicit wall safety caution');
@@ -680,6 +693,8 @@ async function browserSmoke(page, directory) {
     await browserPage.locator('#hp-editor-wall-offsetM').fill('.5');
     await browserPage.locator('#hp-editor-wall-widthM').fill('1.2');
     await action('review-open-wall').click();
+    check((await inspectorText()).includes('Open 3.937 ft starting 1.6404 ft'),
+      'Wall operation confirmation descriptions use feet');
     await browserPage.evaluate(() => { __fixture.project.revision++; __fixture.emit(); });
     await action('confirm').click({ force: true });
     check(await browserPage.evaluate(() => __fixture.commands.length) === beforeWall, 'Stale wall confirmation is rejected');

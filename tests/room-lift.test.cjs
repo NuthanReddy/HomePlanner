@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const Regions=require('../planner-regions.js');
+const LayoutGenerator=require('../planner-layout-generator.js');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const clone=value=>JSON.parse(JSON.stringify(value));
 
@@ -23,6 +24,16 @@ function load(){
     const source=html.match(new RegExp(`function ${name}\\([^]*?\\n\\}`));
     assert.ok(source,`Missing ${name}`);vm.runInContext(source[0],context);
   }
+  const unused=()=>{};
+  context.roomLayoutGenerator=()=>LayoutGenerator.create({
+    internalWallM:context.INT_WALL,epsilon:context.ROOM_EPS,subtractFree:unused,
+    occupiedBounds:unused,serviceKeepClear:unused,rectInside:unused,carpetModule:unused,
+    moduleClear:unused,balconyTouches:unused,balconyEligible:unused,
+    hardAdjacencyValid:unused,servicePlacementRank:unused,directionPenalty:unused,
+    adjacencyPenalty:unused,rolePenalty:unused,recalculatePlan:unused,
+    balconyAttachments:unused,circulationAnalysis:unused,scoreLess:unused,
+    assignBalconies:unused,optimizeLeftovers:unused
+  });
   return context;
 }
 

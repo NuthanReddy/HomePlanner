@@ -33,6 +33,7 @@ from cfd_results import (
     COORDINATE_SPACE, ENGINE, PROFILE, MAX_PROBES, CfdResultError, StageEvidence,
     parse_results, read_bounded_file, reject_link, safe_relative_path,
 )
+from cfd_conservation import ConservationError, checked_contract
 
 
 MAX_PAYLOAD_BYTES = 262_144
@@ -916,6 +917,10 @@ def _validate_manifest(manifest, limits: Limits) -> None:
         raise CfdError("The compiled probe-output path is invalid.", "invalid_compiled_case", 500)
     if not isinstance(manifest.get("limitations"), list) or any(not isinstance(item, str) for item in manifest["limitations"]):
         raise CfdError("The compiler must report its model limitations.", "invalid_compiled_case", 500)
+    try:
+        checked_contract(manifest)
+    except ConservationError as exc:
+        raise CfdError(str(exc), "invalid_compiled_case", 500) from exc
 
 
 def _compiled_case(payload, compiler, limits: Limits) -> dict:

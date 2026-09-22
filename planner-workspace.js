@@ -12,24 +12,23 @@
   'use strict';
 
   const destinations = Object.freeze({
-    overview: Object.freeze({ label: 'Overview', sections: Object.freeze({ summary: 'Project readiness' }) }),
     site: Object.freeze({ label: 'Site · Plot Planner', sections: Object.freeze({
       plot: 'Plot & feasibility', context: 'Location, surroundings & weather', prohibited: 'Prohibited Properties', references: 'Regulatory sources'
     }) }),
-    design: Object.freeze({ label: 'Design', sections: Object.freeze({ layout: 'Layout · 2D / 3D', structure: 'Structure', elevations: 'Elevations & sections', plumbing: 'Plumbing', drainage: 'Drainage', electrical: 'Electrical', review: 'Issues & guidance' }) }),
+    design: Object.freeze({ label: 'Design', sections: Object.freeze({ layout: 'Layout · 2D / 3D', 'ai-plan': 'AI Plan', structure: 'Structure', elevations: 'Elevations & sections', plumbing: 'Plumbing', drainage: 'Drainage', electrical: 'Electrical', review: 'Issues & guidance' }) }),
     environment: Object.freeze({ label: 'Environment', sections: Object.freeze({
-      sun: 'Sun Path & shading', solar: 'Solar exposure', airflow: 'Airflow & windows', cfd: 'Thermal / CFD', light: 'Light · sunlight & sky access', models: 'Reduced models'
+      sun: 'Solar path, shading & exposure', airflow: 'Airflow & windows', cfd: 'Thermal / CFD', light: 'Light · sunlight & sky access', models: 'Reduced models'
     }) }),
     compare: Object.freeze({ label: 'Compare', sections: Object.freeze({ plot: 'Plot comparisons', envelope: 'Envelope comparisons' }) }),
     report: Object.freeze({ label: 'Report', sections: Object.freeze({ drawings: 'Drawings', package: 'Document package', schedules: 'Room schedule', electrical: 'Point schedule', exports: 'JSON & analysis exports' }) })
   });
   const aliases = Object.freeze({
     optimizer: ['site', 'plot'], rooms: ['design', 'layout'], sun: ['environment', 'sun'],
-    electrical: ['design', 'electrical'], prohibited: ['site', 'prohibited'], analyze: ['environment', 'solar']
+    electrical: ['design', 'electrical'], prohibited: ['site', 'prohibited'], analyze: ['environment', 'sun']
   });
   const anchors = Object.freeze({
     'env-site-section': ['site', 'context'], 'env-weather-section': ['site', 'context'],
-    'env-solar-section': ['environment', 'solar'], 'env-envelope-section': ['compare', 'envelope'],
+    'env-solar-section': ['environment', 'sun'], 'env-envelope-section': ['compare', 'envelope'],
     'env-wind-section': ['environment', 'airflow'], 'env-models-section': ['environment', 'models'],
     'env-export-section': ['report', 'exports']
   });
@@ -55,6 +54,7 @@
       destination = alias[0];
       section = section || alias[1];
     }
+    if (destination === 'environment' && section === 'solar') section = 'sun';
     if (!owns(destinations, destination)) destination = 'design';
     if (!owns(destinations[destination].sections, section))
       section = Object.keys(destinations[destination].sections)[0];
@@ -74,11 +74,11 @@
     if (destination === 'site') return section === 'context' ? 'site-context' :
       section === 'prohibited' ? 'prohibited' : 'optimizer';
     if (destination === 'design') return section === 'layout' ? 'rooms' : section;
-    if (destination === 'environment') return section === 'sun' ? 'sun' : `env-${section}`;
+    if (destination === 'environment') return `env-${section}`;
     if (destination === 'compare') return section === 'plot' ? 'optimizer' : 'env-envelope';
     if (destination === 'report') return section === 'package' ? 'package' : section === 'drawings' ? 'drawings' : section === 'exports' ? 'env-exports' :
       section === 'electrical' ? 'electrical-schedule' : 'schedules';
-    return 'overview';
+    return 'rooms';
   }
 
   function mount(document = root.document) {
@@ -115,19 +115,18 @@
     move(query('[data-workspace-action="save"]'), by('workspaceSaveActions'));
     move(query('.hp-storage-status'), by('workspaceSaveStatus'));
     const exportButton = query('[data-workspace-action="export-project"]');
-    if (exportButton) by('workspaceExportProject').replaceWith(exportButton);
+    if (exportButton) by('workspaceExportProject')?.replaceWith(exportButton);
     move(by('plannerProjectTools'), by('workspaceTools'));
     const tools = by('plannerProjectTools'), toolsBody = tools?.querySelector('.hp-editor-body');
     if (toolsBody) {
-      const compact = create('div', 'hp-workspace-tool-row hp-editor-actions');
+      const compact = create('div', 'hp-workspace-tool-row hp-editor-actions hp-workspace-floor-only');
       const floor = by('hp-editor-floor-select');
-      move(toolsBody.querySelector(`label[for="${floor.id}"]`), compact);
-      move(floor, compact);
-      move(toolsBody.querySelector('.hp-editor-history'), compact);
-      const more = details('Floor management & properties');
-      [...toolsBody.children].forEach(node => move(node, more));
-      toolsBody.append(compact, more);
-      show(tools.querySelector('.hp-editor-heading'), false);
+      if (floor) {
+        move(toolsBody.querySelector(`label[for="${floor.id}"]`), compact);
+        move(floor, compact);
+        by('workspaceTools').append(compact);
+      }
+      show(tools, false);
     }
     show(query('#plannerInspector .hp-editor-history'), false);
     show(query('[data-elec-floor]')?.closest('label'), false);
@@ -175,6 +174,8 @@
     const context = env?.querySelector('.env-context');
     const envLayout = env?.querySelector('.env-layout');
     const envAnalysis = env?.querySelector('.env-analysis');
+    const sunWorkspace = by('page-sun')?.firstElementChild;
+    if (sunWorkspace && envAnalysis) env?.insertBefore(sunWorkspace, envAnalysis);
     const siteLink = create('p', 'env-help');
     const link = create('a', '', 'Site owns location, cardinal road bearing, surroundings and weather. Review these inputs in Site.');
     link.href = '?workspace=site&section=context';
@@ -208,21 +209,6 @@
         if (!wide.matches && !inspectorDocked && drawer.open) other.open = false;
       });
     }
-    const drawers = create('div', 'hp-editor-actions hp-workspace-drawer-controls');
-    for (const [drawer, label] of [[palette, 'Tools & rooms'], [inspector, 'Selection properties']]) {
-      const button = create('button', '', label);
-      button.type = 'button';
-      button.addEventListener('click', () => {
-        navigate('design/layout');
-        drawer.open = true;
-        if (!wide.matches) (drawer === palette ? inspector : palette).open = false;
-        drawer.querySelector('summary').focus({ preventScroll: true });
-        drawer.scrollIntoView({ block: 'nearest' });
-      });
-      drawers.append(button);
-    }
-    toolsBody?.querySelector('.hp-workspace-tool-row')?.append(drawers);
-
     function dockInspector(active) {
       if (active && !inspectorDocked) {
         drawerState = { palette: palette.open, inspector: inspector.open };
@@ -245,18 +231,11 @@
       preference(MODE_KEY, mode);
       return mode;
     }
-    function renderReadiness() {
-      const project = root.HomePlanner?.getProject(), scene = root.HomePlanner?.getScene();
-      if (!project) { by('workspaceReadiness').textContent = 'Shared project unavailable. Check that the local planner scripts loaded.'; return; }
+    function renderProjectIdentity() {
+      const project = root.HomePlanner?.getProject();
+      if (!project) return;
       by('workspaceProjectIdentity').textContent = project.name || 'Untitled project';
       by('workspaceProjectIdentity').title = project.name || 'Untitled project';
-      const site = project.site || {}, provenance = project.environment?.siteProvenance;
-      const confirmed = provenance?.buildingSiteConfirmed === true &&
-        provenance.latitude === site.latitude && provenance.longitude === site.longitude;
-      by('workspaceReadiness').textContent = `${project.floors.length} editable floor(s); ${scene?.rooms?.length || 0} rooms on the active floor. ` +
-        `${scene ? 'Current scene available.' : 'No valid active-floor scene; review plot inputs.'} ` +
-        `${confirmed ? 'Site coordinates verified by the user.' : 'Site verification is missing or assumed; review Site.'} ` +
-        `${project.environment?.weather ? 'Weather attached; review its source and coverage.' : 'No weather attached; offline geometry and manual scenarios remain available.'}`;
     }
     function sectionNav(next) {
       const nav = by('workspaceSubnav'), sectionEntries = Object.entries(destinations[next.destination].sections);
@@ -273,17 +252,17 @@
     function apply(next, focus) {
       const view = viewFor(next);
       all('.app-page').forEach(page => { page.classList.remove('on'); page.hidden = true; });
-      const page = ['optimizer', 'rooms', 'sun', 'prohibited'].includes(view) ? view :
+      const page = ['optimizer', 'rooms', 'prohibited'].includes(view) ? view :
         view === 'electrical' || view === 'electrical-schedule' ? 'electrical' :
           (view.startsWith('env-') && view !== 'env-light' && view !== 'env-cfd') || view === 'site-context' ? 'environment' : null;
       if (page) { by(`page-${page}`).hidden = false; by(`page-${page}`).classList.add('on'); }
-      show(by('workspaceOverview'), view === 'overview');
       show(by('workspaceReport'), next.destination === 'report');
       show(by('workspaceReportOverview'), view !== 'drawings' && view !== 'package');
       show(by('workspaceDrawings'), view === 'drawings');
       show(by('workspacePackage'), view === 'package');
       show(by('workspaceSchedules'), view === 'schedules');
       show(by('workspaceReview'), view === 'review');
+      show(by('workspaceAiPlan'), view === 'ai-plan');
       show(by('workspaceStructure'), view === 'structure');
       show(by('workspacePlumbing'), view === 'plumbing');
       show(by('workspaceDrainage'), view === 'drainage');
@@ -292,6 +271,7 @@
       show(by('python-density-analysis'), view === 'env-airflow');
       show(by('workspaceElevations'), view === 'elevations');
       show(by('workspaceLight'), view === 'env-light');
+      show(sunWorkspace, view === 'env-sun');
       show(by('plotSources'), view === 'optimizer');
       if (view === 'optimizer') {
         const pane = next.destination === 'compare' ? 'insights' : next.section === 'references' ? 'refs' : 'calc';
@@ -299,7 +279,7 @@
           node.classList.toggle('on', node.id === `pane-${pane}`); node.hidden = node.id !== `pane-${pane}`;
         });
       }
-      const site = view === 'site-context', solar = view === 'env-solar', envelope = view === 'env-envelope';
+      const site = view === 'site-context', solar = view === 'env-sun', envelope = view === 'env-envelope';
       show(context, site); show(envAnalysis, solar || envelope); show(envLayout, site || solar || envelope);
       envLayout?.classList.toggle('hp-workspace-single-column', true);
       show(siteLink, !site);
@@ -390,9 +370,9 @@
       if (owns(anchors, root.location.hash.slice(1)))
         navigate(root.location.href, { history: false, force: true });
     });
-    root.HomePlanner?.subscribe(event => { if (event.type !== 'selection') renderReadiness(); });
+    root.HomePlanner?.subscribe(event => { if (event.type !== 'selection') renderProjectIdentity(); });
     setMode(preference(MODE_KEY));
-    renderReadiness();
+    renderProjectIdentity();
     const controller = { navigate, setMode, dockInspector, getRoute: () => ({ ...route }) };
     document.body.homePlannerWorkspace = controller;
     const explicit = new URL(root.location.href).searchParams.has('workspace') || owns(anchors, root.location.hash.slice(1));

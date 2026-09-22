@@ -1,0 +1,127 @@
+.hp-ai-plan-panel,
+.hp-ai-plan-panel #plannerRequirements,
+.hp-ai-plan-panel .hp-requirements {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+}
+
+.hp-ai-plan-panel .hp-requirement-array-item {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 10px 14px;
+}
+
+.hp-ai-plan-panel .hp-requirement-array-item > legend,
+.hp-ai-plan-panel .hp-requirement-array-item > .hp-requirement-remove {
+  grid-column: 1 / -1;
+}
+
+.hp-requirements > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.hp-requirements > summary:focus-visible,
+.hp-requirement-actions button:focus-visible,
+.hp-requirement-import:focus-within {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.hp-requirement-group {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.hp-requirement-source {
+  margin: 10px 0 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+}
+
+.hp-requirement-source p {
+  margin: 5px 0 8px;
+}
+
+.hp-requirement-group legend {
+  padding: 0 5px;
+  font-weight: 700;
+}
+
+details.hp-requirement-group > summary {
+  min-height: 44px;
+  align-content: center;
+  padding: 0 5px;
+  font-weight: 700;
+}
+
+.hp-requirement-field {
+  display: grid;
+  gap: 5px;
+  margin: 9px 0;
+}
+
+.hp-requirement-field input,
+.hp-requirement-field select {
+  width: 100%;
+}
+
+.hp-requirement-check {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.hp-requirement-check input {
+  width: auto;
+}
+
+.hp-requirement-array-item {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel2);
+}
+
+.hp-requirement-remove {
+  margin-top: 8px;
+}
+
+.hp-requirement-actions {
+  margin: 12px 0;
+}
+
+.hp-requirement-import {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hp-requirement-import input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.hp-requirement-error {
+  color: var(--bad);
+  font-weight: 650;
+}
+
+.hp-requirement-review {
+  margin-top: 12px;
+}

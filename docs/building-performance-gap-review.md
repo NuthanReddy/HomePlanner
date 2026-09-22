@@ -110,6 +110,14 @@ turbulence, radiation, HVAC and moisture capabilities remain missing. The
 following original review tables and R1-R7 gates are historical scope evidence;
 this bounded adapter does not complete those wider gates.
 
+The **22 September offline follow-up** adds every-timestep integral-output
+collectors and strict reconstructed mass/enthalpy/kinetic budgets, including
+pressure work, gravity, open-patch diffusion and independent regional/interface
+residuals. It also adds explicit same-physics mesh/timestep comparisons from
+completed session runs. Missing or one-row histories cannot imply conservation,
+and two runs do not establish convergence order or an error bound. WSL2 remains
+unavailable; no actual-engine or physical-validation claim is added.
+
 **Keep Three.js and the current SVG editor. Keep Blender optional.**
 The authoritative object is the existing structured HomePlanner project, not
 a Three.js scene, Blender mesh, rendered image or external engine input.

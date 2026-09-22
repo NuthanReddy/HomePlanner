@@ -17,6 +17,7 @@ import json
 import math
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
+from cfd_conservation import build_contract, function_objects
 
 PROFILE = "single-room-cht-v1"
 ENGINE_VERSION = "2606"
@@ -927,7 +928,7 @@ PIMPLE { nNonOrthogonalCorrectors 0; }
 """
 
 
-def _control(plan, probes):
+def _control(plan, probes, conservation):
     numerics = plan["request"]["scenario"]["numerics"]
     locations = "\n".join("            " + _vector((p["x"], p["y"], p["z"])) for p in probes)
     return _header("controlDict") + f"""application chtMultiRegionFoam;
@@ -1004,6 +1005,7 @@ functions
             }}
         }}
     }}
+{function_objects(conservation)}
     probes
     {{
         type probes;
@@ -1110,7 +1112,7 @@ def _manifest(plan, mesh, probes, case_hash):
     cosine, sine = math.cos(angle), math.sin(angle)
     room_volume = width * depth * height
     outer_volume = outer_width * outer_depth * outer_height
-    return {
+    manifest = {
         "version": 1, "profile": PROFILE,
         "engine": {"id": "OpenCFD-OpenFOAM", "version": ENGINE_VERSION, "solver": "chtMultiRegionFoam"},
         "caseHash": case_hash,
@@ -1229,6 +1231,7 @@ def _manifest(plan, mesh, probes, case_hash):
             "Uniform initial absolute pressure and temperatures with U=0 are an explicit start-up condition, not a hydrostatically equilibrated or warmed-up building.",
             "First-order spatial/time discretization and containing-cell probes require mesh/timestep studies. A completed run would not by itself establish measured performance, calibrated temperatures, comfort or engineering adequacy.",
             "Cell, timestep, output and receiver budgets do not guarantee completion within the wall-clock allowance. The runtime must stop overdue or failed commands and reject incomplete output.",
+            "Integral mass and enthalpy/kinetic energy histories are requested every timestep. Balances use only actual bracketed rows, including pressure work, gravity, interface heat and open-boundary conduction; they are not matrix residuals or acceptance certificates.",
             "No residual, heat-flux or conservation-success values are fabricated. Courant diagnostics are safety guards, not convergence or thermal-balance certification.",
         ],
         "referenceDocumentation": [
@@ -1236,16 +1239,22 @@ def _manifest(plan, mesh, probes, case_hash):
             _UPSTREAM + "tutorials/heatTransfer/chtMultiRegionFoam/multiRegionHeater/constant/topAir/thermophysicalProperties",
             _UPSTREAM + "src/finiteVolume/fields/fvPatchFields/derived/prghPressure/prghPressureFvPatchScalarField.cxx",
             _UPSTREAM + "src/sampling/probes/Probes/Probes.C",
+            _UPSTREAM + "applications/solvers/heatTransfer/chtMultiRegionFoam/fluid/EEqn.H",
+            _UPSTREAM + "applications/solvers/heatTransfer/chtMultiRegionFoam/solid/solveSolid.H",
+            _UPSTREAM + "src/functionObjects/field/wallHeatFlux/wallHeatFluxModels/wall/wallHeatFlux_wall.cxx",
+            _UPSTREAM + "src/functionObjects/field/fieldValues/surfaceFieldValue/surfaceFieldValue.H",
         ],
         "runtimeVerification": "pending",
     }
+    manifest["conservation"] = build_contract(scenario, manifest["mesh"]["boundaryPatches"], manifest["gravityMps2"])
+    return manifest
 
 
-def _files(plan, mesh, probes):
+def _files(plan, mesh, probes, conservation):
     files = _fields(plan, mesh)
     files.update({
         "system/blockMeshDict": _block_mesh(mesh),
-        "system/controlDict": _control(plan, probes),
+        "system/controlDict": _control(plan, probes, conservation),
         "system/fvSchemes": _schemes(True),
         "system/fvSolution": _header("fvSolution") + "solvers {}\nPIMPLE { nOuterCorrectors 2; }\n",
         "system/air/fvSchemes": _schemes(True),
@@ -1275,7 +1284,7 @@ def prepare_case(payload):
     mesh = _mesh(plan)
     probes = _probe_locations(plan)
     manifest = _manifest(plan, mesh, probes, case_hash)
-    files = _files(plan, mesh, probes)
+    files = _files(plan, mesh, probes, manifest["conservation"])
     return {"manifest": manifest, "files": files}
 
 

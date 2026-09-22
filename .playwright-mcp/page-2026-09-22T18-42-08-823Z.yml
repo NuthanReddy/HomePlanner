@@ -1,0 +1,415 @@
+- generic [active] [ref=f3e1]:
+  - banner [ref=f3e2]:
+    - generic [ref=f3e3]:
+      - heading "HomePlanner" [level=1] [ref=f3e5]
+      - generic "Current project" [ref=f3e6]: Untitled project
+      - button "Save now" [disabled] [ref=f3e8]
+      - generic [ref=f3e9]:
+        - text: View
+        - combobox "View" [ref=f3e10]:
+          - option "Homeowner" [selected]
+          - option "Expert"
+      - group [ref=f3e11]:
+        - generic "+ Projects & backups" [ref=f3e12] [cursor=pointer]
+        - option "Checking browser projects…" [selected]
+      - switch "Switch to dark theme" [checked] [ref=f3e13] [cursor=pointer]:
+        - generic [ref=f3e15]: Light theme
+    - status [ref=f3e17]: Checking browser storage… The current layout remains in memory.
+  - navigation "Project destinations" [ref=f3e18]:
+    - button "Site · Plot Planner" [ref=f3e19] [cursor=pointer]
+    - button "Design" [ref=f3e20] [cursor=pointer]
+    - button "Environment" [ref=f3e21] [cursor=pointer]
+    - button "Compare" [ref=f3e22] [cursor=pointer]
+    - button "Report" [ref=f3e23] [cursor=pointer]
+  - navigation "Design sections" [ref=f3e24]:
+    - button "Layout · 2D / 3D" [ref=f3e25] [cursor=pointer]
+    - button "Structure" [ref=f3e26] [cursor=pointer]
+    - button "Elevations & sections" [ref=f3e27] [cursor=pointer]
+    - button "Plumbing" [ref=f3e28] [cursor=pointer]
+    - button "Drainage" [ref=f3e29] [cursor=pointer]
+    - button "Electrical" [ref=f3e30] [cursor=pointer]
+    - button "Issues & guidance" [ref=f3e31] [cursor=pointer]
+  - region "Floor selection and edit history" [ref=f3e33]:
+    - generic [ref=f3e34]:
+      - generic [ref=f3e35]:
+        - generic [ref=f3e36]: Active editable floor
+        - combobox "Active editable floor" [ref=f3e37]:
+          - option "1. Ground floor · 0 m" [selected]
+        - generic [ref=f3e38]:
+          - button "Undo" [disabled] [ref=f3e39]
+          - button "Redo" [disabled] [ref=f3e40]
+        - generic [ref=f3e41]:
+          - button "Tools & rooms" [ref=f3e42] [cursor=pointer]
+          - button "Selection properties" [ref=f3e43] [cursor=pointer]
+      - group [ref=f3e44]:
+        - generic "▸ Floor management & properties" [ref=f3e45] [cursor=pointer]
+  - heading "Design · Layout · 2D / 3D" [level=2] [ref=f3e46]
+  - group [ref=f3e48]:
+    - generic "▸ How to use this section" [ref=f3e49] [cursor=pointer]
+  - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸
+  - generic [ref=f3e51]:
+    - generic [ref=f3e52]:
+      - generic [ref=f3e53]:
+        - generic [ref=f3e54]:
+          - generic [ref=f3e55]:
+            - heading "Typical Floor Plan" [level=2] [ref=f3e56]
+            - generic [ref=f3e57]: North stays up; the highlighted edge is the selected road-facing front.
+          - generic [ref=f3e58]:
+            - generic [ref=f3e59]: Whole plot · East front · 10.7 × 14.8 m · 1,706 sq ft · floor 1 at approx. 3.0 m
+            - button "Reset to suggested layout" [disabled] [ref=f3e61] [cursor=pointer]
+        - generic [ref=f3e62]:
+          - toolbar "Floor plan editing and view controls" [ref=f3e63]:
+            - group "Selected object actions" [ref=f3e64]:
+              - button "Edit" [disabled] [ref=f3e65]
+              - button "Add door" [disabled] [ref=f3e66]
+              - button "Add window" [disabled] [ref=f3e67]
+              - button "Wall ends" [disabled] [ref=f3e68]
+              - button "Delete" [disabled] [ref=f3e69]
+            - group "Zoom controls" [ref=f3e70]:
+              - button "Zoom out" [ref=f3e71] [cursor=pointer]: "-"
+              - slider "Floor plan zoom" [ref=f3e72]: "100"
+              - status [ref=f3e73]: 100%
+              - button "Zoom in" [ref=f3e74] [cursor=pointer]: +
+              - button "Fit" [ref=f3e75] [cursor=pointer]
+            - group "Layout history and view" [ref=f3e76]:
+              - button "Undo" [disabled] [ref=f3e77]
+              - button "Redo" [disabled] [ref=f3e78]
+              - button "Fullscreen" [ref=f3e79] [cursor=pointer]
+            - group "Complete project JSON" [ref=f3e80]:
+              - button "Import JSON" [ref=f3e81] [cursor=pointer]
+              - button "Export JSON" [ref=f3e82] [cursor=pointer]
+          - generic "Zoomable floor plan editing viewport" [ref=f3e83]:
+            - img "Approximate room plan" [ref=f3e85]:
+              - generic [ref=f3e89]:
+                - generic [ref=f3e90]: Front corridor
+                - generic [ref=f3e91]: 4.0 ft clear
+              - generic [ref=f3e93]:
+                - generic [ref=f3e94]: Rear corridor
+                - generic [ref=f3e95]: 3.0 ft clear
+              - generic: Side corridor
+              - generic: Passage
+              - generic: 20.1 × 27.4 ft
+              - generic: Passage
+              - generic: 10.4 × 20.0 ft
+              - generic: Passage
+              - generic: 7.7 × 7.0 ft
+              - generic: Passage
+              - generic: 5.0 × 7.4 ft
+              - group "Bedroom 1, draggable and resizable" [ref=f3e104]:
+                - generic: Bedroom 1
+                - generic: 12.0 × 12.0 ft
+                - generic "Resize Bedroom 1 from N edge"
+                - generic "Resize Bedroom 1 from E edge"
+                - generic "Resize Bedroom 1 from S edge"
+                - generic "Resize Bedroom 1 from W edge"
+              - group "Bathroom 2, draggable and resizable" [ref=f3e106]:
+                - generic: Bathroom 2
+                - generic "Resize Bathroom 2 from N edge"
+                - generic "Resize Bathroom 2 from E edge"
+                - generic "Resize Bathroom 2 from S edge"
+                - generic "Resize Bathroom 2 from W edge"
+              - group "Kitchen 1, draggable and resizable" [ref=f3e108]:
+                - generic: Kitchen 1
+                - generic: 10.0 × 12.0 ft
+                - generic "Resize Kitchen 1 from N edge"
+                - generic "Resize Kitchen 1 from E edge"
+                - generic "Resize Kitchen 1 from S edge"
+                - generic "Resize Kitchen 1 from W edge"
+              - group "Common Bathroom, draggable and resizable" [ref=f3e110]:
+                - generic: Common Bathroom
+                - generic: 5.0 × 7.0 ft
+                - generic "Resize Common Bathroom from N edge"
+                - generic "Resize Common Bathroom from E edge"
+                - generic "Resize Common Bathroom from S edge"
+                - generic "Resize Common Bathroom from W edge"
+              - button "Exterior wall"
+              - button "Internal partition"
+              - button "Exterior wall"
+              - button "Internal partition"
+              - button "Internal partition"
+              - button "Internal partition"
+              - button "Exterior wall"
+              - button "Internal partition"
+              - button "Internal partition"
+              - button "Internal partition"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Internal partition"
+              - button "Internal partition"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - button "Exterior wall"
+              - group "Queen bed, movable within Bedroom 1, deletable" [ref=f3e112]:
+                - generic: Queen bed
+                - button "Rotate Queen bed" [ref=f3e114] [cursor=pointer]
+                - button "Delete Queen bed" [ref=f3e116] [cursor=pointer]
+              - group "Cupboard, movable and resizable within Bedroom 1, deletable" [ref=f3e118]:
+                - generic: Cupboard
+                - generic "Resize Cupboard from N edge"
+                - generic "Resize Cupboard from E edge"
+                - generic "Resize Cupboard from S edge"
+                - generic "Resize Cupboard from W edge"
+                - button "Rotate Cupboard" [ref=f3e120] [cursor=pointer]
+                - button "Delete Cupboard" [ref=f3e122] [cursor=pointer]
+              - 'button "Door: 0.75 m nominal schematic span" [ref=f3e124]'
+              - 'button "Door: 0.75 m nominal schematic span" [ref=f3e125]'
+              - 'button "Door: 0.90 m nominal schematic span" [ref=f3e126]'
+              - 'button "Door: 0.90 m nominal schematic span" [ref=f3e127]'
+              - 'button "Window: 0.45 m"'
+              - 'button "Window: 0.45 m"'
+              - 'button "Window: 0.75 m"'
+              - 'button "Window: 0.70 m"'
+              - 'button "Window: 0.85 m"'
+              - 'button "Window: 0.71 m"'
+              - 'button "Window: 0.58 m"'
+              - generic [ref=f3e128]: EAST FRONT / ROAD
+              - generic [ref=f3e129]: Whole plot · statutory envelope 35.2 ft × 48.5 ft · rectangular dwelling 32.2 ft × 41.5 ft
+              - generic [ref=f3e130]:
+                - generic [ref=f3e133]: "N"
+                - generic [ref=f3e134]: S
+                - generic [ref=f3e135]: E
+                - generic [ref=f3e136]: W
+        - generic [ref=f3e137]: Drag room grips from the right pane onto the plan, then reposition or resize rooms here. Drag furniture and openings from Components; red × controls remove added items.
+        - group [ref=f3e138]:
+          - generic "▸ Area summary & legend" [ref=f3e139] [cursor=pointer]
+      - region "Three-dimensional floor inspection" [ref=f3e140]:
+        - generic [ref=f3e141]:
+          - generic [ref=f3e142]:
+            - heading "3D inspection Optional · schematic" [level=3] [ref=f3e143]:
+              - text: 3D inspection
+              - generic [ref=f3e144]: Optional · schematic
+            - paragraph [ref=f3e145]: Inspect the shared plan in 3D. Active-floor actions use the same numeric inspector and project history without leaving this view.
+          - button "Open 3D" [ref=f3e147] [cursor=pointer]
+        - status [ref=f3e148]: 3D is off. No graphics library or GPU context is loaded until you choose Open 3D. Plumbing engineering is not assessed.
+        - text: ▸ ▸ ▸ ▸
+        - group [ref=f3e149]:
+          - generic "▸ Preview assumptions & limitations" [ref=f3e150] [cursor=pointer]
+      - status [ref=f3e151]: Editing Ground floor. 1 independent floor layout(s). Stacked layouts do not establish structural safety or an approved building height.
+      - generic [ref=f3e152]:
+        - generic [ref=f3e153]: The requested program fits in this deterministic schematic. Lift and stair footprints are reserved inside the dwelling; access and vertical construction still need review. Every balcony follows the selected floor's projection rule.
+        - generic [ref=f3e154]: 851 sq ft is retained as internal flex / circulation. Rooms were expanded only up to their configured maxima; the remaining aligned zones can become passage, foyer, storage or utility space during architectural detailing.
+      - link "Review placement issues & guidance" [ref=f3e155] [cursor=pointer]:
+        - /url: "?workspace=design&section=review"
+    - group [ref=f3e156]:
+      - generic [ref=f3e157] [cursor=pointer]:
+        - text: − Tools & rooms
+        - button "Collapse Tools & rooms settings" [expanded] [ref=f3e158]:
+          - generic [aria-hidden] [ref=f3e159]: ">"
+      - region "Room quantity and default dimension drafts" [ref=f3e160]:
+        - heading "Room quantities and defaults" [level=3] [ref=f3e161]
+        - paragraph [ref=f3e162]: Typing stays a draft. Apply or Enter validates all pending room inputs together; leaving a field does not apply it.
+        - status [ref=f3e163]: 0 pending room input(s). Saved and exported projects include committed values only.
+        - generic [ref=f3e164]:
+          - button "Apply room settings" [disabled] [ref=f3e165] [cursor=pointer]
+          - button "Discard room drafts" [disabled] [ref=f3e166] [cursor=pointer]
+        - list
+      - generic [ref=f3e167]:
+        - heading "Rooms & Services — add as needed" [level=2] [ref=f3e168]
+        - generic [ref=f3e169]: New projects start with one bedroom (NW/NE), one kitchen (SE), and bathrooms on the S and W sides. These guide suggestions; your manual layout stays editable.
+        - generic [ref=f3e170]: Click a room tile to add it, or drag anywhere on the tile onto the plan. Use only the right-hand arrow to expand quantity and dimensions.
+        - generic [ref=f3e171]:
+          - group [ref=f3e172]:
+            - generic [ref=f3e173]:
+              - button "Add Living / Dining" [ref=f3e174]:
+                - generic [ref=f3e175]:
+                  - text: Living / Dining
+                  - generic [ref=f3e176]: 12.0 × 14.0 ft
+                - generic [ref=f3e177]: None
+              - button "Expand Living / Dining settings" [ref=f3e178] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e179]: ">"
+          - group [ref=f3e180]:
+            - generic [ref=f3e181]:
+              - button "Add Bedroom" [ref=f3e182]:
+                - generic [ref=f3e183]:
+                  - text: Bedroom
+                  - generic [ref=f3e184]: 9.0–12.0 W × 10.0–14.0 D ft
+                - generic [ref=f3e185]: 1 bedroom
+              - button "Expand Bedroom settings" [ref=f3e186] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e187]: ">"
+          - group [ref=f3e188]:
+            - generic [ref=f3e189]:
+              - button "Add Kitchen" [ref=f3e190]:
+                - generic [ref=f3e191]:
+                  - text: Kitchen
+                  - generic [ref=f3e192]: 6.0–10.0 W × 8.0–12.0 D ft
+                - generic [ref=f3e193]: 1 kitchen
+              - button "Expand Kitchen settings" [ref=f3e194] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e195]: ">"
+          - group [ref=f3e196]:
+            - generic [ref=f3e197]:
+              - button "Add Bathroom" [ref=f3e198]:
+                - generic [ref=f3e199]:
+                  - text: Bathroom
+                  - generic [ref=f3e200]: 5.0 × 7.0 ft
+                - generic [ref=f3e201]: 2 bathrooms
+              - button "Expand Bathroom settings" [ref=f3e202] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e203]: ">"
+          - group [ref=f3e204]:
+            - generic [ref=f3e205]:
+              - button "Add Pooja Room" [ref=f3e206]:
+                - generic [ref=f3e207]:
+                  - text: Pooja Room
+                  - generic [ref=f3e208]: 4.0–6.0 W × 4.0–6.0 D ft
+                - generic [ref=f3e209]: None
+              - button "Expand Pooja Room settings" [ref=f3e210] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e211]: ">"
+          - group [ref=f3e212]:
+            - generic [ref=f3e213]:
+              - button "Add Balcony" [ref=f3e214]:
+                - generic [ref=f3e215]:
+                  - text: Balcony
+                  - generic [ref=f3e216]: 4.0 ft deep
+                - generic [ref=f3e217]: None
+              - button "Expand Balcony settings" [ref=f3e218] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e219]: ">"
+          - group [ref=f3e220]:
+            - generic [ref=f3e221]:
+              - button "Add Lift" [ref=f3e222]:
+                - generic [ref=f3e223]:
+                  - text: Lift
+                  - generic [ref=f3e224]: 5.0 × 5.5 ft
+                - generic [ref=f3e225]: None
+              - button "Expand Lift settings" [ref=f3e226] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e227]: ">"
+          - group [ref=f3e228]:
+            - generic [ref=f3e229]:
+              - button "Add Staircase" [ref=f3e230]:
+                - generic [ref=f3e231]:
+                  - text: Staircase
+                  - generic [ref=f3e232]: 2.5 ft flight × 10.0 ft deep
+                - generic [ref=f3e233]: None
+              - button "Expand Staircase settings" [ref=f3e234] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f3e235]: ">"
+          - group [ref=f3e236]:
+            - generic "Corridors Front / side / rear Expand Corridors settings" [ref=f3e237] [cursor=pointer]:
+              - generic [ref=f3e238]: Corridors
+              - generic [ref=f3e239]: Front / side / rear
+              - button "Expand Corridors settings" [ref=f3e240]:
+                - generic [aria-hidden] [ref=f3e241]: ">"
+            - option "Right" [selected]
+            - option "Left"
+          - group [ref=f3e242]:
+            - generic "Walls Thickness Expand Walls settings" [ref=f3e243] [cursor=pointer]:
+              - generic [ref=f3e244]: Walls
+              - generic [ref=f3e245]: Thickness
+              - button "Expand Walls settings" [ref=f3e246]:
+                - generic [aria-hidden] [ref=f3e247]: ">"
+        - group [ref=f3e248]:
+          - generic "Furniture & Fixtures Drag to plan Collapse Furniture & Fixtures settings" [ref=f3e249] [cursor=pointer]:
+            - generic [ref=f3e250]: Furniture & Fixtures
+            - generic [ref=f3e251]: Drag to plan
+            - button "Collapse Furniture & Fixtures settings" [expanded] [ref=f3e252]:
+              - generic [aria-hidden] [ref=f3e253]: ">"
+          - generic [ref=f3e254]:
+            - generic [ref=f3e255]:
+              - text: Component
+              - combobox "Component" [ref=f3e256]:
+                - option "Bed" [selected]
+                - option "Cupboard"
+                - option "Sofa"
+                - option "Dining table"
+                - option "Study table"
+                - option "Chair"
+                - option "Kitchen counter"
+                - option "Door"
+                - option "Window"
+                - option "Open-plan connection"
+            - generic [ref=f3e258]:
+              - button "BED Bed Queen · 5.0 × 6.5 ft" [ref=f3e259]:
+                - generic [ref=f3e260]: BED
+                - generic [ref=f3e261]:
+                  - generic [ref=f3e262]: Bed
+                  - generic [ref=f3e263]: Queen · 5.0 × 6.5 ft
+              - generic [ref=f3e264]:
+                - text: New bed size
+                - combobox "New bed size" [ref=f3e265]:
+                  - option "Queen — 5 × 6.5 ft" [selected]
+                  - option "King — 6 × 6.5 ft"
+                  - option "Double cot — 4.5 × 6.25 ft"
+                  - option "Single — 3 × 6.25 ft"
+            - generic [ref=f3e266]: Click a component to choose it, then click the plan to place it, or drag the full tile onto a compatible room or wall. Placed items keep their own dimensions.
+            - button "Clear added components" [ref=f3e268] [cursor=pointer]
+      - group [ref=f3e269]:
+        - generic "▸ Floor plate & planning preferences" [ref=f3e270] [cursor=pointer]
+        - text: ▸
+        - option "Choose..." [selected]
+        - option "compact"
+        - option "standard"
+        - option "large"
+        - option "custom"
+        - option "Choose..." [selected]
+        - option "open"
+        - option "semi-open"
+        - option "closed"
+        - option "Whole plot · 1,706 sq ft" [selected]
+        - option "Habitable floor 1 · 3.0 m" [selected]
+        - option "Habitable floor 2 · 6.0 m"
+        - option "Habitable floor 3 · 9.0 m"
+        - option "West-South-West — Hyderabad default heuristic" [selected]
+        - option "South-West"
+        - option "West"
+        - option "North-West"
+        - option "South"
+        - option "South-East"
+        - option "East"
+        - option "North-East"
+        - option "North"
+    - group "Selected object properties" [ref=f3e271]:
+      - generic "− Selection properties" [ref=f3e272] [cursor=pointer]
+      - heading "Selection inspector" [level=2] [ref=f3e273]
+      - generic [ref=f3e274]:
+        - generic [ref=f3e275]: Choose an object on the active floor
+        - combobox "Choose an object on the active floor" [ref=f3e276]:
+          - option "Click a room, component or wall — or choose here" [disabled] [selected]
+          - option "Room · Common Bathroom · floor-1:bath-1"
+          - option "Room · Bathroom 2 · floor-1:bath-2"
+          - option "Room · Bedroom 1 · floor-1:bed-1"
+          - option "Room · Kitchen 1 · floor-1:kitchen-1"
+          - option "Furniture · Queen bed · floor-1:furniture-bed-bed-1"
+          - option "Furniture · Cupboard · floor-1:furniture-cupboard-bed-1"
+          - option "Door · Common Bathroom · floor-1:door-bath-1-W"
+          - option "Door · Bathroom 2 · floor-1:door-bath-2-W"
+          - option "Door · Bedroom 1 · floor-1:door-bed-1-N"
+          - option "Door · Kitchen 1 · floor-1:door-kitchen-1-W"
+          - option "Window · Common Bathroom · floor-1:window-bath-1-E"
+          - option "Window · Common Bathroom · floor-1:window-bath-1-S"
+          - option "Window · Bathroom 2 · floor-1:window-bath-2-S"
+          - option "Window · Bedroom 1 · floor-1:window-bed-1-S"
+          - option "Window · Bedroom 1 · floor-1:window-bed-1-W"
+          - option "Window · Kitchen 1 · floor-1:window-kitchen-1-E"
+          - option "Window · Kitchen 1 · floor-1:window-kitchen-1-N"
+          - option "Wall · Exterior · floor-1:wall:room:bath-1:E~shell:E[room:bath-1:E:start][room:bath-1:E:end~shell:E:end]"
+          - option "Wall · Internal · floor-1:wall:room:bath-1:N[join:room:bath-1:W~room:bath-1:N:start][room:bath-1:N:end]"
+          - option "Wall · Exterior · floor-1:wall:room:bath-1:S~shell:S[room:bath-1:S:start][room:bath-1:S:end]"
+          - option "Wall · Internal · floor-1:wall:room:bath-1:W[join:room:bath-1:N~room:bath-1:W:start][room:bath-1:W:end]"
+          - option "Wall · Internal · floor-1:wall:room:bath-2:E[join:room:bath-2:N~room:bath-2:E:start][room:bath-2:E:end]"
+          - option "Wall · Internal · floor-1:wall:room:bath-2:N[join:room:bath-2:W~join:room:bed-1:E~room:bath-2:N:start][join:room:bath-2:E~room:bath-2:N:end]"
+          - option "Wall · Exterior · floor-1:wall:room:bath-2:S~shell:S[room:bath-2:S:start~room:bed-1:S:end][room:bath-2:S:end]"
+          - option "Wall · Internal · floor-1:wall:room:bath-2:W~room:bed-1:E[join:room:bath-2:N~room:bath-2:W:start][room:bath-2:W:end~room:bed-1:E:end]"
+          - option "Wall · Internal · floor-1:wall:room:bed-1:E[join:room:bed-1:N~room:bed-1:E:start][join:room:bath-2:N~room:bath-2:W:start]"
+          - option "Wall · Internal · floor-1:wall:room:bed-1:N[room:bed-1:N:start][join:room:bed-1:E~room:bed-1:N:end]"
+          - option "Wall · Exterior · floor-1:wall:room:bed-1:S~shell:S[room:bed-1:S:start][room:bath-2:S:start~room:bed-1:S:end]"
+          - option "Wall · Exterior · floor-1:wall:room:bed-1:W~shell:W[room:bed-1:W:start][room:bed-1:W:end~shell:W:end]"
+          - option "Wall · Exterior · floor-1:wall:room:kitchen-1:E~shell:E[room:kitchen-1:E:start~shell:E:start][room:kitchen-1:E:end]"
+          - option "Wall · Exterior · floor-1:wall:room:kitchen-1:N~shell:N[room:kitchen-1:N:start][room:kitchen-1:N:end]"
+          - option "Wall · Internal · floor-1:wall:room:kitchen-1:S[join:room:kitchen-1:W~room:kitchen-1:S:start][room:kitchen-1:S:end]"
+          - option "Wall · Internal · floor-1:wall:room:kitchen-1:W[room:kitchen-1:W:start][join:room:kitchen-1:S~room:kitchen-1:W:end]"
+          - option "Wall · Exterior · floor-1:wall:shell:E[room:kitchen-1:E:end][room:bath-1:E:start]"
+          - option "Wall · Exterior · floor-1:wall:shell:N[room:kitchen-1:N:end][shell:N:end]"
+          - option "Wall · Exterior · floor-1:wall:shell:N[shell:N:start][room:kitchen-1:N:start]"
+          - option "Wall · Exterior · floor-1:wall:shell:S[room:bath-1:S:end][shell:S:end]"
+          - option "Wall · Exterior · floor-1:wall:shell:S[room:bath-2:S:end][room:bath-1:S:start]"
+          - option "Wall · Exterior · floor-1:wall:shell:S[shell:S:start][room:bed-1:S:start]"
+          - option "Wall · Exterior · floor-1:wall:shell:W[shell:W:start][room:bed-1:W:start]"
+        - generic [ref=f3e277]:
+          - strong [ref=f3e278]: No selection
+          - code
+        - status [ref=f3e279]: Click a room, component or wall in the floor plan to inspect it. You can also choose an object above; no dragging is required.
+        - text: ▸
+  - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸

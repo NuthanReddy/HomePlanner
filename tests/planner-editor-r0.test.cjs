@@ -630,7 +630,6 @@ test('full-wall canonical infill stays editable and deletable while new placemen
     const openingId = planner.getSelection().id;
     assert.equal(planner.getScene().walls.find(item => item.id === wall.id).removed, true);
     assert.equal(editor.getActionState().canDelete, true);
-    assert.equal(dom.action('delete-opening').disabled, false);
     const revision = planner.getProject().revision;
     h.fill('hp-editor-window-heightM', String(wall.heightM - .2)).dispatch('keydown', { key: 'Enter' });
     assert.equal(planner.getProject().revision, revision + 1, dom.by('hp-editor-inspector-error').textContent);

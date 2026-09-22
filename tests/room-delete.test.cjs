@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const Model=require('../planner-model.js');
+const LayoutGenerator=require('../planner-layout-generator.js');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const plain=value=>JSON.parse(JSON.stringify(value));
 
@@ -13,6 +14,15 @@ function identities(){
     const source=html.match(new RegExp(`function ${name}\\([^]*?\\n\\}`));
     vm.runInContext(source[0],ctx);
   }
+  const unused=()=>{};
+  ctx.roomLayoutGenerator=()=>LayoutGenerator.create({
+    internalWallM:0.12,epsilon:1e-7,subtractFree:unused,occupiedBounds:unused,
+    serviceKeepClear:unused,rectInside:unused,carpetModule:unused,moduleClear:unused,
+    balconyTouches:unused,balconyEligible:unused,hardAdjacencyValid:unused,
+    servicePlacementRank:unused,directionPenalty:unused,adjacencyPenalty:unused,
+    rolePenalty:unused,recalculatePlan:unused,balconyAttachments:unused,
+    circulationAnalysis:unused,scoreLess:unused,assignBalconies:unused,optimizeLeftovers:unused
+  });
   return ctx;
 }
 
@@ -54,6 +64,23 @@ test('bathroom identity and host do not silently switch to another bedroom after
   assert.equal(requests.find(req=>req.id==='bath-2').bedroomId,'bed-1');
   assert.equal(requests.find(req=>req.id==='bath-3').bedroomId,'bed-2');
   assert.ok(ctx.roomOrder(requests,'service').some(req=>req.id==='bath-2'),'Orphaned bathroom must remain reviewable');
+});
+
+test('generated room labels follow the Vastu room-name catalogue without changing stable IDs',()=>{
+  const names=JSON.parse(fs.readFileSync(path.join(__dirname,'..','configs','vastu-direction-preferences.json'),'utf8')).room_names;
+  const ctx=identities(),range={minW:1,minD:1,maxW:2,maxD:2};
+  ctx.INT_WALL=.12;
+  const cfg={counts:{living:1,bedroom:2,kitchen:1,pooja:1,bathroom:2,lift:0,staircase:1},
+    living:range,bed:range,kitchen:range,pooja:range,bathroom:range,lift:range,staircase:range,
+    stairPassageWidthM:0};
+  const requests=ctx.makeRoomRequests(cfg);
+  assert.equal(requests.find(item=>item.id==='living-1').label,names.living);
+  assert.equal(requests.find(item=>item.id==='bed-1').label,names.master_bedroom);
+  assert.equal(requests.find(item=>item.id==='bed-2').label,`${names.other_bedroom} 2`);
+  assert.equal(requests.find(item=>item.id==='kitchen-1').label,names.kitchen);
+  assert.equal(requests.find(item=>item.id==='pooja-1').label,names.pooja);
+  assert.equal(requests.find(item=>item.id==='bath-1').label,`${names.bathroom} 1 (Common)`);
+  assert.equal(requests.find(item=>item.id==='stair-1').label,`${names.stairs} 1`);
 });
 
 test('room identity state is optional, version-compatible and strictly validated on project import',()=>{
@@ -100,13 +127,14 @@ async function browserSmoke(browser,url){
       furniture:HomePlanner.getScene().furniture,
       revision:HomePlanner.getProject().revision
     }));
-    const remove=page.locator('#plannerInspector [data-hp-editor-action="delete-room"]');
+    const remove=page.locator('#roomDeleteSelection');
     await remove.click();
     assert.equal(await page.locator('#bedCount').inputValue(),'3');
-    await page.locator('#plannerInspector [data-hp-editor-action="cancel-confirmation"]').click();
+    assert.equal(await page.locator('[role="dialog"][aria-modal="true"]').count(),1);
+    await page.locator('[data-hp-editor-action="cancel-confirmation"]').click();
     assert.equal(await page.locator('#bedCount').inputValue(),'3');
     await remove.click();
-    await page.locator('#plannerInspector [data-hp-editor-action="confirm"]').click();
+    await page.locator('[data-hp-editor-action="confirm"]').click();
     const deleted=await page.evaluate(()=>({
       rooms:HomePlanner.getScene().rooms.map(room=>({id:room.id,sourceId:room.sourceId,rect:room.rect})),
       furniture:HomePlanner.getScene().furniture,

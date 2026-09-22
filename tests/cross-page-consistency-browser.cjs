@@ -15,7 +15,7 @@ module.exports = async function crossPageConsistency(page, { atomic = true } = {
       HomePlanner.execute({ type: 'add-floor', name: 'Ground test floor' });
       HomePlanner.execute({ type: 'delete-floor', id: original });
     });
-    await route('overview/summary');
+    await route('design/layout');
   };
   const open = async selector => {
     const details = page.locator(selector);
@@ -39,7 +39,7 @@ module.exports = async function crossPageConsistency(page, { atomic = true } = {
       facade: document.getElementById('workspaceFacades').homePlannerFacades.getState().draft.label
     }));
     const drafts = await draftValues();
-    await route('overview/summary');
+    await route('design/layout');
     await open('#workspaceProjectMenu');
     await page.locator('#hp-storage-project-name').fill('Renamed only');
     await page.locator('#plannerPersistence').getByRole('button', { name: 'Rename', exact: true }).click();

@@ -13,6 +13,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from cfd_conservation import ConservationError, read_conservation
 
 PROFILE = "single-room-cht-v1"
 ENGINE = {"id": "OpenCFD-OpenFOAM", "version": "2606", "solver": "chtMultiRegionFoam"}
@@ -182,7 +183,7 @@ def result_diagnostics(evidence: dict[str, StageEvidence], end: float) -> dict:
         },
         "energyBalance": {
             "status": "not-evaluated",
-            "message": "An integrated fluid/solid boundary and storage energy ledger is not implemented.",
+            "message": "No matching integral history has been read yet.",
         },
         "meshConvergence": {"status": "not-evaluated", "message": "No spatial refinement study has been performed."},
         "timeStepConvergence": {"status": "not-evaluated", "message": "No temporal refinement study has been performed."},
@@ -318,6 +319,12 @@ def parse_results(
             "speedMps": speed,
             "absolutePressurePa": pressure,
         })
+    try:
+        diagnostics.update(read_conservation(
+            manifest, lambda relative, limit: read_bounded_file(case_dir, relative, limit),
+        ))
+    except ConservationError as exc:
+        raise CfdResultError(str(exc), "invalid_conservation_output") from exc
     return {
         "version": 1,
         "kind": "CoupledCfdResult",
@@ -332,7 +339,8 @@ def parse_results(
         "limitations": copy.deepcopy(manifest.get("limitations", [])) + [
             "Computed OpenFOAM samples are unvalidated, not measured indoor conditions.",
             "Passing mesh checks and reaching the end time do not establish numerical convergence or empirical validity.",
-            "Integrated energy balance and mesh/time-step refinement have not been evaluated.",
+            "Integral balances, when available, are reconstructed from end-step output over the stated coverage only. They are not numerical-acceptance or empirical-validation claims.",
+            "Mesh/time-step refinement has not been assessed by this individual run.",
             "Pressure samples are absolute p in Pa, not gauge driving pressure or p_rgh.",
         ],
         "validationStatus": "unvalidated",

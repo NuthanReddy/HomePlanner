@@ -169,11 +169,21 @@ tr.hi td{background:rgba(47,129,247,.1)}
 #roomPlan{touch-action:none}
 .room-move-preview{fill:var(--acc);fill-opacity:.18;stroke:var(--acc);stroke-width:2;stroke-dasharray:6 4;pointer-events:none}
 .room-move-preview[aria-invalid=true]{fill:var(--bad);stroke:var(--bad)}
+.room-opening-preview{pointer-events:none}
+.room-opening-preview .candidate{stroke:var(--acc);stroke-width:8;stroke-linecap:round;opacity:.72}
+.room-opening-preview .guide{stroke:var(--acc);stroke-width:1.5;stroke-dasharray:4 3}
+.room-opening-preview text{fill:var(--acc);stroke:var(--svg-bg);stroke-width:3;paint-order:stroke;font-size:9px}
 .room-resize{stroke-linecap:round}
 .room-plan-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;flex-wrap:wrap;text-align:right}
 .room-plan-actions .mini{max-width:520px;white-space:normal}
 .room-plan-actions .split-snaps{margin-top:0}
 .room-plan-actions button{white-space:nowrap}
+.hp-info-tip{position:relative;display:inline-flex;vertical-align:middle}
+.hp-info-tip>button{display:inline-grid;place-items:center;width:28px;height:28px;min-height:28px;margin:0;padding:0;border-radius:50%;font-weight:700}
+.hp-info-tip>[role=tooltip]{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:min(330px,80vw);padding:9px 10px;
+  border:1px solid var(--line);border-radius:7px;background:var(--panel);box-shadow:0 10px 28px rgba(0,0,0,.3);color:var(--txt);font-size:11.5px;line-height:1.5;
+  opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s ease,transform .12s ease;pointer-events:none}
+.hp-info-tip:hover>[role=tooltip],.hp-info-tip:focus-within>[role=tooltip]{opacity:1;visibility:visible;transform:none}
 .room-plan-workspace{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
 .room-plan-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:8px;
   border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
@@ -313,7 +323,9 @@ body.room-plan-lock{overflow:hidden}
 <link rel="stylesheet" href="prohibited-properties.css">
 <link rel="stylesheet" href="planner-workspace.css">
 <link rel="stylesheet" href="planner-guide.css">
+<link rel="stylesheet" href="planner-requirements-ui.css">
 <script src="planner-regions.js"></script>
+<script src="planner-layout-generator.js"></script>
 <script src="planner-room-inputs.js"></script>
 <link rel="stylesheet" href="planner-drawing-ui.css">
 <link rel="stylesheet" href="planner-structure-ui.css">
@@ -343,12 +355,6 @@ body.room-plan-lock{overflow:hidden}
     <details class="hp-project-menu" id="workspaceProjectMenu">
       <summary>Projects &amp; backups</summary>
       <div id="workspaceProjectControls"></div>
-      <nav aria-label="Quick tools">
-        <a href="?workspace=site&amp;section=plot" data-workspace="site" data-section="plot">Quick plot calculator</a>
-        <a href="?workspace=site&amp;section=prohibited" data-workspace="site" data-section="prohibited">Prohibited Properties</a>
-        <a href="?workspace=environment&amp;section=sun" data-workspace="environment" data-section="sun">Quick Sun Path</a>
-        <a href="?workspace=site&amp;section=references" data-workspace="site" data-section="references">Regulatory sources</a>
-      </nav>
     </details>
     <button type="button" id="themeToggle" class="theme-toggle" role="switch" aria-checked="false">
       <span class="theme-toggle-track" aria-hidden="true"></span>
@@ -359,7 +365,6 @@ body.room-plan-lock{overflow:hidden}
 </header>
 
 <nav class="tabs primary-tabs hp-project-nav" aria-label="Project destinations">
-  <button type="button" data-workspace="overview">Overview</button>
   <button type="button" data-workspace="site">Site · Plot Planner</button>
   <button type="button" data-workspace="design">Design</button>
   <button type="button" data-workspace="environment">Environment</button>
@@ -369,15 +374,12 @@ body.room-plan-lock{overflow:hidden}
 <nav class="tabs hp-workspace-subnav" id="workspaceSubnav" aria-label="Workspace sections"></nav>
 <div id="workspaceTools" class="hp-workspace-tools"></div>
 <p id="workspaceModeHint" class="mini"></p>
-<h2 id="workspaceHeading" tabindex="-1" class="hp-workspace-heading">Design</h2>
-<div id="workspaceGuide"></div>
-<section id="workspaceOverview" class="hp-workspace-panel" hidden aria-label="Project overview">
-  <h3>Current project readiness</h3>
-  <p id="workspaceReadiness"></p>
-  <p>These are schematic inputs and local studies, not construction documents or certified compliance.</p>
-  <p><a href="?workspace=design" data-workspace="design">Continue design</a> ·
-    <a href="?workspace=site&amp;section=context" data-workspace="site" data-section="context">Review site and weather</a> ·
-    <a href="?workspace=report" data-workspace="report">Review schedules and backups</a></p>
+<div class="hp-workspace-heading-row">
+  <h2 id="workspaceHeading" tabindex="-1" class="hp-workspace-heading">Design</h2>
+  <div id="workspaceGuide"></div>
+</div>
+<section id="workspaceAiPlan" class="hp-workspace-panel hp-ai-plan-panel" hidden aria-label="AI plan requirements">
+  <section class="card planner-extension" id="plannerRequirements" aria-label="Schema-driven floor-plan requirements"></section>
 </section>
 <section id="workspaceReport" class="hp-workspace-panel" hidden aria-label="Current schedules and exports">
   <div id="workspaceReportOverview">
@@ -767,9 +769,12 @@ body.room-plan-lock{overflow:hidden}
       <details class="card planner-extension" id="plannerInspector" aria-label="Selected object properties" open></details>
       <section id="roomProgrammeDrafts" aria-label="Room quantity and default dimension drafts"></section>
       <div class="card">
-        <h2>Rooms &amp; Services <span class="mini">— add as needed</span></h2>
-        <div class="mini">New projects start with one bedroom (NW/NE), one kitchen (SE), and bathrooms on the S and W sides. These guide suggestions; your manual layout stays editable.</div>
-        <div class="mini">Click a room tile to add it, or drag anywhere on the tile onto the plan. Use only the right-hand arrow to expand quantity and dimensions.</div>
+        <h2>Rooms &amp; Services <span class="mini">— add as needed</span>
+          <span class="hp-info-tip">
+            <button type="button" aria-label="Room starter and tile help" aria-describedby="roomPaletteHelp">i</button>
+            <span id="roomPaletteHelp" role="tooltip">New projects start with one bedroom (NW/NE), one kitchen (SE), and bathrooms on the S and W sides. These guide suggestions; your manual layout stays editable. Click a room tile to add it, or drag anywhere on the tile onto the plan. Use only the right-hand arrow to expand quantity and dimensions.</span>
+          </span>
+        </h2>
         <div class="library-stack">
           <details class="library-item">
             <summary><span>Living / Dining</span><span class="library-count" id="livingCountEcho">None</span></summary>
@@ -1083,7 +1088,7 @@ body.room-plan-lock{overflow:hidden}
               <button type="button" class="room-tool" id="roomAddDoor" disabled>Add door</button>
               <button type="button" class="room-tool" id="roomAddWindow" disabled>Add window</button>
               <button type="button" class="room-tool" id="roomWallEnds" disabled>Wall ends</button>
-              <button type="button" class="room-tool" id="roomDeleteSelection" disabled>Delete</button>
+              <button type="button" class="room-tool" id="roomDeleteSelection" data-hp-editor-action="delete-room" disabled>Delete</button>
             </div>
             <div class="room-zoom-controls" role="group" aria-label="Zoom controls">
               <button type="button" class="room-tool" id="roomZoomOut" aria-label="Zoom out">-</button>
@@ -2003,6 +2008,7 @@ function render(){
     `<tr><td colspan="3">After 55 m</td><td class="n"><b>+0.5 m per 5 m</b></td></tr>`;
 
   renderRoomPlanner(r);
+  window.dispatchEvent(new CustomEvent('homeplanner:plot-inputs-changed'));
 }
 
 /* ================= Room planner ================= */
@@ -2033,6 +2039,13 @@ let roomIdentityState = {};
 let roomFurnitureSeq = 0;
 let roomOpeningSeq = 0;
 const roomFixUndoStack = [];
+const ROOM_VASTU_NAMES = Object.freeze({
+  main_entry:'Main Entry',living:'Living Room',kitchen:'Kitchen',dining:'Dining Room',
+  master_bedroom:'Master Bedroom',other_bedroom:'Other Bedroom',
+  childrens_bedroom:"Children's Bedroom",guest_bedroom:'Guest Bedroom',
+  pooja:'Pooja Room',study:'Study',home_office:'Home Office',bathroom:'Bathroom',
+  stairs:'Staircase',storage:'Storage',utility:'Utility',laundry:'Laundry'
+});
 
 const ROOM_LIBRARY_CONFIG = {
   livingCount:{type:'living',prefix:'living',label:'Living / Dining'},
@@ -2183,6 +2196,52 @@ function roomPlateFor(r){
   return plate;
 }
 
+function plotPlannerRequirementSnapshot(){
+  const r=window.__last,plate=window.__roomPlanner?.plate;
+  if(window.__plotInputError||!r||!plate)throw new Error('Complete the Plot Planner before reviewing AI requirements.');
+  return {
+    version:1,
+    source:'plot-planner',
+    plot:{
+      grossWidthM:r.grossEW,
+      grossDepthM:r.grossNS,
+      netWidthM:r.extEW,
+      netDepthM:r.extNS,
+      facing:r.face,
+      frontEdge:r.frontEdge,
+      roadsM:{...r.roads},
+      category:r.cat,
+      use:r.use
+    },
+    regulation:{
+      selectedHeightM:r.selH,
+      highRise:!!r.highRise,
+      tdrEnabled:!!r.tdr,
+      deviationEnabled:!!r.devOn,
+      floorToFloorM:r.ffh,
+      plannedFloors:r.floors,
+      maximumFloors:r.maxFloors,
+      stilt:!!r.stilt
+    },
+    plate:{
+      id:plate.id,
+      label:plate.label,
+      widthM:plate.width,
+      depthM:plate.depth,
+      rawDepthM:plate.rawDepth,
+      areaM2:plate.area,
+      frontEdge:plate.frontEdge,
+      floorIndex:plate.floorIndex,
+      floorElevationM:plate.floorElevation,
+      customSetbacks:!!plate.customSetbacks,
+      nonCompliant:!!plate.nonCompliant,
+      setbacksM:{...plate.localSetbacks},
+      requiredSetbacksM:{...plate.requiredSetbacks}
+    }
+  };
+}
+window.HomePlannerPlotInputs=plotPlannerRequirementSnapshot;
+
 function deriveRoomGeometry(plate,cfg,warnings){
   const W=plate.width,D=plate.depth,F=cfg.corridors.front,B=cfg.corridors.back;
   const S=cfg.corridors.side;
@@ -2254,21 +2313,28 @@ function deriveRoomGeometry(plate,cfg,warnings){
 function makeRoomRequests(cfg){
   const req=[];
   let seq=0;
+  const names=typeof ROOM_VASTU_NAMES==='object'?ROOM_VASTU_NAMES:{
+    living:'Living Room',master_bedroom:'Master Bedroom',other_bedroom:'Other Bedroom',
+    kitchen:'Kitchen',pooja:'Pooja Room',bathroom:'Bathroom',stairs:'Staircase'
+  };
   const living=roomStableIds('living',cfg.counts.living),beds=roomStableIds('bed',cfg.counts.bedroom);
   const kitchens=roomStableIds('kitchen',cfg.counts.kitchen),pooja=roomStableIds('pooja',cfg.counts.pooja);
   for(const id of living)
-    req.push({id,label:'Living / Dining',type:'living',range:cfg.living,priority:0,seq:seq++});
-  for(const id of beds)
-    req.push({id,label:`Bedroom ${id.slice(4)}`,type:'bedroom',range:cfg.bed,priority:1,seq:seq++});
+    req.push({id,label:names.living,type:'living',range:cfg.living,priority:0,seq:seq++});
+  for(const id of beds){
+    const number=Number(id.slice(4));
+    req.push({id,label:number===1?names.master_bedroom:`${names.other_bedroom} ${number}`,
+      type:'bedroom',range:cfg.bed,priority:1,seq:seq++});
+  }
   for(const id of kitchens)
-    req.push({id,label:`Kitchen ${id.slice(8)}`,type:'kitchen',range:cfg.kitchen,priority:2,seq:seq++});
+    req.push({id,label:kitchens.length===1?names.kitchen:`${names.kitchen} ${id.slice(8)}`,type:'kitchen',range:cfg.kitchen,priority:2,seq:seq++});
   for(const id of pooja)
-    req.push({id,label:`Pooja Room ${id.slice(6)}`,type:'pooja',range:cfg.pooja,priority:3,seq:seq++});
+    req.push({id,label:pooja.length===1?names.pooja:`${names.pooja} ${id.slice(6)}`,type:'pooja',range:cfg.pooja,priority:3,seq:seq++});
   for(const id of roomStableIds('bath',cfg.counts.bathroom)){
     const i=Number(id.slice(5));
     const bedroomIndex=i-1;
     const accessMode=i===1?'common':bedroomIndex<(roomIdentityState.bed?.next||1)?'ensuite':'overflow';
-    req.push({id,label:i===1?'Common Bathroom':`Bathroom ${i}`,
+    req.push({id,label:i===1?`${names.bathroom} 1 (Common)`:`${names.bathroom} ${i}`,
       type:'bathroom',range:cfg.bathroom,priority:4,seq:seq++,accessMode,
       bedroomId:accessMode==='ensuite'?`bed-${bedroomIndex}`:null});
   }
@@ -2277,7 +2343,7 @@ function makeRoomRequests(cfg){
   const priorStairs=globalThis.HomePlanner?.getProject()?.legacy?.context?.plan?.placed||[];
   for(const id of roomStableIds('stair',cfg.counts.staircase)){
     const prior=priorStairs.find(p=>p.req?.id===id)?.req;
-    req.push({id,label:`Staircase ${id.slice(6)}`,type:'staircase',reserveFootprint:true,
+    req.push({id,label:`${names.stairs} ${id.slice(6)}`,type:'staircase',reserveFootprint:true,
       ...(!prior?{stairEnclosure:'open'}:prior.stairEnclosure===undefined?{}:{stairEnclosure:prior.stairEnclosure}),
       ...(prior?.stairEntryEdge?{stairEntryEdge:prior.stairEntryEdge}:{}),
       ...(Number.isFinite(cfg.stairPassageWidthM)?{passageWidthM:cfg.stairPassageWidthM}:{}),
@@ -2571,121 +2637,34 @@ function roomAssignBalconies(plan,g,dropUnattached=true){
   });
 }
 
-function roomOrder(requests,mode){
-  const minArea=r=>(r.range.minW+INT_WALL)*(r.range.minD+INT_WALL);
-  const rank=mode==='service'
-    ? {living:0,kitchen:1,pooja:2,bedroom:3,bathroom:4,staircase:5,lift:6}
-    : {living:0,kitchen:1,pooja:2,bedroom:3,bathroom:4,staircase:5,lift:6};
-  const sorted=requests.slice().sort((a,b)=>mode==='large'
-    ? minArea(b)-minArea(a)||a.priority-b.priority||a.seq-b.seq
-    : rank[a.type]-rank[b.type]||minArea(b)-minArea(a)||a.seq-b.seq);
-  const ensuiteByBedroom=new Map(requests.filter(r=>r.type==='bathroom'&&r.accessMode==='ensuite')
-    .map(r=>[r.bedroomId,r]));
-  const out=sorted.filter(req=>req.type==='lift'||req.type==='staircase')
-    .sort((a,b)=>Number(b.type==='staircase')-Number(a.type==='staircase'));
-  sorted.forEach(req=>{
-    if(req.type==='lift'||req.type==='staircase')return;
-    if(req.type==='bathroom'&&req.accessMode==='ensuite'&&requests.some(parent=>parent.id===req.bedroomId))return;
-    out.push(req);
-    const ensuite=ensuiteByBedroom.get(req.id);
-    if(ensuite)out.push(ensuite);
+let roomLayoutGeneratorInstance=null;
+function roomLayoutGenerator(){
+  if(roomLayoutGeneratorInstance)return roomLayoutGeneratorInstance;
+  if(!window.HomePlannerLayoutGenerator)throw new Error('Load planner-layout-generator.js before generating rooms.');
+  roomLayoutGeneratorInstance=window.HomePlannerLayoutGenerator.create({
+    internalWallM:INT_WALL,epsilon:ROOM_EPS,subtractFree:roomSubtractFree,
+    occupiedBounds:roomOccupiedBounds,serviceKeepClear:roomServiceKeepClear,
+    rectInside:roomRectInside,carpetModule:roomCarpetModule,moduleClear:roomModuleClear,
+    balconyTouches:roomBalconyTouches,balconyEligible:roomBalconyEligible,
+    hardAdjacencyValid:roomHardAdjacencyValid,servicePlacementRank:roomServicePlacementRank,
+    directionPenalty:roomDirectionPenalty,adjacencyPenalty:roomAdjacencyPenalty,
+    rolePenalty:roomRolePenalty,recalculatePlan:roomRecalculatePlan,
+    balconyAttachments:roomBalconyAttachments,circulationAnalysis:roomCirculationAnalysis,
+    scoreLess:roomScoreLess,assignBalconies:roomAssignBalconies,optimizeLeftovers:roomOptimizeLeftovers
   });
-  return out;
+  return roomLayoutGeneratorInstance;
+}
+
+function roomOrder(requests,mode){
+  return roomLayoutGenerator().order(requests,mode);
 }
 
 function roomPackAttempt(g,requests,sizeMode,orderMode,index,initial=[],accessPassages=[]){
-  let free=[{...g.core}];
-  let serviceFree=[{...g.core}];
-  const overflow=requests.filter(r=>r.type==='bathroom'&&r.accessMode==='overflow');
-  const placed=initial.map(p=>({...p,carpet:{...p.carpet},module:{...p.module}})),unmet=overflow.slice();
-  for(const p of placed){
-    if(p.req.reserveFootprint)serviceFree=roomSubtractFree(serviceFree,roomOccupiedBounds(p));
-    else free=roomSubtractFree(free,p.module);
-  }
-  const order=roomOrder(requests.filter(r=>r.accessMode!=='overflow'),orderMode);
-  let totalDeviation=0;
-
-  order.forEach(req=>{
-    let best=null;
-    const pad=req.reserveFootprint?2*INT_WALL:INT_WALL;
-    const placementContext={placed,accessPassages};
-    const keepClear=roomServiceKeepClear(placementContext,g);
-    (req.reserveFootprint?serviceFree:free).forEach(fr=>{
-      [false,true].forEach(rotated=>{
-        const r=req.range;
-        const minW=rotated?r.minD:r.minW, minD=rotated?r.minW:r.minD;
-        const maxW=rotated?r.maxD:r.maxW, maxD=rotated?r.maxW:r.maxD;
-        const prefW=(minW+maxW)/2, prefD=(minD+maxD)/2;
-        let cw=sizeMode==='minimum'?minW:Math.min(prefW,fr.w-pad);
-        let cd=sizeMode==='minimum'?minD:Math.min(prefD,fr.h-pad);
-        if (cw<minW-ROOM_EPS||cd<minD-ROOM_EPS) return;
-        cw=Math.min(cw,maxW); cd=Math.min(cd,maxD);
-        if(req.type==='staircase'&&cw<cd-ROOM_EPS)return;
-        const mw=cw+pad, md=cd+pad;
-        if (mw>fr.w+ROOM_EPS||md>fr.h+ROOM_EPS) return;
-        const poses=[
-          [fr.x,fr.y],[fr.x+fr.w-mw,fr.y],
-          [fr.x,fr.y+fr.h-md],[fr.x+fr.w-mw,fr.y+fr.h-md]
-        ];
-        if(req.type==='lift'||req.type==='staircase'){
-          const companions=placed.filter(p=>p.req.type===(req.type==='lift'?'staircase':'lift')).map(roomOccupiedBounds);
-          const references=companions.concat(req.type==='lift'?keepClear.map(passage=>passage.rect):[]);
-          for(const reference of references){
-            for(const y of [reference.y,reference.y+reference.h-md,reference.y+(reference.h-md)/2])
-              poses.push([reference.x-mw,y],[reference.x+reference.w,y]);
-            for(const x of [reference.x,reference.x+reference.w-mw,reference.x+(reference.w-mw)/2])
-              poses.push([x,reference.y-md],[x,reference.y+reference.h]);
-          }
-        }
-        const seen=new Set();
-        poses.forEach(([x,y])=>{
-          const key=`${x.toFixed(6)}:${y.toFixed(6)}`; if(seen.has(key))return; seen.add(key);
-          if(!roomRectInside({x,y,w:mw,h:md},fr))return;
-          const carpet={x:x+pad/2,y:y+pad/2,w:cw,h:cd},module=roomCarpetModule(carpet);
-          if(!roomModuleClear(module,req.id,req,placementContext,g))return;
-          const balconyTouches=g.balconies.filter(b=>roomBalconyTouches(module,b));
-          if(balconyTouches.length&&!roomBalconyEligible(req))return;
-          if(!roomHardAdjacencyValid(placed.concat({req,module})))return;
-          const dev=Math.abs(cw*cd-prefW*prefD)/Math.max(prefW*prefD,ROOM_EPS);
-          const short=Math.min(fr.w-mw,fr.h-md), long=Math.max(fr.w-mw,fr.h-md);
-          const serviceRank=roomServicePlacementRank(req,{x,y,w:mw,h:md},placed,keepClear);
-          const score=[...serviceRank,roomDirectionPenalty(req,module,g),roomAdjacencyPenalty(req,module,placed),-balconyTouches.length,dev,roomRolePenalty(req,x,y,mw,md,g),short,long,y,x,rotated?1:0];
-          if (roomScoreLess(score,best&&best.score))
-            best={req,x,y,mw,md,cw,cd,rotated,minW,minD,maxW,maxD,dev,score};
-        });
-      });
-    });
-    if (!best){ unmet.push(req); return; }
-    const carpet={x:best.x+pad/2,y:best.y+pad/2,w:best.cw,h:best.cd};
-    const module=roomCarpetModule(carpet);
-    placed.push({...best,module,carpet});
-    totalDeviation+=best.dev;
-    if(req.reserveFootprint)serviceFree=roomSubtractFree(serviceFree,roomOccupiedBounds({req,module,carpet}));
-    else free=roomSubtractFree(free,module);
-  });
-
-  const plan={placed,unmet,free,totalDeviation,index};
-  roomRecalculatePlan(plan,g);
-  const unattached=roomBalconyAttachments(placed,g.balconies)
-    .filter(a=>!a.eligible.length||a.ineligible.length).length;
-  const by=t=>unmet.filter(x=>x.type===t).length;
-  const inaccessible=roomCirculationAnalysis(g,plan).inaccessible.length;
-  const directionPenalty=placed.reduce((sum,p)=>sum+roomDirectionPenalty(p.req,p.module,g),0);
-  const score=[by('living'),inaccessible,by('bedroom'),by('kitchen'),by('pooja'),by('bathroom'),by('staircase'),by('lift'),unmet.length,unattached,directionPenalty,
-               totalDeviation,-plan.carpetArea,plan.unassigned,index];
-  return {...plan,score};
+  return roomLayoutGenerator().packAttempt(g,requests,sizeMode,orderMode,index,initial,accessPassages);
 }
 
 function roomPackProgram(g,cfg){
-  const requests=makeRoomRequests(cfg);
-  const attempts=[
-    ['preferred','large'],['minimum','large'],['preferred','service'],['minimum','privacy']
-  ].map((a,i)=>roomPackAttempt(g,requests,a[0],a[1],i));
-  const best=attempts.reduce((current,a)=>roomScoreLess(a.score,current&&current.score)?a:current,null);
-  roomAssignBalconies(best,g);
-  roomOptimizeLeftovers(best,g);
-  roomAssignBalconies(best,g,false);
-  return roomRecalculatePlan(best,g);
+  return roomLayoutGenerator().packProgram(g,cfg,makeRoomRequests(cfg));
 }
 
 function roomPlanSignature(plate,cfg){
@@ -4981,10 +4960,41 @@ function roomPointerLocal(svg,ev){
   return view.toLocal(q.x,q.y);
 }
 
+function roomWallProjectionM(wall,point){
+  const dx=wall.end.x-wall.start.x,dy=wall.end.y-wall.start.y,length=Math.hypot(dx,dy);
+  if(!Number.isFinite(length)||length<=ROOM_EPS)return null;
+  return roomClamp(((point.x-wall.start.x)*dx+(point.y-wall.start.y)*dy)/length,0,length);
+}
+
+function roomSnapOpeningM(value){
+  const step=.1*FT;
+  return Math.round(value/step)*step;
+}
+
+function roomOpeningDragCandidate(opening,wall,point,action,grabM=0){
+  const projected=roomWallProjectionM(wall,point),length=Math.hypot(wall.end.x-wall.start.x,wall.end.y-wall.start.y);
+  if(!Number.isFinite(projected)||!Number.isFinite(opening.widthM)||opening.widthM<=0)return null;
+  if(action==='move-door'){
+    const offsetM=roomClamp(roomSnapOpeningM(projected-grabM),0,Math.max(0,length-opening.widthM));
+    return {offsetM,widthM:opening.widthM};
+  }
+  const minimum=.3;
+  if(action==='resize-window-start'){
+    const fixedEnd=opening.offsetM+opening.widthM;
+    const widthM=roomClamp(roomSnapOpeningM(fixedEnd-projected),minimum,fixedEnd);
+    return {offsetM:fixedEnd-widthM,widthM};
+  }
+  if(action==='resize-window-end'){
+    const widthM=roomClamp(roomSnapOpeningM(projected-opening.offsetM),minimum,length-opening.offsetM);
+    return {offsetM:opening.offsetM,widthM};
+  }
+  return null;
+}
+
 function initRoomEditing(){
   const svg=$('roomPlan');
-  let drag=null,frame=0,suppressClick=false,preview=null;
-  const clearPreview=()=>{preview?.remove();preview=null;};
+  let drag=null,frame=0,suppressClick=false,preview=null,openingPreview=null;
+  const clearPreview=()=>{preview?.remove();preview=null;openingPreview?.remove();openingPreview=null;};
   const showPreview=(item,rect,problem)=>{
     if(!window.__roomView?.box)return;
     if(!preview?.isConnected){
@@ -5001,11 +5011,43 @@ function initRoomEditing(){
     preview.setAttribute('aria-invalid',String(!!problem));
     $('roomEditHint').textContent=problem||'Release to place here. Moving across other objects does not change them; Escape cancels.';
   };
+  const showOpeningPreview=(current,candidate)=>{
+    const view=window.__roomView,model=window.HomePlannerModel;
+    if(!view?.point||!model||!candidate)return;
+    openingPreview?.remove();
+    openingPreview=document.createElementNS('http://www.w3.org/2000/svg','g');
+    openingPreview.setAttribute('class','room-opening-preview');
+    openingPreview.setAttribute('aria-hidden','true');
+    const start=model.wallPoint(current.wall,candidate.offsetM);
+    const end=model.wallPoint(current.wall,candidate.offsetM+candidate.widthM);
+    const wallStart=view.point(current.wall.start.x,current.wall.start.y);
+    const a=view.point(start.x,start.y),b=view.point(end.x,end.y);
+    const dx=a.x-wallStart.x,dy=a.y-wallStart.y,length=Math.max(Math.hypot(dx,dy),1);
+    const nx=-dy/length*12,ny=dx/length*12;
+    const guideStart={x:wallStart.x+nx,y:wallStart.y+ny},guideEnd={x:a.x+nx,y:a.y+ny};
+    openingPreview.innerHTML=`<line class="candidate" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`+
+      `<line class="guide" x1="${guideStart.x}" y1="${guideStart.y}" x2="${guideEnd.x}" y2="${guideEnd.y}"/>`+
+      `<line class="guide" x1="${wallStart.x}" y1="${wallStart.y}" x2="${guideStart.x}" y2="${guideStart.y}"/>`+
+      `<line class="guide" x1="${a.x}" y1="${a.y}" x2="${guideEnd.x}" y2="${guideEnd.y}"/>`+
+      `<text x="${(guideStart.x+guideEnd.x)/2}" y="${(guideStart.y+guideEnd.y)/2-5}" text-anchor="middle">${f1(candidate.offsetM/FT)} ft offset</text>`+
+      `<text x="${(a.x+b.x)/2}" y="${(a.y+b.y)/2-8}" text-anchor="middle">${f1(candidate.widthM/FT)} ft wide</text>`;
+    svg.appendChild(openingPreview);
+    $('roomEditHint').textContent=`Release to apply ${f1(candidate.offsetM/FT)} ft offset and ${f1(candidate.widthM/FT)} ft width. Values snap to 0.1 ft; Escape cancels.`;
+  };
   const applyPending=()=>{
     frame=0;
     if(!drag||!drag.point)return;
     const pt=drag.point;drag.point=null;
     const ctx=window.__roomPlanner;if(!ctx)return;
+    if(drag.kind==='opening'){
+      const scene=window.HomePlanner?.getScene();
+      const opening=scene?.openings.find(item=>item.id===drag.id);
+      const wall=scene?.walls.find(item=>item.id===opening?.wallId);
+      if(!opening||!wall)return;
+      drag.previewOpening=roomOpeningDragCandidate(opening,wall,pt,drag.action,drag.grabM);
+      showOpeningPreview({opening,wall},drag.previewOpening);
+      return;
+    }
     const item=roomFindEditable(ctx,drag.id);if(!item)return;
     const dx=pt.x-drag.start.x,dy=pt.y-drag.start.y,g=ctx.g,c=drag.rect;
     drag.previewRect=drag.action==='move'?roomMoveCandidate(item,c,dx,dy,g):
@@ -5014,6 +5056,25 @@ function initRoomEditing(){
   };
   svg.addEventListener('pointerdown',ev=>{
     if(ev.button!==0)return;
+    const semanticOpening=ev.target.closest?.('[data-planner-kind="door"],[data-planner-kind="window"]');
+    const resizeHandle=ev.target.closest?.('[data-opening-resize]');
+    if(semanticOpening&&!ev.target.closest?.('[data-action="delete"]')&&
+      (semanticOpening.dataset.plannerKind==='door'||resizeHandle)){
+      const scene=window.HomePlanner?.getScene(),pt=roomPointerLocal(svg,ev);
+      const opening=scene?.openings.find(item=>item.id===semanticOpening.dataset.plannerId);
+      const wall=scene?.walls.find(item=>item.id===opening?.wallId);
+      if(!opening||!wall||!pt)return;
+      const projected=roomWallProjectionM(wall,pt);
+      drag={id:opening.id,kind:'opening',
+        action:opening.kind==='window'?`resize-window-${resizeHandle.dataset.openingResize}`:'move-door',
+        start:pt,screenStart:{x:ev.clientX,y:ev.clientY},threshold:ev.pointerType==='touch'?8:4,
+        activated:false,pointerId:ev.pointerId,point:null,signature:window.__roomPlanner?.signature,
+        project:window.HomePlanner?.getProject(),grabM:opening.kind==='window'?0:projected-opening.offsetM,
+        opening:{offsetM:opening.offsetM,widthM:opening.widthM}};
+      try{svg.setPointerCapture(ev.pointerId);}catch(e){}
+      ev.preventDefault();ev.stopPropagation();
+      return;
+    }
     const target=ev.target.closest&&ev.target.closest('[data-room-id][data-action]');
     const ctx=window.__roomPlanner,pt=roomPointerLocal(svg,ev);
     if(!target||!ctx||!pt)return;
@@ -5057,7 +5118,7 @@ function initRoomEditing(){
     if(!drag.activated){
       if(Math.hypot(ev.clientX-drag.screenStart.x,ev.clientY-drag.screenStart.y)<drag.threshold)return;
       drag.activated=true;svg.classList.add('is-editing');
-      window.HomePlanner?.beginLegacyGesture();
+      if(drag.kind!=='opening')window.HomePlanner?.beginLegacyGesture();
     }
     const pt=roomPointerLocal(svg,ev);if(!pt)return;
     drag.point=pt;
@@ -5078,17 +5139,31 @@ function initRoomEditing(){
     if(ctx?.signature!==ended.signature||ended.project&&
       (!current||current.id!==ended.project.id||current.activeFloorId!==ended.project.activeFloorId||
         current.revision!==ended.project.revision)){
-      window.HomePlanner?.endLegacyGesture();
+      if(ended.kind!=='opening')window.HomePlanner?.endLegacyGesture();
       $('roomEditHint').textContent='The project or floor changed during the drag. The preview was discarded.';
       return;
     }
     if(cancelled){
-      if(window.HomePlanner)window.HomePlanner.endLegacyGesture(true);
+      if(window.HomePlanner&&ended.kind!=='opening')window.HomePlanner.endLegacyGesture(true);
       else if(ended.activated)renderRoomPlanner(window.__last);
       return;
     }
     let changed=false,error='';
-    if(ended.activated&&ended.previewRect&&ctx){
+    if(ended.activated&&ended.kind==='opening'&&ended.previewOpening&&window.HomePlanner){
+      const command={type:ended.action==='move-door'?'update-door':'update-window',id:ended.id,
+        offsetM:ended.previewOpening.offsetM};
+      if(ended.action!=='move-door')command.widthM=ended.previewOpening.widthM;
+      try{
+        if(Math.abs(command.offsetM-ended.opening.offsetM)>ROOM_EPS||
+          command.widthM!==undefined&&Math.abs(command.widthM-ended.opening.widthM)>ROOM_EPS){
+          window.HomePlanner.execute(command);
+          changed=true;
+        }
+      }catch(problem){
+        $('roomEditHint').textContent=`Opening change could not be applied: ${problem.message}`;
+        return;
+      }
+    }else if(ended.activated&&ended.previewRect&&ctx){
       const item=roomFindEditable(ctx,ended.id);
       try{
         if(item&&['x','y','w','h'].some(key=>Math.abs(ended.previewRect[key]-ended.rect[key])>ROOM_EPS))
@@ -5101,12 +5176,16 @@ function initRoomEditing(){
       }
       error=ctx.editError;
     }
-    if(changed&&ctx){roomSaveManualLayout(ctx);roomManualHint();}
+    if(changed&&ctx&&ended.kind!=='opening'){roomSaveManualLayout(ctx);roomManualHint();}
     if(ended.activated){
-      renderRoomPlanner(window.__last);window.HomePlanner?.endLegacyGesture();
+      renderRoomPlanner(window.__last);
+      if(ended.kind!=='opening')window.HomePlanner?.endLegacyGesture();
       suppressClick=true;setTimeout(()=>{suppressClick=false;},0);
     }else if(window.HomePlanner){
-      window.HomePlanner.selectSource(ended.kind==='room'?'room':ended.kind==='furniture'?'furniture':ended.kind,ended.id);
+      if(ended.kind==='opening'){
+        const opening=window.HomePlanner.getScene().openings.find(item=>item.id===ended.id);
+        window.HomePlanner.select({kind:opening?.kind==='window'?'window':'door',id:ended.id});
+      }else window.HomePlanner.selectSource(ended.kind==='room'?'room':ended.kind==='furniture'?'furniture':ended.kind,ended.id);
     }
     if(error)$('roomEditHint').innerHTML=`<b style="color:var(--bad)">Move blocked.</b> ${roomEscapeMarkup(error)}`;
   };
@@ -5377,7 +5456,7 @@ function roomSvgPlan(plate,g,plan){
     const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
     return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
   };
-  window.__roomView={toLocal,scale,box};
+  window.__roomView={toLocal,point,scale,box};
   const rect=(r,fill,stroke='var(--svg-line)',extra='')=>{
     const b=box(r); return `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="${fill}" stroke="${stroke}" ${extra}/>`;
   };
@@ -5496,7 +5575,7 @@ function roomSvgPlan(plate,g,plan){
   (plan.furniture||[]).forEach(f=>{
     const parent=plan.placed.find(p=>p.req.id===f.roomId),color=f.needsRelocation?'var(--bad)':ROOM_COLORS[f.type]||'#d2a8ff';
     const resizable=roomFurnitureResizable(f);
-    out+=`<g class="room-furniture-group" data-room-id="${roomEscapeMarkup(f.id)}" tabindex="0" role="group" aria-label="${roomEscapeMarkup(f.label)}, movable${resizable?' and resizable':''} within ${parent?parent.req.label:'its room'}, deletable">`;
+    out+=`<g class="room-furniture-group" data-room-id="${roomEscapeMarkup(f.id)}" tabindex="0" role="group" aria-label="${roomEscapeMarkup(f.label)}, movable${resizable?' and resizable':''} within ${parent?parent.req.label:'its room'}">`;
     out+=rect(f,color,color,
       `class="room-furniture" data-room-id="${roomEscapeMarkup(f.id)}" data-action="move" fill-opacity=".38" stroke-width="1.3"${f.needsRelocation?' stroke-dasharray="4 3"':''}`);
     if(f.type==='bed'){
@@ -5509,9 +5588,7 @@ function roomSvgPlan(plate,g,plan){
     }
     out+=label(f,f.label,showDims?`${f1(f.w/FT)} × ${f1(f.h/FT)} ft`:'',color);
     if(resizable)out+=resizeHandles(f,f.id,f.label);
-    out+=rotateHandle(f,f.id,f.label);
-    out+=deleteHandle(f,f.id,f.label);
-    out+=`<title>${roomEscapeMarkup(f.label)}: ${f1(f.w/FT)} by ${f1(f.h/FT)} ft. Drag within ${parent?parent.req.label:'the room'}${resizable?'; drag any edge to resize':''}; rotate with the blue control or R; delete with the red × or Delete.</title></g>`;
+    out+=`<title>${roomEscapeMarkup(f.label)}: ${f1(f.w/FT)} by ${f1(f.h/FT)} ft. Drag within ${parent?parent.req.label:'the room'}${resizable?'; drag any edge to resize':''}; use the top Edit and Delete actions for properties and removal.</title></g>`;
   });
   const segmentLine=(s,color,width,title)=>{
     const p1=point(s.x1,s.y1),p2=point(s.x2,s.y2);
@@ -5529,13 +5606,13 @@ function roomSvgPlan(plate,g,plan){
     if(w.custom)out+=`<g data-room-id="${w.id}" tabindex="0" role="group" aria-label="${w.label}, deletable">`;
     out+=segmentLine(w.segment,ROOM_COLORS.window,5,`${w.label}: ${f1(w.width/FT)} ft wide, ${w.area.toFixed(2)} m² gross, ${(w.operability*100).toFixed(0)}% openable = ${w.openableArea.toFixed(2)} m² effective`);
     out+=segmentLine(w.segment,'var(--svg-on-color)',1.2,w.label);
-    if(w.custom){out+=openingDeleteHandle(w.segment,w.id,w.label);out+='</g>';}
+    if(w.custom)out+='</g>';
   });
   (!effective&&plan.openings&&plan.openings.doors||[]).forEach(d=>{
     if(d.custom)out+=`<g data-room-id="${d.id}" tabindex="0" role="group" aria-label="${d.label} door, deletable">`;
     out+=d.kind==='balcony-slider'?slidingDoor(d):segmentLine(d.segment,ROOM_COLORS.door,4,
       `${d.label} door to ${d.targetLabel}: ${f1(d.width/FT)} ft wide`);
-    if(d.custom){out+=openingDeleteHandle(d.segment,d.id,`${d.label} door`);out+='</g>';}
+    if(d.custom)out+='</g>';
   });
   (!effective&&plan.wallOpenings||[]).forEach(o=>{
     out+=`<g data-room-id="${o.id}" tabindex="0" role="group" aria-label="${o.label}, open-plan connection, deletable">`;
@@ -5543,7 +5620,6 @@ function roomSvgPlan(plate,g,plan){
       `${o.label}: ${f1(o.width/FT)} ft open connection to ${o.targetLabel}`);
     const p1=point(o.segment.x1,o.segment.y1),p2=point(o.segment.x2,o.segment.y2);
     out+=`<circle cx="${p1.x}" cy="${p1.y}" r="2.2" fill="#f0b429"/><circle cx="${p2.x}" cy="${p2.y}" r="2.2" fill="#f0b429"/>`;
-    out+=openingDeleteHandle(o.segment,o.id,o.label);
     out+='</g>';
   });
   if(effective)out+=window.HomePlanner.renderLayer(effective,point,scale,'openings');
@@ -6515,6 +6591,8 @@ render();
 <script src="planner-storage.js"></script>
 <script src="planner-persistence.js"></script>
 <script src="prohibited-properties.js"></script>
+<script src="planner-input-schema.js"></script>
+<script src="planner-requirements-ui.js"></script>
 <script src="planner-workspace.js"></script>
 <script src="planner-guide.js"></script>
 <script src="planner-drawing.js"></script>

@@ -6,12 +6,15 @@ const vm = require('node:vm');
 const Workspace = require('../planner-workspace.js');
 const source = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-test('six implemented task destinations own their tools; no standalone sun or property destination', () => {
-  assert.deepEqual(Object.keys(Workspace.destinations), ['overview', 'site', 'design', 'environment', 'compare', 'report']);
+test('five implemented task destinations own their tools; no overview, standalone sun or property destination', () => {
+  assert.deepEqual(Object.keys(Workspace.destinations), ['site', 'design', 'environment', 'compare', 'report']);
   assert.ok(Workspace.destinations.site.sections.prohibited);
   assert.ok(Workspace.destinations.environment.sections.sun);
+  assert.equal(Workspace.destinations.environment.sections.solar, undefined);
   assert.ok(Workspace.destinations.environment.sections.light);
   assert.equal(Workspace.destinations.design.sections.structure, 'Structure');
+  assert.equal(Workspace.destinations.design.sections['ai-plan'], 'AI Plan');
+  assert.equal(Workspace.viewFor('design/ai-plan'), 'ai-plan');
   assert.equal(Workspace.viewFor('design/structure'), 'structure');
   assert.equal(Workspace.viewFor('design/elevations'), 'elevations');
   assert.equal(Workspace.viewFor('design/plumbing'), 'plumbing');
@@ -23,7 +26,7 @@ test('six implemented task destinations own their tools; no standalone sun or pr
 
 for (const [old, expected] of Object.entries({
   optimizer: ['site', 'plot'], rooms: ['design', 'layout'], prohibited: ['site', 'prohibited'],
-  sun: ['environment', 'sun'], electrical: ['design', 'electrical'], analyze: ['environment', 'solar']
+  sun: ['environment', 'sun'], electrical: ['design', 'electrical'], analyze: ['environment', 'sun']
 })) test(`legacy ${old} entry resolves to the implemented task section`, () => {
   assert.deepEqual(Workspace.normalizeRoute(`?workspace=${old}`), { destination: expected[0], section: expected[1] });
 });
@@ -44,6 +47,7 @@ test('unknown and prototype-like routes fail safely to real content', () => {
     assert.deepEqual(Workspace.normalizeRoute(value), { destination: 'design', section: 'layout' });
   assert.deepEqual(Workspace.normalizeRoute('?workspace=site&section=constructor'), { destination: 'site', section: 'plot' });
   assert.deepEqual(Workspace.normalizeRoute({ destination: 'environment', section: 'pdf' }), { destination: 'environment', section: 'sun' });
+  assert.deepEqual(Workspace.normalizeRoute('environment/solar'), { destination: 'environment', section: 'sun' });
 });
 
 test('canonical URLs retain unrelated parameters but replace obsolete fragments and routes', () => {
@@ -59,20 +63,21 @@ test('canonical URLs retain unrelated parameters but replace obsolete fragments 
 test('existing environment section anchors navigate to their new owner', () => {
   for (const [anchor, expected] of Object.entries({
     'env-site-section': 'site/context', 'env-weather-section': 'site/context',
-    'env-envelope-section': 'compare/envelope', 'env-export-section': 'report/exports',
+    'env-solar-section': 'environment/sun', 'env-envelope-section': 'compare/envelope', 'env-export-section': 'report/exports',
     'env-wind-section': 'environment/airflow', 'env-models-section': 'environment/models'
   })) assert.deepEqual(Workspace.normalizeRoute(`#${anchor}`), Workspace.normalizeRoute(expected));
 });
 
 test('markup has one legacy mount per module, one shell nav and no old tab handler', () => {
   const html = source('index.html');
-  for (const id of ['plannerPersistence', 'plannerProjectTools', 'plannerInspector', 'roomPlan', 'environmentWorkspace',
+  for (const id of ['plannerPersistence', 'plannerProjectTools', 'plannerInspector', 'plannerRequirements', 'workspaceAiPlan', 'roomPlan', 'environmentWorkspace',
     'electricalWorkspace', 'prohibitedWorkspace', 'sunForm', 'sunUseProject', 'sunApplyProject', 'workspaceStructure',
     'workspaceElevations', 'workspaceViews', 'workspaceFacades', 'workspacePlumbing', 'workspaceDrainage', 'workspaceReportOverview', 'workspaceAirflow', 'workspaceLightStudy', 'workspaceLightGuidance', 'workspacePackage'])
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, id);
   const nav = html.match(/<nav class="tabs primary-tabs hp-project-nav"[^]*?<\/nav>/)[0];
-  assert.equal((nav.match(/data-workspace=/g) || []).length, 6);
-  assert.doesNotMatch(nav, /data-page|>Sun Path<|>Prohibited Properties</);
+  assert.equal((nav.match(/data-workspace=/g) || []).length, 5);
+  assert.doesNotMatch(nav, /data-page|>Overview<|>Sun Path<|>Prohibited Properties</);
+  assert.doesNotMatch(html, /id="workspaceOverview"|id="workspaceReadiness"|aria-label="Quick tools"/);
   assert.doesNotMatch(html, /querySelectorAll\('\.primary-tabs button'\)/);
   assert.ok(html.indexOf('src="planner-workspace.js"') > html.indexOf('src="planner-persistence.js"'));
   assert.ok(html.indexOf('src="planner-structure.js"') < html.indexOf('src="planner-3d.js"'));

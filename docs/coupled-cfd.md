@@ -154,9 +154,17 @@ request generation. Renaming a project does not invalidate otherwise identical
 physics; a same-revision physical replacement does.
 
 Editing inputs, changing rooms/projects, clearing or disposing immediately
-removes old results. Known jobs receive cancellation requests. A job whose
+removes current results and comparisons. Known jobs receive cancellation requests. A job whose
 creation response arrives late is cancelled by its returned job ID rather than
 aborting the request and losing its identity.
+
+The latest six completed runs per room are retained in browser-session history
+for **explicit** comparison, not automatically restored as a current field.
+**Clear current result** retains that separately labelled history; **Clear
+session comparison history** discards the browser copies, not the server's case
+files. These derived histories/comparisons do not add project Undo entries or
+enter layout JSON. Changing physical inputs prevents comparing old runs as
+evidence for the new scenario.
 
 ## Local engine and API
 
@@ -219,6 +227,94 @@ small algebraic residuals and attractive graphics are not empirical accuracy.
 Unavailable energy-balance, conservation or mesh/time-refinement evidence must
 remain unavailable, not zero or a passing badge.
 
+### Integral conservation diagnostics
+
+Newly prepared cases include a versioned `conservation` contract and built-in
+OpenFOAM collectors at **every fixed timestep**, independently of the field/
+probe output interval. `volFieldValue`, `surfaceFieldValue`, `wallHeatFlux`
+and `grad` are configured with generated names only, without coded functions or
+arbitrary user dictionaries.
+
+The strict reader requires the declared files, operation/field/weight headers,
+finite scalar/vector columns, matching timestamps and every expected timestep
+through the requested end. Missing, truncated, appended, reweighted or
+inconsistent output fails result publication. Old cases without this optional
+contract remain readable but report their integral evidence unavailable.
+
+The method follows the pinned solver's **enthalpy** equation, not an assumed
+`room capacity * temperature change`:
+
+```text
+M  = integral(rho dV)                          kg
+H  = integral(rho*h dV)                        J
+K  = integral(rho*|U|^2/2 dV)                  J
+Es = rho_s * integral(h_s dV)                  J
+Aout = sum_boundary(phi * (h + |U|^2/2))        W
+Pdot = integral(dpdt dV)                       W
+G = g dot integral(rho*U dV)                    W
+```
+
+Here `phi` is **signed outward mass flow in kg/s**, not volumetric flow and not
+an absolute flow magnitude. `h` and `h_s` retain the engine's enthalpy reference;
+negative reference enthalpy is not an invalid temperature. Solid density is
+explicitly constant and the profile's solid volume fraction is one.
+
+Let conductive heat `Q` be positive **into** its region. For an actual pair of
+output states separated by the fixed Euler step `dt`, evaluate end-step fluxes:
+
+```text
+Rm = delta(M) + dt * sum_boundary(phi)                              kg
+Rf = delta(H + K) + dt*(Aout - Pdot - G - Qair,external - Qair,if)   J
+Rs = delta(Es) - dt*(Qsolid,external + Qsolid,if)                    J
+Rexternal = delta(H + K + Es)
+            + dt*(Aout - Pdot - G - Qair,external - Qsolid,external)
+Interface mismatch = Qair,if + Qsolid,if                            W
+```
+
+Thus `Rexternal = Rf + Rs + dt * interfaceMismatch`. The report retains
+separate maxima and signed totals for air, solid and the whole domain so that
+opposite regional errors or an interface mismatch cannot disappear in a
+seemingly small global number. Mass residuals in kg and rates in kg/s are
+separate from the solver log's normalized continuity errors.
+
+`wallHeatFlux` covers walls and interfaces, **not open patches**. Inlet/backflow
+diffusion is included separately using the Gauss-corrected boundary normal
+temperature gradient and explicit `k_air = mu * Cp / Pr`; it is not assumed
+zero just because air is entering. No radiation/source/HVAC term is silently
+added to this profile.
+
+These are **reconstructed end-step field budgets**, not exact algebraic
+equation residuals or acceptance certificates. Outer-iteration lag, nonlinear
+corrections and output precision can affect them. No tolerance, pass/fail
+threshold, calibrated accuracy or measurement claim is inferred.
+
+Only intervals bracketed by **actual integral rows** are assessed. If the
+first output is at `dt`, the unrecorded `0..dt` startup interval is explicitly
+excluded. If an actual row at zero exists it is used. A single row reports
+`insufficient-history`, never an invented zero residual. Summary output gives
+coverage, extrema, worst intervals and full-coverage totals; complete integral
+files remain in the owned case directory.
+
+### Mesh / timestep comparisons
+
+**Compare mesh / timestep runs** compares two explicitly selected completed
+session runs. Both must match the current project/floor/room, actual geometry,
+physical properties and boundaries, numerical method, end time, receiver
+height and ordered receiver points. Only mesh/timestep settings and output/
+wall-clock budgets may differ. No solver is launched by comparison.
+
+The report gives maximum absolute, RMS and mean differences in temperature
+(C), speed (m/s), velocity-vector norm (m/s) and absolute pressure (Pa).
+It distinguishes mesh-only, timestep-only, combined changes and repeat runs;
+equal cell counts do not hide a redistributed mesh. Raw case/source metadata
+and each run's conservation coverage accompany the downloadable JSON.
+
+Two runs do **not** establish asymptotic convergence order, an extrapolated
+solution, a Grid Convergence Index or an error bound. Increasing cells may not
+be uniform refinement, and changing space/time together cannot identify which
+change caused the difference. Containing-cell probes can also change their
+cell membership; unsampled regions remain unassessed.
+
 The outstanding runtime gate is to execute independent cavity/conduction/flow
 cases, verify mesh/interface/pressure conventions and mass/energy balances,
 then compare refined meshes and time steps for the same physical problem.
@@ -229,7 +325,7 @@ separate work.
 Relevant regression commands:
 
 ```powershell
-node --test tests\planner-cfd.test.cjs tests\planner-cfd-ui.test.cjs tests\workspace-navigation.test.cjs
+node --test tests\planner-cfd.test.cjs tests\planner-cfd-ui.test.cjs tests\planner-cfd-comparison.test.cjs tests\workspace-navigation.test.cjs
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -p "test_cfd*.py"
 ```
 
@@ -243,6 +339,15 @@ not replace the user's live browser project or constitute CFD verification.
   transient compressible fluid and solid regions.
 - [Coupled-temperature boundary](https://doc.openfoam.com/2606/tools/processing/boundary-conditions/rtm/derived/thermal/turbulentTemperatureCoupledBaffleMixed):
   supported neighbour-temperature and material-conductivity coupling.
+- [Pinned fluid energy equation](https://gitlab.com/openfoam/core/openfoam/-/raw/OpenFOAM-v2606/applications/solvers/heatTransfer/chtMultiRegionFoam/fluid/EEqn.H)
+  and [solid equation](https://gitlab.com/openfoam/core/openfoam/-/raw/OpenFOAM-v2606/applications/solvers/heatTransfer/chtMultiRegionFoam/solid/solveSolid.H):
+  enthalpy/kinetic storage, pressure work, gravity and conduction terms.
+- [Wall heat-flux implementation](https://gitlab.com/openfoam/core/openfoam/-/raw/OpenFOAM-v2606/src/functionObjects/field/wallHeatFlux/wallHeatFluxModels/wall/wallHeatFlux_wall.cxx)
+  and [Gauss boundary gradients](https://gitlab.com/openfoam/core/openfoam/-/raw/OpenFOAM-v2606/src/finiteVolume/finiteVolume/gradSchemes/gaussGrad/gaussGrad.C):
+  wall-only selection, inward conductive-flux sign and open-patch reconstruction.
+- [Volume field integrals](https://doc.openfoam.com/2606/tools/post-processing/function-objects/field/volFieldValue/)
+  and [surface field integrals](https://doc.openfoam.com/2606/tools/post-processing/function-objects/field/surfaceFieldValue/):
+  density-weighted volume integrals and signed flux weighting, not `absWeightedSum`.
 - [NASA spatial convergence guidance](https://www.grc.nasa.gov/www/wind/valid/tutorial/spatconv.html):
   grid-refinement evidence is distinct from empirical validation.
 - [Microsoft WSL installation](https://learn.microsoft.com/en-us/windows/wsl/install):

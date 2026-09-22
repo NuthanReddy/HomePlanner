@@ -1,0 +1,173 @@
+{
+  "profile_id": "modern_common_practice_v1",
+  "title": "Modern common-practice Vastu direction preferences",
+  "status": "research_baseline",
+  "weight_scale": {
+    "2": "strongly_preferred",
+    "1": "preferred_or_common_alternative",
+    "0": "neutral_or_materially_variable",
+    "-1": "generally_discouraged",
+    "-2": "strongly_discouraged"
+  },
+  "directions": [
+    "north",
+    "northeast",
+    "east",
+    "southeast",
+    "south",
+    "southwest",
+    "west",
+    "northwest"
+  ],
+  "room_direction_scores": {
+    "main_entry": {
+      "north": 2,
+      "northeast": 2,
+      "east": 2,
+      "southeast": -1,
+      "south": -1,
+      "southwest": -2,
+      "west": 0,
+      "northwest": 1
+    },
+    "living_room": {
+      "north": 2,
+      "northeast": 2,
+      "east": 2,
+      "southeast": 0,
+      "south": -1,
+      "southwest": -1,
+      "west": 0,
+      "northwest": 1
+    },
+    "kitchen": {
+      "north": -1,
+      "northeast": -2,
+      "east": 1,
+      "southeast": 2,
+      "south": 0,
+      "southwest": -2,
+      "west": 0,
+      "northwest": 1
+    },
+    "dining_room": {
+      "north": 0,
+      "northeast": 0,
+      "east": 1,
+      "southeast": 1,
+      "south": 1,
+      "southwest": 0,
+      "west": 2,
+      "northwest": 0
+    },
+    "master_bedroom": {
+      "north": -1,
+      "northeast": -2,
+      "east": -1,
+      "southeast": -1,
+      "south": 1,
+      "southwest": 2,
+      "west": 1,
+      "northwest": 0
+    },
+    "other_adult_bedroom": {
+      "north": 0,
+      "northeast": -1,
+      "east": 0,
+      "southeast": -1,
+      "south": 1,
+      "southwest": 1,
+      "west": 1,
+      "northwest": 1
+    },
+    "childrens_bedroom": {
+      "north": 1,
+      "northeast": 0,
+      "east": 1,
+      "southeast": -1,
+      "south": 0,
+      "southwest": 0,
+      "west": 1,
+      "northwest": 2
+    },
+    "guest_bedroom": {
+      "north": 0,
+      "northeast": -1,
+      "east": 1,
+      "southeast": 0,
+      "south": 0,
+      "southwest": 0,
+      "west": 0,
+      "northwest": 2
+    },
+    "pooja_prayer_room": {
+      "north": 1,
+      "northeast": 2,
+      "east": 1,
+      "southeast": -2,
+      "south": -1,
+      "southwest": -2,
+      "west": -1,
+      "northwest": -1
+    },
+    "study_home_office": {
+      "north": 2,
+      "northeast": 2,
+      "east": 2,
+      "southeast": -1,
+      "south": 0,
+      "southwest": 0,
+      "west": 1,
+      "northwest": 0
+    },
+    "bathroom_toilet": {
+      "north": -1,
+      "northeast": -2,
+      "east": -1,
+      "southeast": -1,
+      "south": 0,
+      "southwest": -2,
+      "west": 2,
+      "northwest": 2
+    },
+    "stairs": {
+      "north": -1,
+      "northeast": -2,
+      "east": -1,
+      "southeast": 1,
+      "south": 2,
+      "southwest": 2,
+      "west": 2,
+      "northwest": 1
+    },
+    "heavy_general_storage": {
+      "north": -1,
+      "northeast": -2,
+      "east": -1,
+      "southeast": 0,
+      "south": 1,
+      "southwest": 2,
+      "west": 1,
+      "northwest": 0
+    },
+    "utility_laundry": {
+      "north": -1,
+      "northeast": -2,
+      "east": 0,
+      "southeast": 2,
+      "south": 1,
+      "southwest": 0,
+      "west": 0,
+      "northwest": 1
+    }
+  },
+  "limitations": [
+    "Traditional cultural preference only; not scientific validation, building-code guidance, safety advice, or approval evidence.",
+    "Use true north when known; plan north is approximate and unknown orientation must not be scored.",
+    "Scores are ordinal rather than probabilities, performance values, or percentages.",
+    "Rules vary across classical texts, regions, practitioners, and modern sources.",
+    "Evaluate saved room geometry without silently moving manual layouts.",
+    "Keep statutory, site, structural, fire, accessibility, ventilation, daylight, and environmental constraints independent."
+  ],
+  "documentation": "vastu-direction-preferences.md"
+}

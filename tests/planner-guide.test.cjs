@@ -46,7 +46,7 @@ test('guide URLs use real local pages and round-trip through workspace routing',
   assert.equal(new Set(routes.map(Guide.anchorFor)).size, routes.length);
   for (const route of routes) {
     const url = Guide.plannerURL(route);
-    assert.match(url, /^index\.html\?workspace=[a-z]+&section=[a-z]+$/);
+    assert.match(url, /^index\.html\?workspace=[a-z]+&section=[a-z-]+$/);
     assert.equal(Workspace.normalizeRoute(url).destination + '/' + Workspace.normalizeRoute(url).section, route);
     assert.match(Guide.anchorFor(route), /^guide-[a-z]+-[a-z]+$/);
   }
@@ -84,7 +84,7 @@ test('index integration is small, local and correctly ordered; no executable gui
   assert.equal((html.match(/src="planner-guide\.js"/g) || []).length, 1);
   assert.equal((html.match(/href="planner-guide\.css"/g) || []).length, 1);
   assert.ok(html.indexOf('id="workspaceGuide"') > html.indexOf('id="workspaceHeading"'));
-  assert.ok(html.indexOf('id="workspaceGuide"') < html.indexOf('id="workspaceOverview"'));
+  assert.ok(html.indexOf('id="workspaceGuide"') < html.indexOf('id="workspaceReport"'));
   assert.ok(html.indexOf('src="planner-guide.js"') > html.indexOf('src="planner-workspace.js"'));
   assert.doesNotMatch(js, /\.innerHTML\s*=|\bfetch\s*\(|new Worker|\.localStorage|\.execute\s*\(|\.navigate\s*\(/);
   assert.match(js, /removeEventListener\('homeplanner:workspace-change'/);
@@ -169,7 +169,7 @@ test('real browser: guide lifecycle, all routes, drafts and standalone local anc
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`${origin}/index.html?workspace=design&section=layout`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.HomePlannerGuide && document.getElementById('workspaceGuide')?.homePlannerGuide);
-    assert.equal(await page.locator('#workspaceGuide details').getAttribute('open'), null);
+    assert.equal(await page.locator('#workspaceGuide .hp-guide-overlay').isHidden(), true);
     assert.equal(await page.evaluate(() => {
       const host = document.getElementById('workspaceGuide');
       const first = HomePlannerGuide.mount();
@@ -180,20 +180,20 @@ test('real browser: guide lifecycle, all routes, drafts and standalone local anc
       };
       if (!window.__guideTest.draft) throw new Error('Existing input needed for draft-preservation test');
       window.__guideTest.draft.value = '17.4567';
-      return first === HomePlannerGuide.mount() && host.children.length === 1;
+      return first === HomePlannerGuide.mount() && host.children.length === 2;
     }), true);
-    const summary = page.locator('#workspaceGuide summary');
+    const summary = page.locator('#workspaceGuide .hp-guide-info');
     await summary.focus();
-    await page.keyboard.press('Enter');
-    assert.equal(await page.locator('#workspaceGuide details').evaluate(node => node.open), true);
-    assert.ok(await summary.evaluate(node => node.getBoundingClientRect().height >= 44));
     assert.equal(await summary.evaluate(node => getComputedStyle(node).outlineStyle), 'solid');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#workspaceGuide .hp-guide-overlay').isVisible(), true);
+    assert.ok(await summary.evaluate(node => node.getBoundingClientRect().height >= 28));
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('homeplanner:workspace-change')));
-    assert.equal(await page.locator('#workspaceGuide details').evaluate(node => node.open), true);
+    assert.equal(await page.locator('#workspaceGuide .hp-guide-overlay').isVisible(), true);
     for (const route of routes) {
       await page.evaluate(value => HomePlannerWorkspace.navigate(value, { scroll: false, focus: false }), route);
       assert.equal(await page.locator('#workspaceGuide h3').textContent(), Guide.getGuide(route).title, route);
-      assert.equal(await page.locator('#workspaceGuide details').evaluate(node => node.open), false, route);
+      assert.equal(await page.locator('#workspaceGuide .hp-guide-overlay').isHidden(), true, route);
       assert.equal(await page.locator('#workspaceGuide a').getAttribute('href'),
         `user-guide.html#${Guide.anchorFor(route)}`);
     }
@@ -211,11 +211,11 @@ test('real browser: guide lifecycle, all routes, drafts and standalone local anc
       if (host.children.length) return false;
       const next = HomePlannerGuide.mount();
       original.dispose();
-      return next === HomePlannerGuide.mount() && host.children.length === 1;
-    }), true, 'dispose removes subscriptions and remount creates only one owned disclosure');
+      return next === HomePlannerGuide.mount() && host.children.length === 2;
+    }), true, 'dispose removes subscriptions and remount creates one owned info control and overlay');
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.locator('#workspaceGuide').evaluate(node => node.getBoundingClientRect().height <= 50));
-    await page.locator('#workspaceGuide summary').click();
+    await page.locator('#workspaceGuide .hp-guide-info').click();
     assert.equal(await page.locator('#workspaceGuide a').getAttribute('target'), '_blank');
     const ids = await page.locator('[id]').evaluateAll(nodes => nodes.map(node => node.id));
     assert.equal(new Set(ids).size, ids.length, 'no duplicate document IDs');

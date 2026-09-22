@@ -1270,10 +1270,16 @@ class ActualEngineSmokeTests(unittest.TestCase):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(text, encoding="utf-8")
                 deadline = time.monotonic() + payload["scenario"]["numerics"]["maxRuntimeSeconds"]
+                from cfd_results import StageEvidence, parse_results
+                evidence = {}
                 for command in prepared["manifest"]["commands"]:
                     remaining = deadline - time.monotonic()
                     self.assertGreater(remaining, 0, "Whole command-sequence wall-clock budget exhausted.")
                     result = subprocess.run(command, cwd=case, check=True, capture_output=True, text=True, timeout=remaining)
+                    stage = command[0] + ("-" + command[2] if command[0] == "checkMesh" else "")
+                    evidence[stage] = StageEvidence()
+                    for line in result.stdout.splitlines():
+                        evidence[stage].line(line)
                     if command[0] == "checkMesh":
                         self.assertIn("Mesh OK", result.stdout)
                 output = case.joinpath(*PurePosixPath(prepared["manifest"]["probeOutputDirectory"]).parts)
@@ -1286,6 +1292,9 @@ class ActualEngineSmokeTests(unittest.TestCase):
                     self.assertEqual(len(values), 1 + count * (3 if field == "U" else 1))
                     self.assertTrue(all(math.isfinite(value) for value in values))
                     self.assertAlmostEqual(values[0], 0.1)
+                parsed = parse_results(case, prepared["manifest"], evidence)
+                self.assertEqual(parsed["diagnostics"]["conservation"]["status"], "computed-unvalidated")
+                self.assertEqual(parsed["validationStatus"], "unvalidated")
         finally:
             shutil.rmtree(directory)
 

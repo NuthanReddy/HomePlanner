@@ -52,6 +52,9 @@ layouts in the GHMC/HMDA context.
   doors, windows, furniture, and open-plan connections.
 - [Design guidance](design-guidance.md): daylight, ventilation, IGBC/LEED
   comparisons, Vastu separation, checklist fixes, and rollback.
+- [Vastu direction preferences](vastu-direction-preferences.md): optional
+  cultural-preference framing, source-aware room-direction weights, orientation
+  requirements, variants, and product boundaries.
 - [Cost model](cost-model.md): included cost layers, equations, and confidence.
 - [Sun path](sun-path.md): local SunCalc integration, timezone handling,
   daily/annual plots, CSV export, and analysis boundaries.

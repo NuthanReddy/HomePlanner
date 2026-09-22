@@ -9,8 +9,8 @@ web
 ## Users
 
 HomePlanner must support two modes: Homeowner and Expert. This is a confirmed
-product requirement. Both operate on one shared project with Overview, Site,
-Design, Environment (the planned Analyze task), Compare and Report destinations. The user approved guided
+product requirement. Both operate on one shared project with Site, Design,
+Environment (the planned Analyze task), Compare and Report destinations. The user approved guided
 homeowner entry and direct expert controls with edits preserved across modes.
 Specific expert disciplines and collaboration permissions
 remain open; choosing Expert mode does not establish professional credentials.

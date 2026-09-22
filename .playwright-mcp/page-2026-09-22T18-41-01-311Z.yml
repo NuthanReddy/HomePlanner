@@ -1,0 +1,480 @@
+- generic [active] [ref=f2e1]:
+  - banner [ref=f2e2]:
+    - generic [ref=f2e3]:
+      - heading "HomePlanner" [level=1] [ref=f2e5]
+      - generic "Current project" [ref=f2e6]: Untitled project
+      - button "Save now" [disabled] [ref=f2e8]
+      - generic [ref=f2e9]:
+        - text: View
+        - combobox "View" [ref=f2e10]:
+          - option "Homeowner"
+          - option "Expert" [selected]
+      - group [ref=f2e11]:
+        - generic "+ Projects & backups" [ref=f2e12] [cursor=pointer]
+        - option "Checking browser projects…" [selected]
+      - switch "Switch to light theme" [ref=f2e13] [cursor=pointer]:
+        - generic [ref=f2e15]: Dark theme
+    - status [ref=f2e17]: Checking browser storage… The current layout remains in memory.
+  - navigation "Project destinations" [ref=f2e18]:
+    - button "Site · Plot Planner" [ref=f2e19] [cursor=pointer]
+    - button "Design" [ref=f2e20] [cursor=pointer]
+    - button "Environment" [ref=f2e21] [cursor=pointer]
+    - button "Compare" [ref=f2e22] [cursor=pointer]
+    - button "Report" [ref=f2e23] [cursor=pointer]
+  - navigation "Workspace sections" [ref=f2e24]
+  - region "Floor selection and edit history" [ref=f2e26]:
+    - generic [ref=f2e27]:
+      - generic [ref=f2e28]:
+        - generic [ref=f2e29]: Active editable floor
+        - combobox "Active editable floor" [ref=f2e30]:
+          - option "1. Ground floor · 0 m" [selected]
+        - generic [ref=f2e31]:
+          - button "Undo" [disabled] [ref=f2e32]
+          - button "Redo" [disabled] [ref=f2e33]
+        - generic [ref=f2e34]:
+          - button "Tools & rooms" [ref=f2e35] [cursor=pointer]
+          - button "Selection properties" [ref=f2e36] [cursor=pointer]
+      - group [ref=f2e37]:
+        - generic "▸ Floor management & properties" [ref=f2e38] [cursor=pointer]
+  - heading "Design" [level=2] [ref=f2e39]
+  - group [ref=f2e41]:
+    - generic "▸ How to use this section" [ref=f2e42] [cursor=pointer]
+  - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸
+  - generic [ref=f2e43]:
+    - paragraph [ref=f2e45]: GHMC / HMDA plot planning based on G.O.Ms.No.168 MA&UD dt. 07.04.2012, amended by G.O.Ms.No.95 dt. 21.03.2026. High-rise starts at 21 m; TDR provisions and TG-bPASS permission tiers apply. Reference scenarios, not a sanctioned plan. Full sources and limitations are in References below.
+    - generic [ref=f2e46]:
+      - generic [ref=f2e47]:
+        - generic [ref=f2e48]:
+          - heading "Plot" [level=2] [ref=f2e49]
+          - generic [ref=f2e50]: Plot facing (which side the road is on)
+          - combobox "Plot facing (which side the road is on)" [ref=f2e51]:
+            - option "East facing"
+            - option "West facing"
+            - option "North facing"
+            - option "South facing"
+            - option "North-East corner"
+            - option "South-East corner" [selected]
+            - option "South-West corner"
+            - option "North-West corner"
+          - generic [ref=f2e52]: Units
+          - combobox "Units" [ref=f2e53]:
+            - option "Feet" [selected]
+            - option "Metres"
+          - generic [ref=f2e54]:
+            - generic [ref=f2e55]:
+              - generic [ref=f2e56]: South facing (depth)
+              - spinbutton "South facing (depth)" [ref=f2e57]: "60"
+            - generic [ref=f2e58]:
+              - generic [ref=f2e59]: East facing (frontage)
+              - spinbutton "East facing (frontage)" [ref=f2e60]: "45"
+          - generic [ref=f2e61]: East-facing — the road runs along your east side, so that side is the frontage at 13.7 m and the plot runs 18.3 m deep.
+          - generic [ref=f2e62]: Plot area 300 sq yd · 251 sq m · 2,700 sq ft
+        - generic [ref=f2e63]:
+          - heading "Roads" [level=2] [ref=f2e64]
+          - generic [ref=f2e65]:
+            - generic [ref=f2e66]:
+              - generic [ref=f2e67]: South road
+              - generic [ref=f2e68]:
+                - spinbutton "South road width" [ref=f2e70]: "30"
+                - combobox "South road width units" [ref=f2e72]:
+                  - option "Feet" [selected]
+                  - option "Metres"
+            - generic [ref=f2e73]:
+              - generic [ref=f2e74]: East road
+              - generic [ref=f2e75]:
+                - spinbutton "East road width" [ref=f2e77]: "30"
+                - combobox "East road width units" [ref=f2e79]:
+                  - option "Feet" [selected]
+                  - option "Metres"
+          - generic [ref=f2e80]: South 9.1 m / 30.0 ft · East 9.1 m / 30.0 ftFront taken on the East road — priority East › North › West › South.
+        - generic [ref=f2e81]:
+          - heading "Site Category" [level=2] [ref=f2e82]
+          - combobox "Site category" [ref=f2e83]:
+            - option "B — New area / approved layout" [selected]
+            - option "A — Old / congested / gram kantam / abadi"
+          - group [ref=f2e84]:
+            - generic "▸ Which one is mine?" [ref=f2e85] [cursor=pointer]
+          - generic [ref=f2e86]: Use
+          - combobox "Use" [ref=f2e87]:
+            - option "Individual residential" [selected]
+            - option "Apartment / group housing"
+            - option "Commercial / office"
+        - generic [ref=f2e88]:
+          - heading "Building" [level=2] [ref=f2e89]
+          - generic [ref=f2e90]: Floor-to-floor height
+          - combobox "Floor-to-floor height" [ref=f2e91]:
+            - option "3.0 m (10 ft) — standard residential" [selected]
+            - option "3.2 m (10.5 ft) — residential"
+            - option "3.5 m (11.5 ft) — premium residential"
+            - option "3.65 m (12 ft) — commercial"
+            - option "4.0 m (13 ft) — showroom / office"
+          - generic [ref=f2e92]: Height band (plot and road limits)
+          - combobox "Height band (plot and road limits)" [ref=f2e93]:
+            - option "7 m — up to Stilt + G+1"
+            - option "10 m — up to Stilt + G+2" [selected]
+          - generic [ref=f2e94]: Floors to plan (G, G+1, G+2, ...)
+          - combobox "Floors to plan (G, G+1, G+2, ...)" [ref=f2e95]:
+            - option "Use maximum — G+2 (3 floors)" [selected]
+            - option "G — 1 habitable floor"
+            - option "G+1 — 2 habitable floors"
+            - option "G+2 — 3 habitable floors"
+          - generic [ref=f2e96]: Stilt + G+2 = 3 selected habitable floors at 3 m each; up to G+2 in the 10 m band. The stilt parking floor sits below and is excluded from the 10 m (Rule 5(c), min 2.5 m clear). Fewer floors do not automatically reduce this height band or its setbacks. Editable floor layouts are added separately in Room Planner.
+          - generic [ref=f2e97]:
+            - checkbox "Stilt parking floor — excluded from the Table III height" [checked] [ref=f2e98]
+            - generic [ref=f2e99]: Stilt parking floor — excluded from the Table III height
+          - generic [ref=f2e100]:
+            - 'checkbox "Use TDR — GO 95 relaxations & extra floors (750–2,000 sq m plots: 18–21 m band; extra floors: above 2,000 sq m with qualifying roads)" [ref=f2e101]'
+            - generic [ref=f2e102]: "Use TDR — GO 95 relaxations & extra floors (750–2,000 sq m plots: 18–21 m band; extra floors: above 2,000 sq m with qualifying roads)"
+          - generic [ref=f2e103]:
+            - checkbox "Show 10% side/rear compounding (Rule 26(d))" [ref=f2e104]
+            - generic [ref=f2e105]: Show 10% side/rear compounding (Rule 26(d))
+          - generic [ref=f2e106]:
+            - checkbox "Allow setback violations — custom what-if scenario only" [ref=f2e107]
+            - generic [ref=f2e108]: Allow setback violations — custom what-if scenario only
+        - generic [ref=f2e109]:
+          - heading "Costs" [level=2] [ref=f2e110]
+          - generic [ref=f2e111]: Plot purchase rate
+          - generic [ref=f2e112]:
+            - spinbutton "Plot purchase rate" [ref=f2e114]: "50000"
+            - combobox "Plot purchase rate units" [ref=f2e116]:
+              - option "per sq yd" [selected]
+              - option "per sq ft"
+          - generic [ref=f2e117]: Land / plot SRO value (₹ per sq yd; drives stamp duty, LRS, BRS)
+          - generic [ref=f2e118]:
+            - spinbutton "Land / plot SRO value (₹ per sq yd; drives stamp duty, LRS, BRS)" [ref=f2e120]: "3000"
+            - combobox "Land SRO value units" [ref=f2e122]:
+              - option "per sq yd" [selected]
+              - option "per sq ft"
+          - generic [ref=f2e123]: Flat / built-up SRO value (₹ per sq ft)
+          - spinbutton "Flat / built-up SRO value (₹ per sq ft)" [ref=f2e124]: "2500"
+          - generic [ref=f2e125]: Construction cost (₹ / sq ft built-up)
+          - spinbutton "Construction cost (₹ / sq ft built-up)" [ref=f2e126]: "2200"
+          - generic [ref=f2e127]: Stilt / parking cost (₹ / sq ft — blank = 55% of above)
+          - spinbutton "Stilt / parking cost (₹ / sq ft — blank = 55% of above)" [ref=f2e128]
+          - generic [ref=f2e129]: Stamp duty + transfer + registration (% of SRO value)
+          - spinbutton "Stamp duty + transfer + registration (% of SRO value)" [ref=f2e130]: "7.6"
+          - generic [ref=f2e131]: GST on construction
+          - combobox "GST on construction" [ref=f2e132]:
+            - option "0% — no GST included" [selected]
+            - option "18% — works contract with a contractor"
+            - option "5% — under-construction purchase from a builder"
+            - option "1% — affordable housing"
+            - option "0% — self-managed, materials bought directly"
+          - generic [ref=f2e133]: LRS — layout regularisation
+          - combobox [ref=f2e134]:
+            - option "Not required — approved layout" [selected]
+            - option "Already paid"
+            - option "Payable — unapproved layout"
+          - generic [ref=f2e135]:
+            - checkbox "Apply 25% early-payment rebate" [checked] [ref=f2e136]
+            - generic [ref=f2e137]: Apply 25% early-payment rebate
+          - generic [ref=f2e138]: BRS — building regularisation (legacy GO 152/2015 estimate; confirm current eligibility)
+          - combobox [ref=f2e139]:
+            - option "Not applicable" [selected]
+            - option "Deviation from a sanctioned plan"
+            - option "Unauthorised — no permission taken"
+            - option "Already paid"
+          - spinbutton "Violated built-up area, sq ft" [ref=f2e140]
+      - generic [ref=f2e142]:
+        - generic [ref=f2e143]:
+          - generic [ref=f2e144]: 9 m (30 ft) road → 5 floors maximum. Table II category B1 permits "cellar and/or stilt as permissible + maximum up to 5 floors". Table III caps height at 15 m, and the 15–18 m band needs a minimum 12 m road. GO 95 did not change this — its extra-floor benefit needs a 40 ft road and a plot above 2 000 sq m. A 6th habitable floor needs a 12 m (40 ft) road.
+          - generic [ref=f2e145]: Corner plot — SE. Roads on the South and East edges. Rule 5(f)(ii) puts the front setback on the wider road (East, 9.1 m); the Column-10 setback applies on every remaining edge. A junction splay of 3 × 3 m is required and counts as part of the road junction (Rule 5(f)(xiv)). For an individual residential building you may elect the front on the other road instead — but then you get no access from the first.
+        - generic [ref=f2e146]:
+          - heading "Result" [level=2] [ref=f2e147]
+          - generic [ref=f2e148]:
+            - generic [ref=f2e149]:
+              - generic [ref=f2e150]: Net plot area
+              - generic [ref=f2e151]: 300 sq yd
+              - generic [ref=f2e152]: 251 sq m · 2,700 sq ft
+            - generic [ref=f2e153]:
+              - generic [ref=f2e154]: Buildable footprint
+              - generic [ref=f2e155]: 1,706 sq ft
+              - generic [ref=f2e156]: 158 sq m · 14.8 m E–W × 10.7 m N–S
+            - generic [ref=f2e157]:
+              - generic [ref=f2e158]: Coverage
+              - generic [ref=f2e159]: 63.2%
+              - generic [ref=f2e160]: of net plot area
+            - generic [ref=f2e161]:
+              - generic [ref=f2e162]: Lost to setbacks
+              - generic [ref=f2e163]: 36.8%
+              - generic [ref=f2e164]: 110 sq yd
+            - generic [ref=f2e165]:
+              - generic [ref=f2e166]: Floors selected
+              - generic [ref=f2e167]: Stilt + G+2
+              - generic [ref=f2e168]: up to G+2 by modeled height/road limits · 3 base
+            - generic [ref=f2e169]:
+              - generic [ref=f2e170]: Total built-up
+              - generic [ref=f2e171]: 5,117 sq ft
+              - generic [ref=f2e172]: 475 sq m over 3 floors
+          - generic [ref=f2e176]: ■ buildable 63.2% ■ tot lot 0.0% ■ setbacks 36.8%
+        - generic [ref=f2e177]:
+          - heading "Site Plan — dimensions in ft · plot and setbacks drawn to scale" [level=2] [ref=f2e178]
+          - generic [ref=f2e179]:
+            - generic [ref=f2e180]:
+              - checkbox "Split with both halves fronting the South road" [ref=f2e181]
+              - generic [ref=f2e182]: Split with both halves fronting the South road
+            - generic [ref=f2e183]:
+              - checkbox "Split with both halves fronting the East road" [ref=f2e184]
+              - generic [ref=f2e185]: Split with both halves fronting the East road
+          - img [ref=f2e186]:
+            - generic [ref=f2e190]: SOUTH ROAD · 30.0 ft
+            - generic [ref=f2e191]: EAST ROAD · 30.0 ft · FRONT
+            - generic [ref=f2e195]: BUILDABLE
+            - generic [ref=f2e196]: 48.5 × 35.2 ft
+            - generic [ref=f2e197]: 1,706 sq ft
+            - generic [ref=f2e198]: 4.9 ft
+            - generic [ref=f2e199]: 6.6 ft · front
+            - generic [ref=f2e200]: 4.9 ft
+            - generic [ref=f2e201]: 4.9 ft
+            - generic [ref=f2e202]:
+              - generic [ref=f2e205]: "N"
+              - generic [ref=f2e206]: S
+              - generic [ref=f2e207]: E
+              - generic [ref=f2e208]: W
+            - generic [ref=f2e209]: plot 60.0 ft E–W × 45.0 ft N–S
+        - generic [ref=f2e210]:
+          - heading "Setbacks by Edge" [level=2] [ref=f2e211]
+          - table [ref=f2e212]:
+            - rowgroup [ref=f2e213]:
+              - row [ref=f2e214]:
+                - columnheader "Edge" [ref=f2e215]
+                - columnheader "Required (m)" [ref=f2e216]
+                - columnheader "10% compounded" [ref=f2e217]
+                - columnheader "Basis" [ref=f2e218]
+              - row [ref=f2e219]:
+                - cell "North — side" [ref=f2e220]
+                - cell "1.5" [ref=f2e221]
+                - cell "1.5" [ref=f2e222]
+                - cell "Table III col 10" [ref=f2e223]
+              - row [ref=f2e224]:
+                - cell "East — front · road 9.1 m" [ref=f2e225]
+                - cell "2.0" [ref=f2e226]
+                - cell "not allowed" [ref=f2e227]
+                - cell "Table III col 5 — road up to 12 m" [ref=f2e228]
+              - row [ref=f2e229]:
+                - cell "South — side · road 9.1 m" [ref=f2e230]
+                - cell "1.5" [ref=f2e231]
+                - cell "1.5" [ref=f2e232]
+                - cell "Table III col 10" [ref=f2e233]
+              - row [ref=f2e234]:
+                - cell "West — rear" [ref=f2e235]
+                - cell "1.5" [ref=f2e236]
+                - cell "1.5" [ref=f2e237]
+                - cell "Table III col 10" [ref=f2e238]
+          - generic [ref=f2e239]: Plot band 200 – 300 sq m (Sl.No 4); height 10 m; parking provision Stilt floor. Rule 6 permits chajjas / weather shades up to 60 cm in setbacks and prohibits balcony or corridor projection for non-high-rise buildings. Rule 7(a)(xiv) separately permits high-rise balcony projection up to 2 m from 6 m height onward.
+        - generic [ref=f2e240]:
+          - heading "Height & Floors" [level=2] [ref=f2e241]
+          - table [ref=f2e242]:
+            - rowgroup [ref=f2e243]:
+              - row [ref=f2e244]:
+                - columnheader "Parameter" [ref=f2e245]
+                - columnheader "Value" [ref=f2e246]
+                - columnheader "Basis" [ref=f2e247]
+              - row [ref=f2e248]:
+                - cell "Height selected" [ref=f2e249]
+                - cell "10 m" [ref=f2e250]
+                - cell "non-high-rise" [ref=f2e251]
+              - row [ref=f2e252]:
+                - cell "Cap from plot size (Table III)" [ref=f2e253]
+                - cell "10 m" [ref=f2e254]
+                - cell "plot band 200 – 300 sq m" [ref=f2e255]
+              - row [ref=f2e256]:
+                - cell "Cap from road width (Table II)" [ref=f2e257]
+                - cell "15 m" [ref=f2e258]
+                - cell "9.1 m road, category B" [ref=f2e259]
+              - row [ref=f2e260]:
+                - cell "Max floors from road (Table II)" [ref=f2e261]
+                - cell "5" [ref=f2e262]
+                - 'cell "B1: stilt/cellar + max 5 floors" [ref=f2e263]'
+              - row [ref=f2e264]:
+                - cell "Floors at chosen height" [ref=f2e265]
+                - cell "3" [ref=f2e266]
+                - cell "10 m ÷ 3 m floor-to-floor" [ref=f2e267]
+              - row [ref=f2e268]:
+                - cell "Extra floors via TDR" [ref=f2e269]
+                - cell "—" [ref=f2e270]
+                - cell "needs TDR, plot above 2 000 sq m and a 40 ft+ road" [ref=f2e271]
+              - row [ref=f2e272]:
+                - cell "Maximum floor count" [ref=f2e273]
+                - cell "Stilt + G+2 = 3" [ref=f2e274]
+                - cell "lower of the height and road caps, plus available TDR floors; not a complete permission assessment" [ref=f2e275]
+              - row [ref=f2e276]:
+                - cell "Floors selected" [ref=f2e277]
+                - cell "G+2 = 3" [ref=f2e278]
+                - cell "chosen count used for built-up area, costs and repeatable layout scenarios" [ref=f2e279]
+              - row [ref=f2e280]:
+                - cell "Stilt floor" [ref=f2e281]
+                - cell "provided" [ref=f2e282]
+                - cell "Rule 5(c) — excluded from the Table III height; min 2.5 m, or 4.5 m with mechanical parking" [ref=f2e283]
+        - generic [ref=f2e284]:
+          - heading "G.O.Ms.No.95 dt. 21.03.2026 — What Changed" [level=2] [ref=f2e285]
+          - table [ref=f2e287]:
+            - rowgroup [ref=f2e288]:
+              - row [ref=f2e289]:
+                - columnheader "Provision" [ref=f2e290]
+                - columnheader "Change" [ref=f2e291]
+                - columnheader "Effect" [ref=f2e292]
+              - row [ref=f2e293]:
+                - cell "Rule 2(f) — substituted" [ref=f2e294]
+                - cell "High-rise = 21 m or more (was 18 m)" [ref=f2e295]
+                - 'cell "Buildings from 18 m up to just under 21 m are no longer high-rise: no 2 000 sq m minimum plot, no Table IV all-round setbacks, no high-rise NOC chain." [ref=f2e296]'
+              - row [ref=f2e297]:
+                - cell "Rule 17(d)(viii) — inserted" [ref=f2e298]
+                - 'cell "Plots 750 – 2 000 sq m: 18–21 m only via TDR" [ref=f2e299]'
+                - cell "Subject to required parking and compliance with the other rules." [ref=f2e300]
+              - row [ref=f2e301]:
+                - cell "Rule 17(d)(ix) — inserted" [ref=f2e302]
+                - cell "Non-high-rise setback relaxation via TDR" [ref=f2e303]
+                - cell "Subject to maintaining the minimum setbacks prescribed for road widening." [ref=f2e304]
+              - row [ref=f2e305]:
+                - cell "Rule 17(d)(x) — inserted" [ref=f2e306]
+                - cell "High-rise setback relaxation up to 10% via TDR" [ref=f2e307]
+                - cell "Floored at a minimum 7 m all-round." [ref=f2e308]
+              - row [ref=f2e309]:
+                - cell "Rule 17(d)(xi) — inserted" [ref=f2e310]
+                - cell "Master-plan road modified, reduced or deleted" [ref=f2e311]
+                - cell "Applicant may pay development/conversion charges, or submit equivalent TDR instead." [ref=f2e312]
+              - row [ref=f2e313]:
+                - cell "Rule 17(d)(xii) — inserted" [ref=f2e314]
+                - 'cell "Plots above 2 000 sq m: +3 / +4 / +5 floors" [ref=f2e315]'
+                - cell "On 40 ft / 60 ft / 80 ft roads respectively, via TDR, subject to Fire, Airport and other norms." [ref=f2e316]
+              - row [ref=f2e317]:
+                - cell "Rule 17(f)(xii) — substituted" [ref=f2e318]
+                - cell "TDR loading 3% above 10 floors, 5% above 20" [ref=f2e319]
+                - cell "Of total built-up above that level. 50% of TDR at building-permission stage, 50% before the occupancy certificate." [ref=f2e320]
+          - generic [ref=f2e321]: Verbatim from the gazette scan in the Telangana GO Issue Register. GO 95 amended Rule 2(f) and inserted Rule 17(d)(viii)–(xii) and substituted Rule 17(f)(xii). It did not reprint Table II, Table III or Table IV, so the road-width categories and the setback tables below are still the 2012 values.
+        - generic [ref=f2e322]:
+          - heading "Permission Route — TG-bPASS" [level=2] [ref=f2e323]
+          - table [ref=f2e324]:
+            - rowgroup [ref=f2e325]:
+              - row [ref=f2e326]:
+                - columnheader "Item" [ref=f2e327]
+                - columnheader "Position" [ref=f2e328]
+                - columnheader "Basis" [ref=f2e329]
+              - row [ref=f2e330]:
+                - cell "Building permission" [ref=f2e331]
+                - cell "Instant online" [ref=f2e332]
+                - cell "s.7(3) — individual residential, plot ≤ 500 sq m, height ≤ 10 m" [ref=f2e334]
+              - row [ref=f2e335]:
+                - cell "Process" [ref=f2e336]
+                - cell "Self-certification, no manual scrutiny" [ref=f2e337]
+                - cell "a licensed technical person certifies Table III compliance" [ref=f2e338]
+              - row [ref=f2e339]:
+                - cell "Occupancy certificate" [ref=f2e340]
+                - cell "Required" [ref=f2e341]
+                - cell "required above 200 sq m (240 sq yd) up to 500 sq m" [ref=f2e343]
+              - row [ref=f2e344]:
+                - cell "Setbacks" [ref=f2e345]
+                - cell "Table III applies in full" [ref=f2e346]
+                - cell "the change is procedural only" [ref=f2e347]
+              - row [ref=f2e348]:
+                - cell "Liability" [ref=f2e349]
+                - cell "Applicant fully accountable" [ref=f2e350]
+                - cell "s.7(4) — false declaration attracts penalties" [ref=f2e351]
+          - generic [ref=f2e352]: "Tier 2 — instant approval — TG-bPASS Act 12 of 2020, s.7. Enforcement under s.174, Telangana Municipalities Act 2019: deviation above 10% is unauthorised construction and liable to demolition. TG-bPASS applicants also give an undertaking that violations may be demolished without notice (s.7(5)). New construction uses TG-bPASS building permission before work starts; existing unauthorised work may use BRS only when eligible under the applicable notified regularisation process. Plots in unapproved layouts use LRS where applicable."
+        - generic [ref=f2e353]:
+          - heading "Other Area-Consuming Requirements" [level=2] [ref=f2e354]
+          - table [ref=f2e355]:
+            - rowgroup [ref=f2e356]:
+              - row [ref=f2e357]:
+                - columnheader "Requirement" [ref=f2e358]
+                - columnheader "Extent" [ref=f2e359]
+                - columnheader "Rule" [ref=f2e360]
+              - row [ref=f2e361]:
+                - cell "Green strip along frontage" [ref=f2e362]
+                - cell "1 m within the front setback" [ref=f2e363]
+                - cell "Rule 5(f)(iii) — inside the setback, no extra loss" [ref=f2e364]
+              - row [ref=f2e365]:
+                - cell "Parking" [ref=f2e366]
+                - cell "30% of built-up = 1,535 sq ft" [ref=f2e367]
+                - cell "Table V (GHMC) — cellar, stilt, upper floors, or open space over and above setbacks" [ref=f2e368]
+              - row [ref=f2e369]:
+                - cell "Junction splay" [ref=f2e370]
+                - cell "3 × 3 m" [ref=f2e371]
+                - cell "Rule 5(f)(xiv) — deemed part of the road junction" [ref=f2e372]
+              - row [ref=f2e373]:
+                - cell "Penalty if greenery not maintained" [ref=f2e374]
+                - cell "+10% property tax every year" [ref=f2e375]
+                - cell "Rule 5(f)(vi)" [ref=f2e376]
+        - generic [ref=f2e377]:
+          - heading "Cost Breakdown" [level=2] [ref=f2e378]
+          - generic [ref=f2e379]:
+            - generic [ref=f2e380]:
+              - generic [ref=f2e381]: All-in total
+              - generic [ref=f2e382]: ₹2.86 Cr
+              - generic [ref=f2e383]: land + duties + construction
+            - generic [ref=f2e384]:
+              - generic [ref=f2e385]: Usable built-up
+              - generic [ref=f2e386]: 5,117 sq ft
+              - generic [ref=f2e387]: 3 floors, stilt excluded
+            - generic [ref=f2e388]:
+              - generic [ref=f2e389]: Cost per sq ft built-up
+              - generic [ref=f2e390]: ₹5,586
+              - generic [ref=f2e391]: value-for-money index — lower is better
+            - generic [ref=f2e392]:
+              - generic [ref=f2e393]: Statutory charges
+              - generic [ref=f2e394]: ₹2.61 L
+              - generic [ref=f2e395]: 0.9% of total
+          - table [ref=f2e396]:
+            - rowgroup [ref=f2e397]:
+              - row [ref=f2e398]:
+                - columnheader "Item" [ref=f2e399]
+                - columnheader "Amount" [ref=f2e400]
+                - columnheader "Basis" [ref=f2e401]
+              - row [ref=f2e402]:
+                - cell "Plot purchase" [ref=f2e403]
+                - cell "₹1.50 Cr" [ref=f2e404]
+                - cell "300 sq yd × ₹50,000/sq yd — gross registered extent" [ref=f2e405]
+              - row [ref=f2e406]:
+                - cell "Stamp duty + transfer + registration" [ref=f2e407]
+                - cell "₹68,400" [ref=f2e408]
+                - cell "7.6% user-set rate on land SRO value ₹9.00 L; commonly quoted components are stamp duty, transfer duty and registration fee — edit the rate to match your transaction." [ref=f2e409]
+              - row [ref=f2e410]:
+                - cell "LRS regularisation" [ref=f2e411]
+                - cell "not applicable" [ref=f2e412]
+                - cell "plot is in an approved layout" [ref=f2e413]
+              - row [ref=f2e414]:
+                - cell "BRS regularisation" [ref=f2e415]
+                - cell "not applicable" [ref=f2e416]
+                - cell "legacy GO 152/2015 estimate; confirm current application route and eligibility with TG-bPASS / HMDA" [ref=f2e417]
+              - row [ref=f2e418]:
+                - cell "Construction" [ref=f2e419]
+                - cell "₹1.13 Cr" [ref=f2e420]
+                - cell "5,117 sq ft × ₹2,200/sq ft" [ref=f2e421]
+              - row [ref=f2e422]:
+                - cell "Stilt / parking floor" [ref=f2e423]
+                - cell "₹20.64 L" [ref=f2e424]
+                - cell "1,706 sq ft × ₹1,210/sq ft — costed below habitable rate" [ref=f2e425]
+              - row [ref=f2e426]:
+                - cell "GST on construction" [ref=f2e427]
+                - cell "₹0" [ref=f2e428]
+                - cell "0% on construction + stilt — confirm the applicable rate with your CA" [ref=f2e429]
+              - row [ref=f2e430]:
+                - cell "Betterment charges" [ref=f2e431]
+                - cell "₹59,426" [ref=f2e432]
+                - cell "475 sq m BUA × ₹125/sq m — GHMC 2008 schedule, likely revised since" [ref=f2e433]
+              - row [ref=f2e434]:
+                - cell "City level infrastructure impact fee" [ref=f2e435]
+                - cell "nil" [ref=f2e436]
+                - cell "nil — Rule 21(b) exempts the first 15 m of height, excluding stilt" [ref=f2e437]
+              - row [ref=f2e438]:
+                - cell "Labour cess" [ref=f2e439]
+                - cell "₹1.33 L" [ref=f2e440]
+                - cell "1% of construction cost — BOCW Welfare Cess Act 1996" [ref=f2e441]
+              - row [ref=f2e442]:
+                - cell "Total" [ref=f2e443]
+                - cell "₹2.86 Cr" [ref=f2e444]
+                - cell "₹5,586 per sq ft of usable built-up" [ref=f2e445]
+              - row [ref=f2e446]:
+                - cell "Informational onward-sale registration — not included in the total above" [ref=f2e447]
+              - row [ref=f2e448]:
+                - cell "Flat / built-up SRO value" [ref=f2e449]
+                - cell "₹1.28 Cr" [ref=f2e450]
+                - cell "5,117 sq ft × ₹2,500/sq ft — finished-area registration value, not a construction cost" [ref=f2e451]
+              - row [ref=f2e452]:
+                - cell "Duty a buyer would pay on it" [ref=f2e453]
+                - cell "₹9.72 L" [ref=f2e454]
+                - cell "7.6% of flat / built-up SRO value — indicative onward-sale registration only, not included in all-in total" [ref=f2e455]
+          - generic [ref=f2e456]: "Land is charged on the gross plot — you pay for the full registered extent including any strip later surrendered for road widening, which is why a sub-9 m road hurts the index twice. Stamp duty and LRS are levied on the SRO value, not your purchase price. Confidence. The impact-fee table is read directly from GO 168 Rule 21 Table VI, and the LRS slabs from GO 135 — both reliable, though GO 168 says rates \"may be revised from time to time\" and no later revision was locatable. Betterment charges are from the 2008 GHMC schedule and are the weakest number here — treat as a floor. TG-bPASS and BRS are distinct: TG-bPASS building permission is the normal pre-construction route; this BRS input is a manual legacy GO 152/2015 post-facto regularisation estimate. Confirm the current application route and eligibility with TG-bPASS / HMDA. Building permit and scrutiny fees are computed internally by TG-bPASS and are not included. Not tax advice — confirm GST and cess with your CA."
+  - text: ▸ ▸ ▸ ▸ ▸ ▸ − ▾ ▸ − ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸
+  - generic [ref=f2e457]: Sources. G.O.Ms.No.168 MA&UD dt. 07.04.2012 — Rule 2(f) definitions, Rule 4 & Table II (approach road), Rule 5 & Table III (setbacks & height), Rule 6 (projections), Rule 7 & Table IV (high-rise), Rule 13 & Table V (parking), Rule 26 (occupancy certificate & compounding), Rule 27 (enforcement). G.O.Ms.No.95 MA&UD dt. 21.03.2026 — Rule 2(f) substituted, Rule 17(d)(viii)–(xii) inserted, Rule 17(f)(xii) substituted. TG-bPASS Act 12 of 2020 s.7 (permission tiers); Telangana Municipalities Act 2019 s.174 (enforcement). Caveat. Master-plan land use, Annexure I/II restrictions, Banjara & Jubilee Hills special rules, heritage and religious-structure buffers, FTL/buffer zones, HMDA layout conditions, airport funnel zones and local road-widening proposals can all override these figures. GO 95 takes effect on publication in the Telangana Gazette. Other amendment GOs since 2014 are published as scanned images and were not machine-readable, so Table II/III/IV cell values here are the 2012 originals. Confirm on TG-bPASS before you design or buy.

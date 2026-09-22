@@ -10,7 +10,7 @@ Future AI generation, maps and engineering simulation below remain planned;
 references below to missing drawing exports describe the historical baseline.
 **Date:** 10 September 2026.
 **Confirmed:** two modes, one for Homeowners and one for Experts. The user approved
-one shared project with Overview, Site, Design, Analyze, Compare and Report
+one shared project with Site, Design, Analyze, Compare and Report
 destinations, guided homeowner entry and direct expert controls.
 
 **Phase 2 amendment:** the user-facing Analyze destination is named
@@ -86,7 +86,6 @@ Homeowner labels can be more conversational, but destinations share stable IDs.
 
 | Destination | Homeowner label | Contents and ownership |
 |---|---|---|
-| Overview | My project | Brief summary, readiness, chosen design, save state and next action; not a wall of empty metrics |
 | Site | My plot | Confirmed location, dimensions, boundaries, units, roads/frontage, bearing, setbacks, neighbors, weather source and site feasibility |
 | Design | My home | Home requirements, generation, candidate selection, rooms/openings/furniture, floors, 2D/3D and electrical planning |
 | Analyze | Check performance | Choose an analysis, review assumptions/readiness and resource estimate, approve and monitor runs |
@@ -152,7 +151,7 @@ Use a canvas-first workbench, not an indefinitely scrolling form.
 
 ```text
 Project name | saved locally / unsaved | mode | project menu
-Project navigation: Overview / Site / Design / Analyze / Compare / Report
+Project navigation: Site / Design / Analyze / Compare / Report
 Workspace tools: active floor | 2D / 3D | undo / redo | view tools
 -----------------------------------------------------------------------
 Objects / add tools |         drawing or 3D view        | Properties

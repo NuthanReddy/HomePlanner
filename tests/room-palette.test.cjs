@@ -4,6 +4,24 @@ const fs=require('node:fs');
 const path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 
+test('wall opening gestures project and snap to 0.1 foot increments',()=>{
+  const vm=require('node:vm');
+  const ctx=vm.createContext({FT:.3048,ROOM_EPS:1e-7,roomClamp:(n,lo,hi)=>Math.min(hi,Math.max(lo,n))});
+  for(const name of ['roomWallProjectionM','roomSnapOpeningM','roomOpeningDragCandidate']){
+    const source=html.match(new RegExp(`function ${name}\\([^]*?\\n\\}`));
+    assert.ok(source,`Missing ${name}`);
+    vm.runInContext(source[0],ctx);
+  }
+  const wall={start:{x:0,y:0},end:{x:5,y:0}};
+  const door={offsetM:.5,widthM:.9};
+  assert.deepEqual(JSON.parse(JSON.stringify(ctx.roomOpeningDragCandidate(door,wall,{x:1.5192,y:.4},'move-door',.3))),
+    {offsetM:1.2192,widthM:.9});
+  const window={offsetM:2,widthM:.6};
+  const resized=ctx.roomOpeningDragCandidate(window,wall,{x:3.04,y:0},'resize-window-end');
+  assert.ok(Math.abs(resized.widthM-1.03632)<1e-9);
+  assert.equal(resized.offsetM,2);
+});
+
 test('room palette exposes separate add and right-hand disclosure controls',()=>{
   const decorate=html.match(/function roomDecorateLibraryItems\([^]*?\n\}/)[0];
   assert.match(decorate,/add\.className='library-add'/);

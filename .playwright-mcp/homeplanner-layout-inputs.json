@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "userId": "local-browser",
+  "projectId": "project-d106e66a-b290-4824-9832-41c82358346c",
+  "projectName": "Untitled project",
+  "requestId": "d4ae1eb1-b9c9-4f36-bf20-471b472b2763",
+  "timestamp": 1790102706915,
+  "style": "Modern",
+  "vastuEnabled": true,
+  "programme": {
+    "main_entry": 1,
+    "living": 1,
+    "kitchen": 1,
+    "dining": 1,
+    "master_bedroom": 1,
+    "childrens_bedroom": 1,
+    "other_bedroom": 0,
+    "guest_bedroom": 0,
+    "pooja": 1,
+    "study": 1,
+    "home_office": 1,
+    "bathroom": 3,
+    "staircase": 1,
+    "lift": 1,
+    "storage": 0,
+    "utility": 1
+  },
+  "requirements": [
+    {
+      "type": "living",
+      "id": "living-1",
+      "name": "Living Room",
+      "constraints": {
+        "area": {
+          "minAreaFt2": 1001
+        }
+      },
+      "preferences": {}
+    }
+  ],
+  "assumptions": [],
+  "unknowns": []
+}

@@ -1,5 +1,6 @@
 const { createFixture, controllerFor } = require('./drawing-fixtures.cjs');
 const CFD = require('../../planner-cfd.js');
+const { createHash } = require('node:crypto');
 const clone = value => JSON.parse(JSON.stringify(value));
 
 function project() {
@@ -29,10 +30,23 @@ function fill(controller) {
     for (const field of ['mode', 'temperatureC', 'speedMps', 'gaugePressurePa'])
       controller.setOpening(row.id, field, row[field]);
 }
+async function fillBrowser(root, form) {
+  for (const field of CFD.FIELDS)
+    await root.locator(`[data-cfd-input="${field.path}"]`).fill(String(CFD.getPath(form, field.path)));
+  await root.locator('[data-cfd-input="sourceNote"]').fill(form.sourceNote);
+  for (const row of form.openings) {
+    await root.locator(`[data-cfd-opening="${row.id}"][data-cfd-field="mode"]`).selectOption(row.mode);
+    await root.locator(`[data-cfd-opening="${row.id}"][data-cfd-field="temperatureC"]`).fill(String(row.temperatureC));
+  }
+  for (const field of ['acknowledgeGeometry', 'acknowledgeEmptyRoom', 'acknowledgeModel'])
+    await root.locator(`[data-cfd-input="${field}"]`).check();
+}
 function manifest(request) {
   return { version: 1, profile: CFD.PROFILE, engine: { id: 'OpenCFD-OpenFOAM', version: '2606', solver: 'chtMultiRegionFoam' },
-    caseHash: 'a'.repeat(64), source: clone(request.source), geometry: clone(request.geometry),
-    scenario: clone(request.scenario), mesh: { cells: 1000 }, receiverHeightM: request.scenario.sampling.heightM,
+    caseHash: createHash('sha256').update(JSON.stringify(request)).digest('hex'), source: clone(request.source), geometry: clone(request.geometry),
+    scenario: clone(request.scenario), mesh: { cells: 1000, airCells: 600, solidCells: 400,
+      selectedSpacingM: request.scenario.numerics.spacingM, minimumSolidLayerCells: request.scenario.numerics.solidCells },
+    receiverHeightM: request.scenario.sampling.heightM,
     coordinateSpace: 'room-right-front-up', probeLocations: [
       { x: 1, y: 1, z: 1 }, { x: 2, y: 1, z: 1 }, { x: 1, y: 2, z: 1 }, { x: 2, y: 2, z: 1 }
     ], limitations: ['Synthetic API fixture, not engine computation.'], runtimeVerification: 'pending' };
@@ -49,4 +63,4 @@ function result(manifest) {
       velocityMps: { x: .1, y: .2, z: 0 }, speedMps: Math.hypot(.1, .2), absolutePressurePa: 101325 })),
     diagnostics: { energyBalance: { status: 'not-evaluated' } }, limitations: ['Synthetic test-only data'] };
 }
-module.exports = { project, inputs, fill, manifest, job, result, clone, controllerFor };
+module.exports = { project, inputs, fill, fillBrowser, manifest, job, result, clone, controllerFor };

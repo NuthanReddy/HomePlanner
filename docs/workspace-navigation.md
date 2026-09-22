@@ -15,7 +15,6 @@ Canonical URLs use `?workspace=<destination>&section=<section>`.
 
 | Destination | Implemented sections (stable route IDs) |
 |---|---|
-| Overview | `summary`: current scene, floor/room counts and missing site/weather inputs |
 | Site · Plot Planner | `plot`: dimensions, cardinal road-facing bearing and feasibility; `context`: location, surroundings, preview dimensions and weather; `prohibited`: Telangana lookup; `references`: regulatory sources |
 | Design | `layout`: 2D editor and explicit optional 3D; `structure`: conceptual structural editing and coordination; `elevations`: saved views and physical facade boxes; `plumbing`: fixtures, water/waste networks, plans and risers; `drainage`: sanitary/storm intent, supplied levels, geometric review and profiles; `electrical`: point planning; `review`: placement issues and design guidance |
 | Environment | `sun`: Sun Path, whole-house direct sunlight and CSV; `solar`: geometric shadow/irradiance studies; `airflow`: explicit room/opening pressure scenarios with signed arrows, tables and local evidence, plus separately collapsed wind/window proposals; `cfd`: single-room coupled thermal/OpenFOAM preparation and local job/result integration (engine verification pending); `light`: workplane direct sunlight and normalized sky access, scenarios, evidence and optional 3D, with older guidance collapsed separately; `models`: expert pressure/thermal experiments |
@@ -41,8 +40,9 @@ Compatibility entries:
 
 Existing `#env-…-section` links resolve to the appropriate new owner, including
 Site's context/weather, Compare's envelope and Report's exports. Other URL query
-parameters are retained. Sun Path and Prohibited Properties are **not** top-level
-destinations. Quick links in the project menu need no generated house.
+parameters are retained. Overview, Sun Path and Prohibited Properties are **not** top-level
+destinations. The portal opens on the editable Design layout instead of an
+intermediate dashboard.
 
 ## State and lifecycle
 
@@ -111,7 +111,7 @@ Styles remain in `planner-workspace.css`, using the existing theme tokens:
 
 - `.hp-workspace`: body; `data-workspace`, `data-workspace-section`, `data-hp-mode`
 - `.hp-project-bar`: identity/save/actions, `.hp-project-menu`: persistent details
-- `.hp-project-nav`: six destinations; `.hp-workspace-subnav`: one local route row
+- `.hp-project-nav`: five destinations; `.hp-workspace-subnav`: one local route row
 - `.hp-workspace-tools`: shared floor/history host;
   `.hp-workspace-tool-row`: compact live selector/history controls
 - `.hp-design-layout`: desktop grid containing `.hp-design-palette`,

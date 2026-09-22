@@ -46,26 +46,7 @@
     return job;
   }
   function verifyResult(result, captured) {
-    const manifest = captured.manifest, input = captured.request;
-    if (result?.kind !== 'CoupledCfdResult' || result.version !== 1 ||
-        result.caseHash !== manifest.caseHash || key(result.source) !== key(input.source) ||
-        result.coordinateSpace !== 'room-right-front-up' || result.validationStatus !== 'unvalidated')
-      throw new Error('The result provenance or coordinate frame does not match this captured case.');
-    if (!finite(result.timeSeconds) || result.timeSeconds < input.scenario.numerics.endTimeSeconds - 1e-7 ||
-        result.receiverHeightM !== input.scenario.sampling.heightM ||
-        !Array.isArray(result.samples) || result.samples.length !== manifest.probeLocations.length ||
-        !result.samples.length || result.samples.length > 512)
-      throw new Error('The result is incomplete or has a different sampling plane.');
-    result.samples.forEach((sample, index) => {
-      const point = manifest.probeLocations[index];
-      if (!['x', 'y', 'z'].every(axis => finite(sample.positionM?.[axis]) &&
-          finite(sample.velocityMps?.[axis]) && Math.abs(sample.positionM[axis] - point[axis]) <= 1e-6) ||
-          ![sample.temperatureC, sample.speedMps, sample.absolutePressurePa].every(finite) ||
-          sample.absolutePressurePa <= 0 || sample.speedMps < 0 ||
-          Math.abs(sample.speedMps - Math.hypot(...['x', 'y', 'z'].map(axis => sample.velocityMps[axis]))) > 1e-6)
-        throw new Error('The result contains a nonfinite, misplaced or inconsistent sample. No heatmap is shown.');
-    });
-    return copy(result);
+    return CFD.validateResult(result, captured);
   }
   function createController(planner, runtime = root) {
     if (!planner?.getDrawingScene || !planner?.getProject || !Drafts?.createStore)
@@ -111,7 +92,8 @@
     }
     function invalidate(message = 'Inputs changed. Prepare a new case; old results are not displayed.') {
       operation++; retireRun();
-      if (entry) Object.assign(entry, { prepared: null, result: null, job: null, status: 'stale', message });
+      if (entry) Object.assign(entry, { prepared: null, result: null, job: null, status: 'stale', message,
+        comparison: null, comparisonMessage: 'Choose two compatible completed runs explicitly; no comparison is current.' });
     }
     function readInventory() {
       const project = planner.getProject(), floorId = project.activeFloorId, owner = key([project.id, floorId]);
@@ -137,7 +119,8 @@
         if (!entries.has(scopeKey)) entries.set(scopeKey, { form: saved ? copy(saved.scenario) : CFD.draft(next.geometry),
           base: copy(saved), pending: false, conflict: false, geometryKey: saved?.geometryFingerprint || next.geometryFingerprint,
           status: 'not-prepared', message: 'No CFD run. Review the current room and supply the physical inputs.',
-          prepared: null, result: null, job: null });
+          prepared: null, result: null, job: null, history: [], comparison: null,
+          comparisonMessage: 'No completed runs to compare. Run the same physical case at different mesh or timestep settings.' });
         entry = entries.get(scopeKey);
         if (key(saved) !== key(entry.base)) {
           if (entry.pending) entry.conflict = true;
@@ -168,7 +151,14 @@
         roomId: currentScope?.entityId || null, inventory, form: entry?.form || null, pending: entry?.pending || false,
         conflict: entry?.conflict || false, status: entry?.status || 'unavailable',
         message: globalError || entry?.message || '', cancellationWarning, engine,
-        manifest: entry?.prepared?.manifest || null, job: entry?.job || null, result: entry?.result || null });
+        manifest: entry?.prepared?.manifest || null, job: entry?.job || null, result: entry?.result || null,
+        history: (entry?.history || []).map(run => ({
+          id: run.id, caseHash: run.manifest.caseHash, cells: run.manifest.mesh.cells,
+          spacingM: run.manifest.scenario.numerics.spacingM, deltaTSeconds: run.manifest.scenario.numerics.deltaTSeconds,
+          endTimeSeconds: run.result.timeSeconds,
+          matchesGeometry: run.manifest.source.geometryFingerprint === inventory?.geometryFingerprint,
+        })),
+        comparison: entry?.comparison || null, comparisonMessage: entry?.comparisonMessage || '' });
     }
     function selectRoom(roomId) {
       const project = planner.getProject();
@@ -300,6 +290,9 @@
           if (!current(captured) || captured.retired) return;
           if (response.status !== 'computed-unvalidated') throw new Error('The engine has not supplied a completed numerical result.');
           entry.result = verifyResult(response.result, captured); activeRun = null;
+          entry.history = [...entry.history.filter(run => run.id !== captured.jobId), {
+            id: captured.jobId, manifest: copy(captured.manifest), result: copy(entry.result),
+          }].slice(-6);
           entry.message = 'Computed OpenFOAM samples. The numerical profile is unvalidated; inspect diagnostics and refinement evidence.';
         } else if (terminal(job.status)) activeRun = null;
         else pollTimer = schedule(() => { pollTimer = null; void poll(captured); }, 1000);
@@ -381,12 +374,34 @@
       }
       announce();
     }
-    function clear() { invalidate('Case preview and results cleared. Input values and the project are unchanged.'); announce(); }
+    function compare(baselineId, candidateId) {
+      sync();
+      if (!entry) throw new Error('Choose a room before comparing its completed runs.');
+      entry.comparison = null;
+      try {
+        if (baselineId === candidateId) throw new Error('Select two different completed runs.');
+        const baseline = entry.history.find(run => run.id === baselineId), candidate = entry.history.find(run => run.id === candidateId);
+        if (!baseline || !candidate) throw new Error('The selected run is not in this room\'s retained session history.');
+        if (entry.conflict || !inventory) throw new Error('Resolve the current input conflict before comparing runs.');
+        const input = CFD.request(inventory, entry.form);
+        entry.comparison = CFD.compareRuns(baseline, candidate, input);
+        entry.comparisonMessage = 'Matching final-time samples compared. These differences are not error bounds or proof of convergence.';
+      } catch (error) {
+        entry.comparisonMessage = `Comparison unavailable: ${error.message}`; announce(); return false;
+      }
+      announce(); return true;
+    }
+    function clearHistory() {
+      entry.history = []; entry.comparison = null;
+      entry.comparisonMessage = 'Session comparison history cleared. Current inputs, current result and server case files are unchanged.';
+      announce();
+    }
+    function clear() { invalidate('Current case preview and result cleared. Inputs and the separate comparison history are unchanged.'); announce(); }
     function reportError(error) { if (entry) { entry.message = error.message; entry.status = 'failed'; } else globalError = error.message; announce(); }
     sync();
     const off = planner.subscribe(sync);
     return { getState, sync, selectRoom, setValue, setOpening, openingOperation, save, discard, keepDraft,
-      prepare, download, checkEngine, run, cancel, clear, reportError,
+      prepare, download, checkEngine, run, cancel, clear, compare, clearHistory, reportError,
       subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
       dispose() { if (disposed) return; retireRun(); disposed = true; operation++; off(); store.dispose(); listeners.clear(); } };
   }
@@ -431,6 +446,43 @@
       <text x="20" y="${y0 + height / 2}">${esc(bearingSide('W', geometry))}</text>`;
     return `<svg viewBox="0 0 ${width + 105} ${height + 108}" role="img" aria-label="${esc(title)}">${content}</svg>`;
   }
+  function conservationMarkup(diagnostics) {
+    const report = diagnostics?.conservation;
+    if (report?.status !== 'computed-unvalidated')
+      return `<p>${esc(report?.status === 'insufficient-history' ?
+        'Only one actual integral row is available. A storage balance cannot be computed without inventing an initial state.' :
+        'Integral conservation evidence is unavailable for this result; no zero residual is assumed.')}</p>`;
+    const mass = diagnostics.massBalance, energy = diagnostics.energyBalance;
+    const rows = [
+      ['Largest step mass residual', mass.maxAbsStepResidualKg, 'kg'],
+      ['Largest step fluid energy residual', energy.fluid.maxAbsStepResidualJ, 'J'],
+      ['Largest step solid energy residual', energy.solid.maxAbsStepResidualJ, 'J'],
+      ['Largest step whole-domain energy residual', energy.combinedExternal.maxAbsStepResidualJ, 'J'],
+      ['Largest interface heat-power mismatch', energy.interface.maxAbsMismatchW, 'W'],
+    ];
+    return `<p>Actual integral coverage: ${esc(report.coverage.startSeconds)} to ${esc(report.coverage.endSeconds)} s,
+      ${esc(report.coverage.intervals)} intervals. ${report.coverage.includesInitialState ? 'Includes an actual initial row.' : 'Does not include the unrecorded startup interval.'}</p>
+      <div class="hp-cfd-table"><table><thead><tr><th scope="col">Reconstructed balance</th><th scope="col">Maximum absolute residual</th></tr></thead>
+      <tbody>${rows.map(([label, value, unit]) => `<tr><th scope="row">${label}</th><td>${finite(value) ? value.toPrecision(6) : 'Unavailable'} ${unit}</td></tr>`).join('')}</tbody></table></div>
+      <p class="hp-cfd-help">Pressure work, gravity, kinetic energy and opening heat diffusion are included.
+      Separate regional and interface residuals prevent cancellation hiding an error. These are not acceptance thresholds or empirical validation.</p>`;
+  }
+  function comparisonMarkup(comparison) {
+    if (!comparison) return '';
+    const rows = [
+      ['Temperature', 'temperatureC', 'C'], ['Speed', 'speedMps', 'm/s'],
+      ['Velocity-vector difference', 'velocityDifferenceMps', 'm/s'], ['Absolute pressure', 'absolutePressurePa', 'Pa'],
+    ];
+    return `<p>${esc(comparison.comparisonType)} comparison at ${esc(comparison.endTimeSeconds)} s and
+      ${esc(comparison.receiverHeightM)} m: ${comparison.sampleCount} matching points.
+      Mesh: ${esc(comparison.meshChange)}; timestep: ${esc(comparison.timestepChange)}.</p>
+      <div class="hp-cfd-table"><table><thead><tr><th scope="col">Quantity</th><th scope="col">Largest difference</th><th scope="col">RMS difference</th></tr></thead>
+      <tbody>${rows.map(([label, name, unit]) => `<tr><th scope="row">${label}</th>
+      <td>${comparison.differences[name].maxAbsolute.toPrecision(6)} ${unit}</td>
+      <td>${comparison.differences[name].rootMeanSquare.toPrecision(6)} ${unit}</td></tr>`).join('')}</tbody></table></div>
+      <p class="hp-cfd-help">No extrapolated solution, convergence order or Grid Convergence Index is inferred from two runs.
+      Changes to both mesh and timestep cannot be attributed to one alone.</p>`;
+  }
   function mount(document = root.document, runtime = root) {
     const host = document?.getElementById('workspaceCfd');
     if (!host || host.homePlannerCFD) return host?.homePlannerCFD || null;
@@ -469,16 +521,26 @@
       <button type="button" data-cfd-action="download">Download OpenFOAM case</button>
       <button type="button" data-cfd-action="run">Run OpenFOAM</button><button type="button" data-cfd-action="cancel">Cancel run</button>
       <button type="button" data-cfd-action="save">Save inputs to project</button>
-      <button type="button" data-cfd-action="discard">Reload saved inputs</button><button type="button" data-cfd-action="clear">Clear results</button></div>
+      <button type="button" data-cfd-action="discard">Reload saved inputs</button><button type="button" data-cfd-action="clear">Clear current result</button></div>
       <p data-cfd-pending class="hp-cfd-help"></p><p data-cfd-prepared></p>
       <div data-cfd-output hidden><label>Computed quantity<select data-cfd-metric><option value="temperature">Temperature (C)</option>
       <option value="speed">Speed (m/s)</option></select></label><div data-cfd-results></div>
+      <h3>Conservation diagnostics</h3><div data-cfd-balances></div>
       <details><summary>Numeric sample table</summary><div class="hp-cfd-table" data-cfd-samples></div></details>
       <button type="button" data-cfd-action="exportResult">Download result JSON</button></div>
+      <details><summary>Compare mesh / timestep runs</summary>
+      <p class="hp-cfd-help">Retains the latest six completed runs for this room in this browser session. No simulations run automatically.
+      Keep physical inputs, duration and receiver points unchanged; refine only mesh or timestep for an interpretable comparison.</p>
+      <div class="hp-cfd-fields"><label>Baseline run<select data-cfd-baseline></select></label>
+      <label>Comparison run<select data-cfd-candidate></select></label></div>
+      <div class="hp-cfd-toolbar"><button type="button" data-cfd-action="compare">Compare selected runs</button>
+      <button type="button" data-cfd-action="exportComparison">Download comparison JSON</button>
+      <button type="button" data-cfd-action="clearHistory">Clear session comparison history</button></div>
+      <p data-cfd-comparison-status role="status"></p><div data-cfd-comparison></div></details>
       <details><summary>Case provenance and numerical diagnostics</summary><pre data-cfd-evidence></pre></details>
       <details><summary>Local job log</summary><pre data-cfd-log>No job started.</pre></details>`;
     const by = name => host.querySelector(`[data-cfd-${name}]`);
-    let openingKey = '', roomOptions = '', metric = 'temperature';
+    let openingKey = '', roomOptions = '', historyKey = '', metric = 'temperature';
     function render(state) {
       const geometry = state.inventory?.geometry;
       const options = key(state.inventory?.rooms || []);
@@ -536,6 +598,18 @@
           input.disabled = row?.mode !== (input.dataset.cfdField === 'speedMps' ? 'inlet' : 'outlet');
       }
       const busy = ['starting', 'preparing', 'running', 'cancelling'].includes(state.status);
+      const compatibleHistory = state.history.filter(run => run.matchesGeometry);
+      const nextHistoryKey = key(state.history);
+      if (nextHistoryKey !== historyKey) {
+        const baseline = by('baseline').value, candidate = by('candidate').value;
+        const options = '<option value="">Choose a completed run</option>' + state.history.map(run =>
+          `<option value="${esc(run.id)}"${run.matchesGeometry ? '' : ' disabled'}>${run.cells} cells; dt ${run.deltaTSeconds} s; end ${run.endTimeSeconds} s; ${esc(run.id.slice(0, 8))}${run.matchesGeometry ? '' : ' (old geometry)'}</option>`).join('');
+        by('baseline').innerHTML = options; by('candidate').innerHTML = options;
+        by('baseline').value = compatibleHistory.some(run => run.id === baseline) ? baseline : compatibleHistory[0]?.id || '';
+        by('candidate').value = compatibleHistory.some(run => run.id === candidate) && candidate !== by('baseline').value ?
+          candidate : compatibleHistory.at(-1)?.id || '';
+        historyKey = nextHistoryKey;
+      }
       for (const button of host.querySelectorAll('[data-cfd-action]')) {
         const action = button.dataset.cfdAction;
         button.disabled = action === 'run' ? !state.manifest || !state.engine.available || busy :
@@ -543,6 +617,9 @@
           action === 'cancel' ? !['starting', 'running', 'preparing'].includes(state.status) :
           action === 'checkEngine' ? state.engine.status === 'checking' :
           action === 'prepare' ? busy || !geometry || !!state.inventory?.findings.length || state.conflict :
+          action === 'compare' ? compatibleHistory.length < 2 || busy || state.conflict :
+          action === 'exportComparison' ? !state.comparison :
+          action === 'clearHistory' ? !state.history.length :
           action === 'save' ? !state.form || state.conflict : false;
       }
       by('pending').textContent = state.pending ? 'Unsaved CFD inputs are tracked as project-owned drafts. Save inputs explicitly to include them in project JSON and Undo/Redo.' :
@@ -550,6 +627,9 @@
       by('prepared').textContent = state.manifest ? `${state.manifest.mesh.cells.toLocaleString()} planned cells; ${state.manifest.probeLocations.length} receiver samples. Case ${state.manifest.caseHash.slice(0, 12)}. Engine verification pending.` : '';
       by('output').hidden = !state.result;
       by('results').innerHTML = state.result ? plotSvg(geometry, state.result, metric) : '';
+      by('balances').innerHTML = state.result ? conservationMarkup(state.result.diagnostics) : '';
+      by('comparison-status').textContent = state.comparisonMessage;
+      by('comparison').innerHTML = comparisonMarkup(state.comparison);
       by('samples').innerHTML = state.result ? `<table><thead><tr>${['X (m)', 'Y (m)', 'Z (m)',
         'Temperature (C)', 'UX (m/s)', 'UY (m/s)', 'UZ (m/s)', 'Speed (m/s)', 'Absolute pressure (Pa)'].map(label =>
         `<th scope="col">${label}</th>`).join('')}</tr></thead><tbody>${state.result.samples.map(sample =>
@@ -589,6 +669,12 @@
           const result = controller.getState().result;
           if (!result) throw new Error('No current completed result is available.');
           downloadBlob(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }), 'homeplanner-cfd-result.json');
+        } else if (button.dataset.cfdAction === 'compare')
+          controller.compare(by('baseline').value, by('candidate').value);
+        else if (button.dataset.cfdAction === 'exportComparison') {
+          const comparison = controller.getState().comparison;
+          if (!comparison) throw new Error('No current compatible comparison is available.');
+          downloadBlob(new Blob([JSON.stringify(comparison, null, 2)], { type: 'application/json' }), 'homeplanner-cfd-comparison.json');
         } else if (button.dataset.cfdAction) await controller[button.dataset.cfdAction]();
       } catch (error) { controller.reportError(error); }
     });
@@ -600,5 +686,5 @@
     });
     return controller;
   }
-  return Object.freeze({ createController, mount, plotSvg, verifyResult, bearingSide });
+  return Object.freeze({ createController, mount, plotSvg, verifyResult, bearingSide, conservationMarkup, comparisonMarkup });
 });

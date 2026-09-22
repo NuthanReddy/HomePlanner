@@ -21,19 +21,6 @@
   }
 
   const guides = freeze({
-    'overview/summary': {
-      title: 'Choose your next task',
-      task: 'Use readiness as a checklist for the task you want, not a demand to complete every analysis.',
-      steps: [
-        'Read Current project readiness to check which project and floor you are reviewing.',
-        'Choose Continue design to work on rooms, or Review site and weather to check site inputs.',
-        'Use Save now in the project bar; wait for Saved in this browser. Use Projects & backups → Export JSON for a separate backup.'
-      ],
-      required: 'For a first floor plan, start with measured plot dimensions or a site plan and a room list.',
-      optional: 'Weather, structural sizes, pipe levels and study coefficients are not prerequisites for arranging rooms.',
-      result: 'Readiness describes available inputs. Missing optional study data is not a broken floor plan or a failed design.',
-      sources: ['docs/workspace-navigation.md', 'docs/local-persistence.md']
-    },
     'site/plot': {
       title: 'Set the plot before planning rooms',
       task: 'Describe the land and compare the space left by the selected planning scenario.',
@@ -101,6 +88,20 @@
       optional: 'Material properties, pressure inputs, light-study settings and service sizes can wait. Optional 3D is not required for editing.',
       result: 'This is an editable schematic. A lift or stair reservation removes usable space from its host room; it is not a fully designed lift or staircase. Whole-plan regeneration is a deliberate replacement action, not a routine save.',
       sources: ['docs/room-planner.md', 'docs/editor-workspace.md', 'docs/local-persistence.md']
+    },
+    'design/ai-plan': {
+      title: 'Review AI plan requirements',
+      task: 'Capture a structured brief without replacing the current edited floor plan.',
+      steps: [
+        'Review the read-only Plot Planner source summary; change site and buildable inputs in Site rather than repeating them here.',
+        'Enter the requested programme, room constraints and preferences, then choose Review requirements.',
+        'Resolve validation messages and confirm only the reviewed values. Draft typing does not edit project geometry.',
+        'Use the confirmed DesignBriefV1 as generator input; applying a generated layout remains a separate explicit action.'
+      ],
+      required: 'A current Plot Planner snapshot and the customer requirements you intend to review. Keep missing areas, dimensions and preferences unknown rather than inventing them.',
+      optional: 'Vastu and detailed room ranges are optional preferences. They do not override statutory, structural, circulation, daylight or ventilation constraints.',
+      result: 'The confirmed brief is immutable input provenance, not a generated, approved or buildable plan.',
+      sources: ['docs/plan/ai-floor-plan-generator.md', 'docs/room-planner.md']
     },
     'design/structure': {
       title: 'Record structural intent for review',
@@ -186,32 +187,19 @@
       sources: ['docs/design-guidance.md', 'docs/circulation-and-components.md', 'docs/workspace-navigation.md']
     },
     'environment/sun': {
-      title: 'Explore sun position and shading',
-      task: 'Use a deliberate site and local time, then choose whether you need a whole-house study.',
+      title: 'Explore solar path, shading and exposure',
+      task: 'Use a deliberate site and local time, then choose astronomical paths, whole-house shade or geometric exposure.',
       steps: [
         'Enter actual coordinates, time zone, date and time, or choose Use project defaults and review what was copied.',
         'Inspect the sun path and pole-shadow controls. Resolve any repeated local-clock-time choice rather than using your computer time zone.',
         'For whole-house exposure, review the side obstruction states and supplied heights/gaps before running that study.',
-        'Use for this project explicitly applies the exploratory site/time inputs; leave it alone if you only intended a comparison.'
+        'Use for this project explicitly applies the exploratory site/time inputs; leave it alone if you only intended a comparison.',
+        'For geometric exposure, choose Geometry only unless you have deliberate interval-matched radiation inputs; monthly 09 / 12 / 15 results are limited snapshots.'
       ],
       required: 'Site/time-zone evidence and the chosen date/time. Neighbor geometry and physical storey data are needed for the shading scope you choose.',
       optional: 'Weather is not needed for astronomical paths. Pole shadows and whole-house exposure are separate optional tasks; unentered neighbors remain unknown.',
       result: 'Sun position and astronomical daylight are not measured sunshine. Neighbor-blocked sun hours are not energy, lux or guaranteed indoor cooling.',
-      sources: ['docs/sun-path.md', 'docs/workspace-navigation.md']
-    },
-    'environment/solar': {
-      title: 'Compare geometric solar exposure',
-      task: 'Start with geometry only; add radiation inputs only for a question that needs them.',
-      steps: [
-        'Review the location and surroundings in Site, then select the solar date, time and Floors scope.',
-        'Choose Radiation inputs → Geometry only unless you have deliberate hypothetical or matched weather irradiance inputs.',
-        'Choose Calculate sun & exposure. If using imported records, Use record midpoint as solar time aligns the chosen record.',
-        'Use Compare monthly 09 / 12 / 15 for a limited snapshot comparison and read its assumptions.'
-      ],
-      required: 'Site/time information and modeled geometry. Radiation results additionally need the stated radiation components with correct units and source.',
-      optional: 'Radiation inputs and weather can be omitted in Geometry only mode. Do not fill them with zero to suppress missing-data messages.',
-      result: 'Sunlit fractions describe geometric exposure; incident radiation is not absorbed heat or illuminance. Monthly snapshots are not annual energy, and separate floor calculations do not establish all-storey mutual shading.',
-      sources: ['docs/environment-analysis.md', 'docs/building-physics.md']
+      sources: ['docs/sun-path.md', 'docs/environment-analysis.md', 'docs/building-physics.md', 'docs/workspace-navigation.md']
     },
     'environment/airflow': {
       title: 'Build a deliberate airflow scenario',
@@ -234,11 +222,12 @@
         'Choose a room on the active floor and review its actual inner wall faces, opening states and geometry findings.',
         'Supply solid and air properties, initial and boundary temperatures, absolute reference pressure and any inlet/outlet conditions. Record their sources; blank does not mean zero.',
         'Review the empty-room and laminar-model assumptions, then choose Prepare case. Download OpenFOAM case works without virtualization or an installed engine.',
-        'Save inputs to project separately for JSON and Undo. Check local engine and Run OpenFOAM require the explicitly configured matching local runtime; Cancel run stops only that job.'
+        'Save inputs to project separately for JSON and Undo. Check local engine and Run OpenFOAM require the explicitly configured matching local runtime; Cancel run stops only that job.',
+        'After completed runs, inspect separate mass, fluid/solid energy and interface diagnostics. Compare mesh / timestep runs only with unchanged physical inputs, duration and receiver points; no new solve starts automatically.'
       ],
       required: 'A supported rectangular enclosure, complete supplied physical boundaries and properties, and explicit acknowledgements. On Windows, execution additionally needs WSL2 and OpenCFD OpenFOAM v2606; preparation does not.',
       optional: 'CFD is not needed for floor planning. Unknown physical inputs may remain saved as null. Adjacent rooms, turbulence, radiation, HVAC, moisture and furniture are outside the first profile.',
-      result: 'The generated profile has not yet passed real-engine or numerical verification. Only completed, matching solver samples can produce a field plot; no placeholder output appears while the engine is unavailable.',
+      result: 'The generated profile has not yet passed real-engine or numerical verification. Only matching completed output can produce fields and integral balances. Comparisons report differences, not convergence certificates or measured accuracy.',
       sources: ['docs/coupled-cfd.md', 'docs/airflow-workbench.md']
     },
     'environment/light': {
@@ -442,19 +431,40 @@
     const host = document?.getElementById('workspaceGuide');
     if (!host || !workspace?.getRoute) return null;
     if (host.homePlannerGuide) return host.homePlannerGuide;
-    const disclosure = element(document, 'details', '', 'hp-guide-disclosure');
-    const summary = element(document, 'summary', 'How to use this section');
+    const trigger = element(document, 'button', 'i', 'hp-guide-info');
+    trigger.type = 'button';
+    trigger.setAttribute('aria-label', 'How to use this section');
+    trigger.setAttribute('aria-expanded', 'false');
+    const overlay = element(document, 'div', '', 'hp-guide-overlay');
+    overlay.hidden = true;
+    const dialog = element(document, 'section', '', 'hp-guide-dialog');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-label', 'How to use this section');
+    const close = element(document, 'button', 'Close', 'hp-guide-close');
+    close.type = 'button';
     const body = element(document, 'div');
-    disclosure.append(summary, body);
-    host.append(disclosure);
+    dialog.append(close, body); overlay.append(dialog); host.append(trigger, overlay);
     let currentKey = null, disposed = false;
+    const setOpen = open => {
+      overlay.hidden = !open;
+      trigger.setAttribute('aria-expanded', String(open));
+      if (open) close.focus({ preventScroll: true }); else trigger.focus({ preventScroll: true });
+    };
+    trigger.addEventListener('click', () => setOpen(overlay.hidden));
+    close.addEventListener('click', () => setOpen(false));
+    overlay.addEventListener('click', event => { if (event.target === overlay) setOpen(false); });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); setOpen(false); }
+    });
     function sync() {
       if (disposed) return;
       const route = workspace.getRoute(), key = routeKey(route);
       if (key === currentKey) return;
       const guide = getGuide(route);
       currentKey = key;
-      disclosure.open = false;
+      overlay.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
       if (!guide) {
         body.replaceChildren(element(document, 'p', 'No section guide is available for this route.'));
         return;
@@ -473,7 +483,7 @@
         if (disposed) return;
         disposed = true;
         document.removeEventListener('homeplanner:workspace-change', sync);
-        disclosure.remove();
+        trigger.remove(); overlay.remove();
         delete host.homePlannerGuide;
       }
     };

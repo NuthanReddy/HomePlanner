@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homeplanner.local/schema/inputs.schema.json",
+  "title": "HomePlanner layout inputs",
+  "description": "Schema for the JSONC layout-generation input document in inputs.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "userId",
+    "projectId",
+    "projectName",
+    "requestId",
+    "timestamp",
+    "style",
+    "vastuEnabled",
+    "programme",
+    "requirements",
+    "assumptions",
+    "unknowns"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "x-ui": { "hidden": true }
+    },
+    "userId": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "x-ui": { "hidden": true }
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1,
+      "x-ui": { "hidden": true }
+    },
+    "projectName": {
+      "type": "string",
+      "minLength": 1,
+      "x-ui": { "hidden": true }
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "x-ui": { "hidden": true }
+    },
+    "timestamp": {
+      "type": "integer",
+      "minimum": 0,
+      "x-ui": { "hidden": true }
+    },
+    "style": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vastuEnabled": {
+      "type": "boolean"
+    },
+    "programme": {
+      "type": "object",
+      "description": "Room counts keyed by the room names defined in configs/vastu-direction-preferences.json.",
+      "x-ui": { "collapsed": true },
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "main_entry": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "living": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "kitchen": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "dining": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "master_bedroom": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "other_bedroom": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "childrens_bedroom": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "guest_bedroom": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "pooja": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "study": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "home_office": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "bathroom": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "lift": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "staircase": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "storage": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "utility": {
+          "$ref": "#/$defs/roomCount"
+        },
+        "laundry": {
+          "$ref": "#/$defs/roomCount"
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/requirement"
+      },
+      "minItems": 1
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "roomCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "name", "constraints", "preferences"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "constraints": {
+          "$ref": "#/$defs/constraints"
+        },
+        "preferences": {
+          "$ref": "#/$defs/preferences"
+        },
+        "details": {
+          "$ref": "#/$defs/requirementDetails"
+        }
+      }
+    },
+    "requirementDetails": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": {
+          "type": "string",
+          "enum": ["compact", "standard", "large", "custom"]
+        },
+        "layoutType": {
+          "type": "string",
+          "enum": ["open", "semi-open", "closed"]
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/area"
+        },
+        "dimensions": {
+          "$ref": "#/$defs/dimensions"
+        },
+        "directions": {
+          "$ref": "#/$defs/directions"
+        },
+        "requiredAdjacencies": {
+          "$ref": "#/$defs/adjacencies"
+        },
+        "prohibitedAdjacencies": {
+          "$ref": "#/$defs/adjacencies"
+        }
+      }
+    },
+    "area": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minAreaFt2", "maxAreaFt2"],
+      "properties": {
+        "minAreaFt2": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxAreaFt2": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minWidthFt", "minDepthFt", "maxWidthFt", "maxDepthFt"],
+      "properties": {
+        "minWidthFt": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minDepthFt": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxWidthFt": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxDepthFt": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "directions": {
+          "$ref": "#/$defs/directions"
+        },
+        "requiredAdjacencies": {
+          "$ref": "#/$defs/adjacencies"
+        },
+        "prohibitedAdjacencies": {
+          "$ref": "#/$defs/adjacencies"
+        },
+        "privacyWeight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "rotatable": {
+          "type": "boolean"
+        },
+        "daylightProxyWeight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "directions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+      }
+    },
+    "adjacencies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

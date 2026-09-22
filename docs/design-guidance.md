@@ -45,6 +45,11 @@ Common directional preferences are advisory only. Vastu never overrides:
 The application explicitly reports that Vastu is not scientifically validated
 and is not required by GHMC, TG-bPASS, or RERA.
 
+[Vastu direction preferences](vastu-direction-preferences.md) records the
+source-aware, profile-based research matrix and the orientation/unknown-state
+requirements for any directional recommendation. It is not a universal rule
+chart or a technical-performance method.
+
 ## Checklist fixes
 
 Each checklist row identifies one of three action types:
@@ -64,4 +69,3 @@ pre-fix snapshot is restored automatically.
 **Undo last fix** restores the complete pre-fix planner snapshot. Because the
 snapshot is complete, edits made after a successful fix are also reverted when
 that fix is undone. Up to ten successful fix snapshots are retained.
-

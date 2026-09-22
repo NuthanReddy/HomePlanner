@@ -13,13 +13,12 @@
 
   const destinations = Object.freeze({
     site: Object.freeze({ label: 'Site · Plot Planner', sections: Object.freeze({
-      plot: 'Plot & feasibility', context: 'Location, surroundings & weather', prohibited: 'Prohibited Properties', references: 'Regulatory sources'
+      plot: 'Plot & feasibility', comparisons: 'Plot comparisons', context: 'Location, surroundings & weather', prohibited: 'Prohibited Properties', references: 'Regulatory sources'
     }) }),
     design: Object.freeze({ label: 'Design', sections: Object.freeze({ layout: 'Layout · 2D / 3D', 'ai-plan': 'AI Plan', structure: 'Structure', elevations: 'Elevations & sections', plumbing: 'Plumbing', drainage: 'Drainage', electrical: 'Electrical', review: 'Issues & guidance' }) }),
     environment: Object.freeze({ label: 'Environment', sections: Object.freeze({
-      sun: 'Solar path, shading & exposure', airflow: 'Airflow & windows', cfd: 'Thermal / CFD', light: 'Light · sunlight & sky access', models: 'Reduced models'
+      sun: 'Solar path, shading & exposure', envelope: 'Envelope comparisons', airflow: 'Airflow & windows', cfd: 'Thermal / CFD', light: 'Light · sunlight & sky access', models: 'Reduced models'
     }) }),
-    compare: Object.freeze({ label: 'Compare', sections: Object.freeze({ plot: 'Plot comparisons', envelope: 'Envelope comparisons' }) }),
     report: Object.freeze({ label: 'Report', sections: Object.freeze({ drawings: 'Drawings', package: 'Document package', schedules: 'Room schedule', electrical: 'Point schedule', exports: 'JSON & analysis exports' }) })
   });
   const aliases = Object.freeze({
@@ -28,7 +27,7 @@
   });
   const anchors = Object.freeze({
     'env-site-section': ['site', 'context'], 'env-weather-section': ['site', 'context'],
-    'env-solar-section': ['environment', 'sun'], 'env-envelope-section': ['compare', 'envelope'],
+    'env-solar-section': ['environment', 'sun'], 'env-envelope-section': ['environment', 'envelope'],
     'env-wind-section': ['environment', 'airflow'], 'env-models-section': ['environment', 'models'],
     'env-export-section': ['report', 'exports']
   });
@@ -54,6 +53,11 @@
       destination = alias[0];
       section = section || alias[1];
     }
+    if (destination === 'compare') {
+      const legacySection = section;
+      destination = legacySection === 'envelope' ? 'environment' : 'site';
+      section = legacySection === 'envelope' ? 'envelope' : 'comparisons';
+    }
     if (destination === 'environment' && section === 'solar') section = 'sun';
     if (!owns(destinations, destination)) destination = 'design';
     if (!owns(destinations[destination].sections, section))
@@ -75,7 +79,6 @@
       section === 'prohibited' ? 'prohibited' : 'optimizer';
     if (destination === 'design') return section === 'layout' ? 'rooms' : section;
     if (destination === 'environment') return `env-${section}`;
-    if (destination === 'compare') return section === 'plot' ? 'optimizer' : 'env-envelope';
     if (destination === 'report') return section === 'package' ? 'package' : section === 'drawings' ? 'drawings' : section === 'exports' ? 'env-exports' :
       section === 'electrical' ? 'electrical-schedule' : 'schedules';
     return 'rooms';
@@ -175,7 +178,8 @@
     const envLayout = env?.querySelector('.env-layout');
     const envAnalysis = env?.querySelector('.env-analysis');
     const sunWorkspace = by('page-sun')?.firstElementChild;
-    if (sunWorkspace && envAnalysis) env?.insertBefore(sunWorkspace, envAnalysis);
+    if (sunWorkspace && envAnalysis?.parentElement === env && sunWorkspace.parentElement !== env)
+      env.insertBefore(sunWorkspace, envAnalysis);
     const siteLink = create('p', 'env-help');
     const link = create('a', '', 'Site owns location, cardinal road bearing, surroundings and weather. Review these inputs in Site.');
     link.href = '?workspace=site&section=context';
@@ -274,7 +278,7 @@
       show(sunWorkspace, view === 'env-sun');
       show(by('plotSources'), view === 'optimizer');
       if (view === 'optimizer') {
-        const pane = next.destination === 'compare' ? 'insights' : next.section === 'references' ? 'refs' : 'calc';
+        const pane = next.section === 'comparisons' ? 'insights' : next.section === 'references' ? 'refs' : 'calc';
         all('#plotResults .pane').forEach(node => {
           node.classList.toggle('on', node.id === `pane-${pane}`); node.hidden = node.id !== `pane-${pane}`;
         });
@@ -284,7 +288,7 @@
       envLayout?.classList.toggle('hp-workspace-single-column', true);
       show(siteLink, !site);
       if (envHeading) envHeading.textContent = site ? 'Site · location, surroundings & weather' :
-        envelope ? 'Compare · envelope assemblies' : view === 'env-exports' ? 'Report · analytical exports' : 'Environment';
+        envelope ? 'Environment · envelope comparisons' : view === 'env-exports' ? 'Report · analytical exports' : 'Environment';
       ['solar', 'envelope', 'wind', 'models', 'export'].forEach(section => {
         const active = ({ solar, envelope, wind: view === 'env-airflow', models: view === 'env-models', export: view === 'env-exports' })[section];
         show(by(`env-${section}-section`), active);

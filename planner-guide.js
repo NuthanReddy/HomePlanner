@@ -258,7 +258,7 @@
       result: 'These are reduced pressure-network or hypothetical sensible-temperature calculations, not validated CFD, measured indoor temperature, comfort, humidity or mold predictions.',
       sources: ['docs/environment-analysis.md', 'docs/building-physics.md']
     },
-    'compare/plot': {
+    'site/comparisons': {
       title: 'Compare plot size and shape scenarios',
       task: 'Compare the existing plot alternatives while keeping the actual edited room plan distinct.',
       steps: [
@@ -271,7 +271,7 @@
       result: 'These are rectangular feasibility alternatives, not a survey, approval or automatic rearrangement of your manually edited rooms.',
       sources: ['docs/plot-geometry.md', 'docs/workspace-navigation.md']
     },
-    'compare/envelope': {
+    'environment/envelope': {
       title: 'Compare stated wall, roof and glazing properties',
       task: 'Use sourced construction properties without treating them as a prediction of indoor temperature.',
       steps: [

@@ -19,6 +19,18 @@
   const token = value => String(value).replaceAll('~', '~0').replaceAll('/', '~1');
   const pathParts = path => path ? path.slice(1).split('/').map(value => value.replaceAll('~1', '/').replaceAll('~0', '~')) : [];
 
+  function parseDefaults(text) {
+    if (typeof text !== 'string') throw new Error('Requirement defaults must be JSON text.');
+    return JSON.parse(text.replace(/^\s*\/\/.*$/gm, ''));
+  }
+
+  async function loadDefaults(url = 'configs/inputs.json', fetchImpl = root.fetch) {
+    if (typeof fetchImpl !== 'function') throw new Error('A local fetch implementation is required to load requirement defaults.');
+    const response = await fetchImpl(url);
+    if (!response?.ok) throw new Error(`Requirement defaults could not be loaded (${response?.status || 'network error'}).`);
+    return parseDefaults(await response.text());
+  }
+
   function get(value, path) {
     return pathParts(path).reduce((current, key) => current?.[Array.isArray(current) ? Number(key) : key], value);
   }
@@ -400,12 +412,16 @@
       }
     };
     host.homePlannerRequirements = handle;
-    Promise.resolve(options.schema || InputSchema.load(options.schemaURL)).then(schema => {
+    Promise.all([
+      Promise.resolve(options.schema || InputSchema.load(options.schemaURL)),
+      options.initial !== undefined ? Promise.resolve(options.initial) : loadDefaults(options.defaultsURL, options.fetch)
+    ]).then(([schema, initial]) => {
       if (disposed) return;
       const requestId = root.crypto?.randomUUID?.() || `request-${Date.now().toString(36)}`;
       const requestTimestamp = Date.now();
       controller = createController(schema, {
         ...options,
+        initial,
         plotPlannerProvider: options.plotPlannerProvider || root.HomePlannerPlotInputs,
         metadataProvider: options.metadataProvider || (() => {
           const project = root.HomePlanner?.getProject?.();
@@ -437,5 +453,5 @@
     return handle;
   }
 
-  return Object.freeze({ createController, mount });
+  return Object.freeze({ createController, parseDefaults, loadDefaults, mount });
 });

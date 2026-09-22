@@ -77,7 +77,7 @@ module.exports = async function crossPageConsistency(page, { atomic = true } = {
     assert.deepEqual(heights, [4.2, 3]);
     record('F2 storey/building drafts remain owned by the original floor');
 
-    await fresh(); await route('compare/envelope');
+    await fresh(); await route('environment/envelope');
     const thickness = page.locator('[data-layer-field="thicknessM"]').first();
     await thickness.fill('0.2'); await page.locator('#env-material-form button[type="submit"]').click();
     const first = await page.locator('#env-material-results').innerText();

@@ -45,6 +45,26 @@ test('requirements controller keeps drafts detached until review and confirmatio
   assert.deepEqual(events, ['draft', 'review', 'confirm']);
 });
 
+test('AI Plan defaults are parsed from configs/inputs.json and remain editable drafts', () => {
+  const text = fs.readFileSync(path.join(root, 'configs', 'inputs.json'), 'utf8');
+  const defaults = UI.parseDefaults(text);
+  assert.deepEqual(defaults, example);
+  const controller = UI.createController(schema, { initial: defaults, plotPlanner });
+  controller.update('/style', 'User override', 'User override');
+  assert.equal(controller.getState().draft.style, 'User override');
+  assert.equal(defaults.style, 'Modern');
+});
+
+test('AI Plan loads JSONC defaults through the runtime fetch path', async () => {
+  const text = fs.readFileSync(path.join(root, 'configs', 'inputs.json'), 'utf8');
+  const defaults = await UI.loadDefaults('configs/inputs.json', async url => ({
+    ok: url === 'configs/inputs.json',
+    status: 200,
+    text: async () => text
+  }));
+  assert.deepEqual(defaults, example);
+});
+
 test('changing a reviewed field invalidates confirmation and retains review errors', () => {
   const controller = UI.createController(schema, { initial: example, plotPlanner });
   assert.equal(controller.review(), true);

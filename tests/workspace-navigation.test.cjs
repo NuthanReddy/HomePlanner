@@ -6,10 +6,13 @@ const vm = require('node:vm');
 const Workspace = require('../planner-workspace.js');
 const source = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-test('five implemented task destinations own their tools; no overview, standalone sun or property destination', () => {
-  assert.deepEqual(Object.keys(Workspace.destinations), ['site', 'design', 'environment', 'compare', 'report']);
+test('four implemented task destinations own their tools; no overview, standalone sun or property destination', () => {
+  assert.deepEqual(Object.keys(Workspace.destinations), ['site', 'design', 'environment', 'report']);
+  assert.equal(Workspace.destinations.compare, undefined);
+  assert.equal(Workspace.destinations.site.sections.comparisons, 'Plot comparisons');
   assert.ok(Workspace.destinations.site.sections.prohibited);
   assert.ok(Workspace.destinations.environment.sections.sun);
+  assert.equal(Workspace.destinations.environment.sections.envelope, 'Envelope comparisons');
   assert.equal(Workspace.destinations.environment.sections.solar, undefined);
   assert.ok(Workspace.destinations.environment.sections.light);
   assert.equal(Workspace.destinations.design.sections.structure, 'Structure');
@@ -29,6 +32,12 @@ for (const [old, expected] of Object.entries({
   sun: ['environment', 'sun'], electrical: ['design', 'electrical'], analyze: ['environment', 'sun']
 })) test(`legacy ${old} entry resolves to the implemented task section`, () => {
   assert.deepEqual(Workspace.normalizeRoute(`?workspace=${old}`), { destination: expected[0], section: expected[1] });
+});
+
+test('legacy Compare routes resolve to their owning workspaces', () => {
+  assert.deepEqual(Workspace.normalizeRoute('compare/plot'), { destination: 'site', section: 'comparisons' });
+  assert.deepEqual(Workspace.normalizeRoute('compare/envelope'), { destination: 'environment', section: 'envelope' });
+  assert.deepEqual(Workspace.normalizeRoute('?workspace=compare&section=plot'), { destination: 'site', section: 'comparisons' });
 });
 
 test('every supported route round-trips through URL and has a nonempty view', () => {
@@ -63,7 +72,7 @@ test('canonical URLs retain unrelated parameters but replace obsolete fragments 
 test('existing environment section anchors navigate to their new owner', () => {
   for (const [anchor, expected] of Object.entries({
     'env-site-section': 'site/context', 'env-weather-section': 'site/context',
-    'env-solar-section': 'environment/sun', 'env-envelope-section': 'compare/envelope', 'env-export-section': 'report/exports',
+    'env-solar-section': 'environment/sun', 'env-envelope-section': 'environment/envelope', 'env-export-section': 'report/exports',
     'env-wind-section': 'environment/airflow', 'env-models-section': 'environment/models'
   })) assert.deepEqual(Workspace.normalizeRoute(`#${anchor}`), Workspace.normalizeRoute(expected));
 });
@@ -75,7 +84,7 @@ test('markup has one legacy mount per module, one shell nav and no old tab handl
     'workspaceElevations', 'workspaceViews', 'workspaceFacades', 'workspacePlumbing', 'workspaceDrainage', 'workspaceReportOverview', 'workspaceAirflow', 'workspaceLightStudy', 'workspaceLightGuidance', 'workspacePackage'])
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, id);
   const nav = html.match(/<nav class="tabs primary-tabs hp-project-nav"[^]*?<\/nav>/)[0];
-  assert.equal((nav.match(/data-workspace=/g) || []).length, 5);
+  assert.equal((nav.match(/data-workspace=/g) || []).length, 4);
   assert.doesNotMatch(nav, /data-page|>Overview<|>Sun Path<|>Prohibited Properties</);
   assert.doesNotMatch(html, /id="workspaceOverview"|id="workspaceReadiness"|aria-label="Quick tools"/);
   assert.doesNotMatch(html, /querySelectorAll\('\.primary-tabs button'\)/);

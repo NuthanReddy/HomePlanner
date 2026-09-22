@@ -8,8 +8,8 @@ Celsius, ACH or occupant airspeed.
 
 In the Phase 2 shell, foundational location/surroundings/weather controls are
 visible only under **Site > Location, surroundings & weather**. Environment
-retains analysis; envelope comparisons belong to Compare and analytical exports
-to Report. The original module root and delegated event handlers remain mounted
+retains analysis, including envelope comparisons; analytical exports belong to
+Report. The original module root and delegated event handlers remain mounted
 once while its sections change visibility. See
 [workspace navigation](workspace-navigation.md) for routes and lifecycle details.
 

@@ -312,8 +312,13 @@ normalized SI values rather than parsing unit-bearing strings.
   form or generator accepts them.
 - A schema update must include matching example-input and validator tests.
 - `configs/inputs.json` is a JSONC authoring/example document; the browser form
-  emits strict JSON. A consumer of the JSONC file must use an explicit bounded
-  JSONC parser rather than `JSON.parse`.
+  preloads it as the editable AI Plan draft, and the user may override any
+  exposed requirement before review. The form emits strict JSON. A consumer of
+  the JSONC file must use an explicit bounded JSONC parser rather than
+  `JSON.parse`.
+- Prefilled metadata is not authoritative: review refreshes project and request
+  metadata from the current project, while plot geometry and orientation remain
+  owned by the current Plot Planner snapshot.
 - Schema validation checks data shape. Domain validation still checks
   relationships such as minimum not exceeding maximum, requirement counts
   matching the programme, unique IDs and supported room semantics.

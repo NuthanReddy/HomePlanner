@@ -92,7 +92,7 @@ async function run() {
     assert.equal(fixture.balconies.length, 3);
     const inspector = page.locator('#plannerInspector');
     const action = name => inspector.locator(`[data-hp-editor-action="${name}"]`);
-    const history = name => page.locator(`#plannerProjectTools [data-hp-editor-action="${name}"]`);
+    const history = name => page.locator(name === 'undo' ? '#roomUndo' : '#roomRedo');
     const footprints = () => page.evaluate(() => ({
       revision: HomePlanner.getProject().revision,
       rooms: HomePlanner.getScene().rooms.map(room => ({ id: room.id, sourceId: room.sourceId, rect: room.rect, module: room.module })),

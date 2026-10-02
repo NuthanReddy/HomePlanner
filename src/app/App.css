@@ -1,0 +1,368 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-strong: #1c2430;
+  --line: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #2f81f7;
+  --success: #3fb950;
+  --warning: #d29922;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  background: #f6f8fa;
+  color: #1f2328;
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --panel-strong: #f6f8fa;
+  --line: #d0d7de;
+  --text: #1f2328;
+  --muted: #59636e;
+  --accent: #0969da;
+  --success: #1a7f37;
+  --warning: #9a6700;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--accent) 14%, transparent), transparent 38rem),
+    var(--bg);
+  color: var(--text);
+}
+
+button,
+a {
+  font: inherit;
+}
+
+.migration-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: min(100% - 32px, 1120px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 44px) 0;
+  gap: 18px;
+}
+
+.migration-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.preview-eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.migration-status,
+.migration-toolbar,
+.integration-diagnostic,
+.workspace-preview,
+.migration-footer {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+}
+
+.integration-diagnostic {
+  padding: 18px;
+  border-color: color-mix(in srgb, var(--warning) 58%, var(--line));
+  background: color-mix(in srgb, var(--warning) 9%, var(--panel));
+}
+
+.integration-diagnostic .preview-eyebrow {
+  color: var(--warning);
+}
+
+.integration-diagnostic h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.integration-diagnostic p:not(.preview-eyebrow) {
+  max-width: 76ch;
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+
+.migration-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 330px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.preview-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.workspace-nav {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.workspace-nav ul {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+  list-style: none;
+}
+
+.workspace-nav button {
+  min-height: 44px;
+  padding: 11px 14px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.workspace-nav button:hover,
+.workspace-nav button[aria-current="page"] {
+  color: var(--text);
+}
+
+.workspace-nav button[aria-current="page"] {
+  border-bottom-color: var(--accent);
+}
+
+.workspace-nav button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+.migration-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 14px 18px;
+}
+
+.migration-toolbar > div {
+  display: grid;
+  gap: 3px;
+  min-width: min(100%, 18rem);
+}
+
+.toolbar-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-preview {
+  padding: clamp(24px, 5vw, 44px);
+}
+
+.workspace-preview h2 {
+  margin: 0;
+  font-size: clamp(1.65rem, 4vw, 2.5rem);
+  letter-spacing: -0.035em;
+}
+
+.workspace-preview p:not(.preview-eyebrow) {
+  max-width: 58ch;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.migration-footer {
+  display: flex;
+  align-items: center;
+  min-height: 70px;
+  padding: 14px 18px;
+}
+
+.preview-link {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 15px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: var(--accent);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.preview-link:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.preview-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.preview-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.plot-planner-workspace > p:first-of-type {
+  max-width: 70ch;
+}
+
+.plot-planner-inputs {
+  display: grid;
+  gap: 12px;
+  margin: 26px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plot-planner-input {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel-strong) 68%, transparent);
+}
+
+.plot-planner-input-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.plot-planner-input h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.plot-planner-input p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.plot-planner-status {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plot-planner-input--legacy-handoff {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+}
+
+.plot-planner-input--future-control {
+  border-style: dashed;
+}
+
+.plot-planner-provenance {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0 0;
+}
+
+.plot-planner-provenance > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel-strong) 52%, transparent);
+}
+
+.plot-planner-provenance dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plot-planner-provenance dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.plot-planner-input-link {
+  min-height: 36px;
+  margin-top: 12px;
+  padding: 7px 11px;
+  font-size: 0.88rem;
+}
+
+.plot-planner-legacy-link {
+  margin-top: 22px;
+}
+
+@media (max-width: 42rem) {
+  .plot-planner-provenance {
+    grid-template-columns: 1fr;
+  }
+
+  .migration-header {
+    flex-direction: column;
+  }
+
+  .migration-status {
+    max-width: none;
+  }
+
+  .migration-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .migration-toolbar > div {
+    min-width: 0;
+  }
+}

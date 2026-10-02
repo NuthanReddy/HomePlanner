@@ -30,6 +30,48 @@ Open [`index.html`](index.html) with the accompanying scripts, stylesheets and
 `vendor` folder. The basic browser application has no build or dependency-install step.
 The 2D tools, local data imports and numerical scenarios can operate offline.
 
+### React migration preview
+
+Phase 8 includes a parallel Vite, React, and TypeScript application shell for
+the six project destinations: Overview, Site / Plot Planner, Design,
+Environment, Compare, and Report. It supports `?workspace=<destination>`
+selection, preserves `?workspace=prohibited` as a migration-preview
+compatibility destination, and provides responsive navigation plus a
+project/floor toolbar placeholder. The Site destination now has a focused
+typed Plot Planner boundary: it distinguishes unavailable inputs, legacy
+handoffs, and future migrated controls without creating a second project
+store or reimplementing regulatory calculations. In development it links to
+the existing legacy Plot Planner. It does not host, replace, or migrate the
+current planner; [`index.html`](index.html) and its existing scripts remain the
+production application. The shell intentionally does not load planner data or
+saved state. A guarded browser-only adapter is available at
+[`src/domain/project/legacy-planner-api.ts`](src/domain/project/legacy-planner-api.ts)
+for migrated surfaces hosted by the existing application. The React entrypoint
+uses that adapter only when `window.HomePlanner` already exists and passes
+validation, forwarding its authority-owned read-only views, commands, selection, history,
+subscriptions, and observer diagnostics to the provider. When connected, the
+Plot Planner boundary consumes the provider's authority-owned read-only project
+view only for project name/id and revision provenance; the plot boundary remains
+unavailable until a typed boundary contract exists. It does not derive geometry, setbacks, regulatory results,
+or editable controls. With no legacy global, the standalone preview remains
+unchanged. An incomplete global produces a
+non-fatal integration diagnostic in the shell instead of creating a provider.
+The entrypoint does not create a second project store or load legacy scripts
+into the migration preview.
+
+```powershell
+npm install
+npm run dev
+```
+
+The React preview requires Node.js `^20.19.0` or `>=22.12.0` because it uses
+Vite 7.
+The development command opens
+`http://localhost:5173/migration-preview.html`. Use `npm run build` to type-check
+and bundle only the migration preview entrypoint. Use `npm run test:adapter` for
+the TypeScript-aware legacy-adapter regression tests. The generated `dist` directory
+is not part of the vanilla application's runtime.
+
 Room airflow and light studies need HTTP/HTTPS and local Web Workers; they do not
 fall back to blocking the editor with main-thread analysis. The optional 3D ES
 modules also need HTTP/HTTPS and WebGL2. For a full local preview

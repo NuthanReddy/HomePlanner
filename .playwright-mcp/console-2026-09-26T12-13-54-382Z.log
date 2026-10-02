@@ -1,0 +1,3 @@
+[   19050ms] [WARNING] [Meta Pixel] - Duplicate Pixel ID: 1220228046521574. @ https://connect.facebook.net/en_US/fbevents.js:203
+[   24506ms] [WARNING] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 @ :0
+[   24946ms] [WARNING] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 @ :0

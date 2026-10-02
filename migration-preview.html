@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A parallel React and TypeScript migration preview for HomePlanner."
+    />
+    <link rel="icon" href="data:," />
+    <title>HomePlanner React migration preview</title>
+    <script>
+      (() => {
+        const key = 'ghmc-hmda-theme'
+        let theme = null
+
+        try {
+          theme = localStorage.getItem(key)
+        } catch (error) {
+          if (error.name !== 'SecurityError') throw error
+          console.warn('Theme preference storage is unavailable in this browser context.')
+        }
+
+        if (theme !== 'light' && theme !== 'dark') {
+          theme =
+            window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark'
+        }
+
+        document.documentElement.dataset.theme = theme
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

@@ -9,11 +9,21 @@
 .hp-ai-plan-panel .hp-requirement-array-item {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-  gap: 10px 14px;
+  gap: 8px 14px;
 }
 
-.hp-ai-plan-panel .hp-requirement-array-item > legend,
+.hp-ai-plan-panel .hp-requirement-array-item > summary,
 .hp-ai-plan-panel .hp-requirement-array-item > .hp-requirement-remove {
+  grid-column: 1 / -1;
+}
+
+.hp-requirement-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+}
+
+.hp-requirement-form > .hp-requirement-group {
   grid-column: 1 / -1;
 }
 
@@ -23,6 +33,7 @@
   align-items: center;
   cursor: pointer;
   font-weight: 750;
+  color: var(--txt);
 }
 
 .hp-requirements > summary:focus-visible,
@@ -33,23 +44,28 @@
 }
 
 .hp-requirement-group {
-  margin: 12px 0;
-  padding: 12px;
+  margin: 14px 0 0;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   min-width: 0;
 }
 
 .hp-requirement-source {
-  margin: 10px 0 14px;
-  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 10px 0 16px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel2);
 }
 
 .hp-requirement-source p {
-  margin: 5px 0 8px;
+  flex: 1 1 32rem;
+  margin: 0;
 }
 
 .hp-requirement-group legend {
@@ -60,8 +76,24 @@
 details.hp-requirement-group > summary {
   min-height: 44px;
   align-content: center;
-  padding: 0 5px;
+  padding: 0 2px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.hp-requirement-programme[open] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 14px;
+}
+
+.hp-requirement-programme > summary,
+.hp-requirement-programme > p {
+  grid-column: 1 / -1;
+}
+
+.hp-requirement-programme .hp-requirement-field {
+  margin: 0;
 }
 
 .hp-requirement-field {
@@ -86,18 +118,96 @@ details.hp-requirement-group > summary {
 
 .hp-requirement-array-item {
   margin: 10px 0;
-  padding: 10px;
+  padding: 0 12px 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--panel2);
 }
 
+.hp-requirement-array-item > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  cursor: pointer;
+}
+
+.hp-requirement-item-kind {
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hp-requirement-array-item > .hp-requirement-group {
+  margin-top: 4px;
+  background: var(--panel);
+}
+
+.hp-requirement-scalar-array {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 10px 14px;
+}
+
+.hp-requirement-scalar-array:not([open]) {
+  display: block;
+}
+
+.hp-requirement-scalar-array > summary,
+.hp-requirement-scalar-array > .hp-requirement-add,
+.hp-requirement-scalar-array > .hp-requirement-error {
+  grid-column: 1 / -1;
+}
+
+.hp-requirement-scalar-array > .hp-requirement-array-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+}
+
+.hp-requirement-scalar-array .hp-requirement-field {
+  margin: 0;
+}
+
+.hp-requirement-scalar-array .hp-requirement-remove {
+  grid-column: auto;
+  align-self: end;
+  min-height: 37px;
+  margin: 0;
+}
+
 .hp-requirement-remove {
-  margin-top: 8px;
+  justify-self: start;
+  margin-top: 4px;
+  color: var(--bad);
 }
 
 .hp-requirement-actions {
-  margin: 12px 0;
+  align-items: center;
+  margin: 18px 0 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.hp-requirement-actions button,
+.hp-requirement-import {
+  min-height: 38px;
+  border-radius: 6px !important;
+  padding: 7px 12px !important;
+}
+
+.hp-requirement-actions .hp-requirement-primary {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--svg-on-color);
+}
+
+.hp-requirement-actions button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
 }
 
 .hp-requirement-import {
@@ -124,4 +234,18 @@ details.hp-requirement-group > summary {
 
 .hp-requirement-review {
   margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .hp-requirement-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hp-requirement-source {
+    display: block;
+  }
+
+  .hp-requirement-source p {
+    margin: 5px 0 8px;
+  }
 }

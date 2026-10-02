@@ -293,10 +293,17 @@
         parent.appendChild(fieldset);return;
       }
       if (definition.type === 'object') {
+        if (!path) {
+          for (const [childKey, child] of Object.entries(definition.properties || {}))
+            renderNode(parent, child, `/${token(childKey)}`, childKey);
+          return;
+        }
         const collapsed = definition['x-ui']?.collapsed === true;
         const fieldset = node(collapsed ? 'details' : 'fieldset');
         const legend = node(collapsed ? 'summary' : 'legend', definition.title || title(key));
-        fieldset.className = 'hp-requirement-group';fieldset.appendChild(legend);
+        fieldset.className = 'hp-requirement-group';
+        if (path === '/programme') fieldset.classList.add('hp-requirement-programme');
+        fieldset.appendChild(legend);
         if (definition.description) {
           const help = node('p', definition.description);help.className = 'mini';fieldset.appendChild(help);
         }
@@ -305,16 +312,35 @@
         parent.appendChild(fieldset);return;
       }
       if (definition.type === 'array') {
-        const fieldset = node('fieldset'), legend = node('legend', definition.title || title(key));
-        fieldset.className = 'hp-requirement-group';fieldset.appendChild(legend);
+        const itemDefinition = InputSchema.resolve(schema, definition.items || {});
         const list = controller.value(path) || [];
+        const scalar = itemDefinition.type !== 'object';
+        const fieldset = node(scalar ? 'details' : 'fieldset');
+        const heading = node(scalar ? 'summary' : 'legend',
+          `${definition.title || title(key)} (${list.length})`);
+        fieldset.className = 'hp-requirement-group';
+        if (scalar) fieldset.classList.add('hp-requirement-scalar-array');
+        fieldset.appendChild(heading);
         list.forEach((entry, index) => {
-          const card = node('div');card.className = 'hp-requirement-array-item';
-          renderNode(card, definition.items || {}, `${path}/${index}`, `${title(key)} ${index + 1}`);
+          const card = node(itemDefinition.type === 'object' ? 'details' : 'div');
+          card.className = 'hp-requirement-array-item';
+          if (itemDefinition.type === 'object') {
+            const itemName = entry?.name || entry?.type || `${title(key)} ${index + 1}`;
+            const summary = node('summary');
+            summary.append(node('strong', itemName));
+            if (entry?.type && entry.type !== itemName) {
+              const kind = node('span', entry.type);kind.className = 'hp-requirement-item-kind';summary.appendChild(kind);
+            }
+            card.appendChild(summary);
+            for (const [childKey, child] of Object.entries(itemDefinition.properties || {}))
+              renderNode(card, child, `${path}/${index}/${token(childKey)}`, childKey);
+          } else {
+            renderNode(card, itemDefinition, `${path}/${index}`, `${title(key)} ${index + 1}`);
+          }
           const remove = node('button', 'Remove');remove.type = 'button';remove.className = 'hp-requirement-remove';
           remove.addEventListener('click', () => controller.remove(path, index));card.appendChild(remove);fieldset.appendChild(card);
         });
-        const add = node('button', `Add ${title(key).replace(/s$/, '')}`);add.type = 'button';
+        const add = node('button', `Add ${title(key).replace(/s$/, '')}`);add.type = 'button';add.className = 'hp-requirement-add';
         add.addEventListener('click', () => controller.add(path, definition));fieldset.appendChild(add);
         const messages = issueMap(controller.getState().issues).get(path);
         if (messages?.length) {
@@ -334,11 +360,12 @@
 
     function render() {
       if (disposed || !controller) return;
-      const state = controller.getState(), wasOpen = host.querySelector('details.hp-requirements')?.open === true;
+      const state = controller.getState(), existing = host.querySelector('details.hp-requirements');
+      const wasOpen = existing ? existing.open === true : true;
       const details = node('details');
       details.className = 'hp-requirements';details.open = wasOpen;
-      const summary = node('summary', 'AI plan requirements');
-      const intro = node('p', 'Enter a reviewed design brief using fields defined by configs/inputs.schema.json. Drafts do not edit the project.');
+      const summary = node('summary', 'AI plan brief');
+      const intro = node('p', 'Review the prefilled brief and change any value that does not match your project. Draft changes do not alter the floor plan.');
       intro.className = 'mini';
       const source = node('div');source.className = 'hp-requirement-source';
       if (state.plotPlanner) {
@@ -356,12 +383,16 @@
       plotLink.dataset.workspace = 'site';plotLink.dataset.section = 'plot';
       source.appendChild(plotLink);
       const form = node('form');form.noValidate = true;form.addEventListener('submit', event => event.preventDefault());
+      form.className = 'hp-requirement-form';
       renderNode(form, controller.schema, '', 'Layout requirements');
       const actions = node('div');actions.className = 'split-snaps hp-requirement-actions';
       const review = node('button', 'Review requirements'), confirm = node('button', 'Confirm and prepare generation');
       const discard = node('button', 'Discard changes'), exportButton = node('button', 'Export inputs');
       const importLabel = node('label', 'Import inputs'), importInput = node('input');
       for (const button of [review, confirm, discard, exportButton]) button.type = 'button';
+      review.className = state.reviewed ? 'hp-requirement-secondary' : 'hp-requirement-primary';
+      confirm.className = state.reviewed ? 'hp-requirement-primary' : 'hp-requirement-secondary';
+      confirm.disabled = !state.reviewed;
       importLabel.className = 'hp-requirement-import';importInput.type = 'file';importInput.accept = 'application/json,.json';
       importLabel.appendChild(importInput);
       review.addEventListener('click', () => controller.review());

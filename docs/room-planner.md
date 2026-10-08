@@ -12,6 +12,157 @@ replaced by these defaults; **Add empty floor** remains explicitly empty.
 
 ## Geometry pipeline
 
+### Reusable incumbent 2D surface
+
+`planner-layout-runtime.js` extracts the existing `roomSvgPlan`,
+`roomStairGlyph` and `initRoomEditing` implementations. `index.html` now uses
+this same module; there is no replacement layout model, iframe, hidden legacy
+application, backend geometry service or automatic storage access.
+
+The browser API is `HomePlannerLayoutRuntime.mount(svg, adapter,
+{editing:true})` (also available through CommonJS). It returns
+`{render(context = adapter.getContext()), getView(), destroy()}`. Mounting does
+not generate a plan, render automatically, subscribe to changes or save.
+`render` consumes the existing `{plate,g,plan,cfg}` context in metres. The host
+owns generation/recalculation and refresh subscription; the Site adapter must
+provide the actual selected plate, not a demonstration or simplified rectangle.
+Call `destroy()` before removing/reusing the SVG: it cancels a pending gesture,
+removes all SVG/control/document listeners and animation frames, and clears the
+published coordinate view. Duplicate mounts on the same SVG are rejected.
+
+The explicit adapter inventory is exported as `requiredCallbacks` and
+`requiredHelpers`. The incumbent adapter is `roomLayoutRuntimeAdapter()` in
+`index.html`; it does not initialize the rest of the page.
+
+| Dependency | Contract |
+| --- | --- |
+| SVG host | Actual SVG in its owning browser document, `viewBox="0 0 800 560"`; preserve the existing plan CSS, SVG theme variables, focus and touch-action styling. React must not reconcile its generated children. |
+| `getElement(id)` | Resolve the host's real controls, not global duplicate IDs. Editing requires `roomEditHint` and `roomReset`; `showPlanDims` is optional. |
+| `getContext`, `getLastResult` | Current incumbent context and last Site result; dynamic readers, not captured copies of editable geometry. |
+| `getPlanner`, `getModel` | Existing raw shared bridge and `HomePlannerModel`. The renderer uses `sceneForRender`, `renderLayer`, `getSelection`; gestures use shared commands, selection/source selection, and `beginLegacyGesture`/`endLegacyGesture`. These extended legacy methods are not all exposed by the typed `PlannerApi` facade. |
+| `setView(view)` | Publish the surface's `point`, `toLocal`, `box`, `scale`, or `null` on failure/teardown to the existing pointer/palette owner; no project mutation. |
+| `getInternalWallM` | Read the currently committed wall thickness dynamically. |
+| `resetLayout(context)` | Existing no-bridge reset fallback; with a bridge, Reset executes `reset-floor-layout` instead. |
+| Helpers | Existing escape/format, stair/edge, usable-area, furniture, pointer, destination validation, commit/delete/rotate, manual-snapshot and `renderRoomPlanner` callbacks. They retain their incumbent command/history ownership. |
+| Constants | Existing `FT`, `M2SF`, `ROOM_EPS`, `ROOM_COLORS`, `DIRNAME`. |
+
+For renderer-only reuse, `{editing:false}` requires only `rendererCallbacks`
+and `rendererHelpers` plus the constants. It installs no gesture handlers and
+needs no reset/hint controls; it is not an editable native workspace.
+
+This module is a verified **surface extraction**, not by itself complete React integration.
+The room library, component palette, viewport zoom/fullscreen/toolbars,
+committed control/draft registry, Site-to-plate adapter, geometry generator and
+`renderRoomPlanner` orchestration still live in their current owners. A native
+host must supply/extract those real dependencies before claiming full Layout
+parity; the typed provider alone does not supply the extended rendering/gesture
+bridge. The existing Three.js mount shares the same model.
+
+### Bounded native Design integration
+
+`src/platform/NativeDesign.tsx` mounts this **actual incumbent surface**, the
+existing `planner-editor.js` inspector/floor controls, and `planner-3d.js`;
+it does not replace the renderer with a rectangle editor or load another full
+application. Its `cache: {document: schema-1 document | null}` is an explicit
+working-copy boundary, with optional `onDocumentChange(document)` for the host.
+Keep the native component mounted across workspace navigation (hide its panel)
+to retain the same command controller, Undo history and scoped inspector drafts.
+Unmount destroys its SVG listeners, inspector subscription and Three.js GPU
+resources. The cached document retains committed geometry, not Undo history.
+
+Open a complete Room Planner JSON explicitly. A candidate is validated and
+mounted in a detached probe before replacing the working copy; invalid files
+and edits made during file reading retain current work. This does not read,
+import or overwrite existing browser storage. Account Site/Costs/Materials
+retain their separate ownership. Export downloads committed schema-1 JSON,
+including independent floors and stable IDs; drafts are not included, and a
+download request is not proof of a durable file save.
+
+`planner-design-runtime.js` is reproducibly extracted from the incumbent
+helpers and bridge edit/hosted-opening/render hooks by
+`node scripts\extract-design-runtime.cjs`; `--check` verifies source parity.
+It uses the existing `HomePlannerBridge.createController` factory rather than
+another geometry authority. Its supported path is captured-layout editing:
+room/furniture movement and resizing, wall/opening inspection and commands,
+the incumbent numeric inspector, floor selection and optional real Three.js.
+The expanded native host additionally reuses `roomPlannerConfig`,
+`deriveRoomGeometry`, the incumbent packing/manual-layout pipeline, committed
+`HomePlannerRoomInputs`, actual room/library/component controls and original
+room/balcony deletion adapters. `planner-design-controls.js` is extracted
+verbatim from the incumbent settings/palette markup; there is no independently
+invented programme or replacement generator. Programme drafts retain their
+owner; Apply/Enter is one accepted transaction. Library adds preserve existing
+rooms and furniture using `roomPreserveProgrammeChange`. Reset is explicitly
+whole-layout regeneration.
+
+The native props `record`, `evaluation`, `blocked` consume **applied**, matching
+account Site/evaluation records, never a raw Site draft. When no Design exists,
+**Create layout from applied Site** creates the actual incumbent starter using
+the elected front, full/net plot, required/applied setbacks, whole/split plates,
+floor/balcony scenario and existing defaults. The shared schema-1 model requires
+location/time zone: when absent, generation asks for applied Site location
+rather than substituting Hyderabad or geolocating. Account scenario floors do
+not fabricate independent editable storeys. The account wrapper's explicit
+**Save Design** persists the canonical snapshot separately from Site history;
+JSON remains a backup. No autosave or automatic browser-project import occurs.
+
+Later Site changes require **Review / apply Site changes**. The reversible
+`link-native-site` bridge command retains current room rectangles, source IDs,
+balconies and inactive floor slices; a changed frontage or incompatible envelope
+fails without changing the document. Imported legacy plans remain unlinked
+until this explicit action. `project.nativeSiteSource` and active-floor
+`legacy.nativeSiteSource` preserve version-1 source provenance: account project,
+workspace version, source fingerprint, supplied Site snapshot, gross/net/envelope
+geometry, incumbent-result adapter, per-plate registrations and selected plate.
+`environment.nativeSiteEnvironment` retains its Site surroundings snapshot and
+registration for study adapters. Registration expresses the exact gross-NW
+origin in the selected net-plot-local frame, including cardinal rotation,
+road widening and split offset, with metre `baseOffsetM:0` relative to the shared
+abstract modelling datum (not a surveyed elevation). Known generated origins
+do not require users to enter duplicate coordinates. Missing obstacle heights,
+bases and transmissions remain unknown; presence of a source record is not
+proof of a complete surroundings survey.
+
+The classic-asset Vite middleware serves these scripts without import-analysis
+rewriting. Vite otherwise injects an ESM `injectQuery` import into the classic
+Three.js script despite its `@vite-ignore` runtime imports. Production builds
+copy the same classic scripts/styles and pinned vendor modules to `classic/`.
+Script `data-homeplanner-manual` loading exposes bridge/editor/3D factories
+without their incumbent page bootstrap. `tests\planner-design-runtime.test.cjs`
+checks this isolation and extraction; the disposable-context probe
+`tests\native-design-browser.js` additionally checks explicit JSON opening,
+real pointer preview/Escape/release, exact Undo/Redo, inspector drafts, invalid
+imports, a rendered Three.js canvas and teardown.
+`tests\native-design-site-browser.js` checks exact starter-generation parity,
+programme drafts/one-commit Apply, service adds without rearrangement, selected
+room deletion through the incumbent confirmation dialog, compatible Site
+application/Undo, exact inactive-floor preservation, incompatible Site rollback
+and restoration after native teardown/remount. Native programme teardown releases
+its original input bindings so another account/editor mount can use the same
+document without stale input identities or duplicate listeners. Both probes use
+unmodified local classic asset delivery in disposable browser contexts.
+Node source-adapter checks
+also cover stale ownership, all cardinal widening registrations and retained
+custom versus required setbacks, plus split source origins and fingerprints.
+
+The parent persistence wrapper passes `savedDocumentText?: string|null` to
+`NativeDesign` after successful load/save (`JSON.stringify(saved.document)` or
+`null`). Unload/import checks compare the current committed export against that
+baseline, independently retaining the shared inspector/programme pending-draft
+warning. A delayed Save response cannot clear later edits. The native import
+preflight rejects model-valid drawing-only contexts without complete editor
+inputs on every floor before touching the current controller/cache.
+
+The native toolbar provides bounded zoom/fit and real browser fullscreen.
+Zoom changes only the SVG viewBox; the original `getScreenCTM()` pointer mapping
+retains destination validation. The isolated JSON browser probe exercises real
+resize preview, Escape, release and exact Undo while zoomed/fullscreen.
+`tests\native-design-split-browser.js` compares A and B against the incumbent
+split packer and verifies selected-plate provenance; typed tests separately
+verify account Site split origin translation.
+
+### Geometry derivation
+
 1. Read the selected floor plate from Plot Planner, retaining any explicitly
    enabled custom/non-compliant setback scenario.
 2. Convert configurable front, side, and rear external corridors to metres.

@@ -1,9 +1,15 @@
 .venv/
+.venv-platform/
 node_modules/
 dist/
 __pycache__/
 *.pyc
 .env
+.env.platform
+.local-platform/
+*.db
+*.db-shm
+*.db-wal
 prohibited-properties/parsed/**/_sources/
 prohibited-properties/parsed/**/*.tmp
 prohibited-properties/reports/

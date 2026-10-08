@@ -426,3 +426,31 @@ test('failed room draft UI construction releases its project subscription and ca
   assert.equal(subscriptions,1);
   assert.equal(recovered.controller.getState().pending.length,0);
 });
+
+test('destroy releases input identities and listeners for a fresh native mount in the same document',t=>{
+  const f=fixture();
+  assert.equal(Inputs.releaseBindings(f.ui.document),false);
+  assert.ok(f.fields.bedCount.listeners.get('input').length);
+  f.type('bedCount','-');
+  f.handle.destroy();
+  assert.equal(f.fields.bedCount.value,'3');
+  assert.equal(f.fields.bedCount.listeners.get('input').length,0);
+  const replacement=f.ui.input('bedCount','3',0,8,'1');
+  const query=f.ui.document.querySelectorAll;
+  f.ui.document.querySelectorAll=selector=>query(selector).filter(input=>input!==f.fields.bedCount);
+  const remounted=Inputs.connect(f.planner,f.ui.document);
+  t.after(()=>remounted.destroy());
+  replacement.value='4';replacement.dispatch('input');
+  assert.equal(remounted.controller.getState().pending.length,1);
+  assert.equal(remounted.controller.getState().pending[0].raw,'4');
+  assert.equal(f.planner.getProject().legacy.controls.bedCount.value,'3');
+});
+
+test('failed pre-controller mounting can release orphaned room input bindings',()=>{
+  const ui=dom(),input=ui.input('bedCount','3',0,8,'1');
+  input.value='-';input.dispatch('input');
+  assert.equal(Inputs.releaseBindings(ui.document),true);
+  assert.equal(input.value,'3');
+  assert.equal(input.listeners.get('input').length,0);
+  assert.doesNotThrow(()=>ui.input('bedCount','3',0,8,'1'));
+});

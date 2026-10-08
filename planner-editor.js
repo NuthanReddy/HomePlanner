@@ -4,6 +4,7 @@
   if (typeof module === 'object' && module.exports) module.exports = editor;
   if (!root || !root.document) return;
   root.HomePlannerEditor = editor;
+  if(root.document.currentScript?.hasAttribute('data-homeplanner-manual'))return;
   const start = () => {
     if (!root.HomePlannerEditorInstance) {
       root.HomePlannerEditorInstance = editor.init(root.HomePlanner, root.document, root.HomePlannerModel);

@@ -4,6 +4,7 @@
   if(typeof module==='object'&&module.exports)module.exports=api;
   else{
     root.EnvironmentUI=api;
+    if(root.document?.currentScript?.hasAttribute('data-homeplanner-manual'))return;
     if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',()=>api.mount(),{once:true});
     else api.mount();
   }
@@ -320,6 +321,27 @@
     </svg>`;
   }
 
+  function reducedResultMarkup(name,entry){
+    const input=entry?.input,output=entry?.output;
+    if(name==='pressure'){
+      if(!output||typeof output.converged!=='boolean'||!finite(output.residualM3s)||!Array.isArray(output.flows)||
+        !output.flows.every(flow=>flow&&typeof flow.id==='string'&&finite(flow.m3s))||!Array.isArray(output.warnings))
+        return '<p class="env-warning">Stored pressure output is incomplete or unsupported. Review the saved inputs and evaluate again.</p>';
+      return `<p class="${output.converged?'env-status':'env-warning'}"><strong>${output.converged?'Numerical network converged':'NOT CONVERGED — do not interpret as a balanced flow solution'}</strong>. Maximum residual ${nice(output.residualM3s,9)} m³/s.</p>
+        ${table(['Opening link','From','To','Signed flow (m³/s)'],output.flows.map(f=>[esc(f.id),esc(f.from),esc(f.to),nice(f.m3s,6)]),'Explicit-pressure reduced network · not occupant airspeed')}
+        ${warnList(output.warnings)}<details class="env-details"><summary>Read-only pressure diagnostics</summary><pre class="env-json">${esc(JSON.stringify(output,null,2))}</pre></details>`;
+    }
+    if(!Array.isArray(input?.zones)||!output||!Array.isArray(output.samples)||!output.samples.length||
+      !finite(output.energyResidualJ)||!Array.isArray(output.warnings)||
+      !input.zones.every(zone=>zone&&typeof zone.id==='string')||
+      !output.samples.every(sample=>sample&&finite(sample.elapsedSeconds)&&
+        input.zones.every(zone=>finite(sample.temperaturesC?.[zone.id]))))
+      return '<p class="env-warning">Stored thermal output is incomplete or unsupported. Review the saved inputs and evaluate again.</p>';
+    const shown=output.samples.length<=240?output.samples:[output.samples[0],...output.samples.slice(-239)];
+    return `<p class="env-warning"><strong>Hypothetical RC-state temperatures only — not actual site temperatures.</strong> Energy residual ${nice(output.energyResidualJ,6)} J. No automatic weather, ventilation, humidity or HVAC coupling.</p>
+      ${table(['Elapsed hours',...input.zones.map(z=>`${esc(z.id)} (°C, model state)`)],shown.map(s=>[nice(s.elapsedSeconds/3600,2),...input.zones.map(z=>nice(s.temperaturesC[z.id],3))]),'Explicit sensible-only experiment')}
+      ${output.samples.length>240?'<p class="env-help">First and last 239 samples shown; all samples are preserved in analysis export.</p>':''}${warnList(output.warnings)}`;
+  }
   function markup(){
     const input=(id,label,type='number',value='',extra='')=>`<label for="${id}">${label}</label><input id="${id}" type="${type}" value="${esc(value)}" ${type==='number'&&!/\bstep=/.test(extra)?'step="any"':''} ${extra}>`;
     return `<!-- THESIS: A local-first environmental workbench; every result sits beside its assumptions.
@@ -741,30 +763,10 @@
         '“Mud” has no universal conductivity/capacity. The Lyon rammed-earth record remains unevaluated until the applicable measured properties are supplied.']);
     }
     function renderPressure(entry){
-      const output=entry?.output;
-      if(!output||typeof output.converged!=='boolean'||!finite(output.residualM3s)||!Array.isArray(output.flows)||
-        !output.flows.every(flow=>flow&&typeof flow.id==='string'&&finite(flow.m3s))||!Array.isArray(output.warnings)){
-        by('env-pressure-result').innerHTML='<p class="env-warning">Stored pressure output is incomplete or unsupported. Review the saved inputs and evaluate again.</p>';
-        return;
-      }
-      by('env-pressure-result').innerHTML=`<p class="${output.converged?'env-status':'env-warning'}"><strong>${output.converged?'Numerical network converged':'NOT CONVERGED — do not interpret as a balanced flow solution'}</strong>. Maximum residual ${nice(output.residualM3s,9)} m³/s.</p>
-        ${table(['Opening link','From','To','Signed flow (m³/s)'],output.flows.map(f=>[esc(f.id),esc(f.from),esc(f.to),nice(f.m3s,6)]),'Explicit-pressure reduced network · not occupant airspeed')}
-        ${warnList(output.warnings)}<details class="env-details"><summary>Read-only pressure diagnostics</summary><pre class="env-json">${esc(JSON.stringify(output,null,2))}</pre></details>`;
+      by('env-pressure-result').innerHTML=reducedResultMarkup('pressure',entry);
     }
     function renderThermal(entry){
-      const input=entry?.input,output=entry?.output;
-      if(!Array.isArray(input?.zones)||!output||!Array.isArray(output.samples)||!output.samples.length||
-        !finite(output.energyResidualJ)||!Array.isArray(output.warnings)||
-        !input.zones.every(zone=>zone&&typeof zone.id==='string')||
-        !output.samples.every(sample=>sample&&finite(sample.elapsedSeconds)&&
-          input.zones.every(zone=>finite(sample.temperaturesC?.[zone.id])))){
-        by('env-thermal-result').innerHTML='<p class="env-warning">Stored thermal output is incomplete or unsupported. Review the saved inputs and evaluate again.</p>';
-        return;
-      }
-      const shown=output.samples.length<=240?output.samples:[output.samples[0],...output.samples.slice(-239)];
-      by('env-thermal-result').innerHTML=`<p class="env-warning"><strong>Hypothetical RC-state temperatures only — not actual site temperatures.</strong> Energy residual ${nice(output.energyResidualJ,6)} J. No automatic weather, ventilation, humidity or HVAC coupling.</p>
-        ${table(['Elapsed hours',...input.zones.map(z=>`${z.id} (°C, model state)`)],shown.map(s=>[nice(s.elapsedSeconds/3600,2),...input.zones.map(z=>nice(s.temperaturesC[z.id],3))]),'Explicit sensible-only experiment')}
-        ${output.samples.length>240?'<p class="env-help">First and last 239 samples shown; all samples are preserved in analysis export.</p>':''}${warnList(output.warnings)}`;
+      by('env-thermal-result').innerHTML=reducedResultMarkup('thermal',entry);
     }
     function render(event){
       if(event?.type==='selection')return;
@@ -1529,6 +1531,6 @@
       }};
     }
   }
-  return Object.freeze({mount,MATERIAL_PRESETS,buildArchiveRequest,trimWeatherToInterval,
+  return Object.freeze({mount,MATERIAL_PRESETS,buildArchiveRequest,trimWeatherToInterval,geometryKey,reducedResultMarkup,
     buildWindowRecommendations,buildAirflowTemplate,buildThermalTemplate,validatePressureInput,validateThermalInput});
 });

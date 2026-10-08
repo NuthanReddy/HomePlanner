@@ -9,8 +9,10 @@ web
 ## Users
 
 HomePlanner must support two modes: Homeowner and Expert. This is a confirmed
-product requirement. Both operate on one shared project with Site, Design,
-Environment (the planned Analyze task), Compare and Report destinations. The user approved guided
+product requirement. The locked migrated navigation is Site, Design, Analyze
+and Compare. AI/manual editing share Design, and exports belong to their source
+tabs rather than a Reports destination. The legacy navigation remains unchanged
+during migration. The user approved guided
 homeowner entry and direct expert controls with edits preserved across modes.
 Specific expert disciplines and collaboration permissions
 remain open; choosing Expert mode does not establish professional credentials.
@@ -36,6 +38,19 @@ The existing application is a local-first browser workbench with plot
 comparisons, editable floors, optional 3D, sun paths, environmental scenarios
 and electrical-point planning. Existing projects use browser storage and JSON
 backup/import. See README.md for current capabilities and limitations.
+
+The platform migration targets Python-owned operations and simulations, React
+over HTTP and Azure-hosted services, including the Azure SQL Database free offer
+for dev/test and Communication Services SMS OTP sign-in. The current backend
+still targets PostgreSQL; database migration is pending. The first slice implements accounts and
+project metadata. The next native stage adds versioned Site/Costs documents,
+Python rectangular feasibility and surroundings drawing; it does not yet
+migrate canonical rooms or full simulations. Costs and Utilization belong
+under Analyze; Design currently exposes only the pending Layout 2D/3D surface.
+Alternative plans are
+generated only through explicit AI assistance or Generate alternate optimal
+plans; normal analysis uses the existing authored plan. See
+[platform migration](docs/python-react-platform.md).
 
 The planned location flow accepts an address, coordinates, or explicitly
 requested browser location, followed by user confirmation of the plot on a map.

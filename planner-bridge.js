@@ -248,6 +248,12 @@
     }
     function capture(){
       project.legacy=captureLegacy();
+      if(project.legacy.nativeSiteSource){
+        project.nativeSiteSource=clone(project.legacy.nativeSiteSource);
+        project.environment.nativeSiteEnvironment={projectId:project.nativeSiteSource.accountProjectId,
+          version:project.nativeSiteSource.workspaceVersion,site:clone(project.nativeSiteSource.site),
+          registration:clone(project.nativeSiteSource.registration)};
+      }
       if(project.legacy.context?.cfg?.ceilingHeight)
         project.building.wallHeightM=project.legacy.context.cfg.ceilingHeight;
       syncActive(project);invalidate();
@@ -438,7 +444,16 @@
       const beforeLayout=entity||type==='add-window'||type==='add-door'?getScene():null;
       let added=null,deletedBalcony=null,deletedOpening=null;
       return commit(type,doc=>{
-        if(type==='set-authored'){
+        if(type==='link-native-site'){
+          if(typeof adapter.applyNativeSite!=='function')throw new Error('The current Design cannot apply saved Site inputs.');
+          Model.assertJSON(command.source);
+          const source=clone(command.source);
+          adapter.applyNativeSite(source);
+          doc.nativeSiteSource=source;
+          doc.site={...doc.site,latitude:source.site.latitude,longitude:source.site.longitude,timeZone:source.site.time_zone};
+          doc.environment.nativeSiteEnvironment={projectId:source.accountProjectId,version:source.workspaceVersion,
+            site:clone(source.site),registration:clone(source.registration)};
+        }else if(type==='set-authored'){
           if(command.value===null)delete active(doc).authored;
           else active(doc).authored=clone(command.value);
         }else if(type==='upsert-authored'||type==='delete-authored'){
@@ -782,6 +797,8 @@
   }
 
   if(typeof module==='object'&&module.exports){module.exports={createController,remapFloor,preserveLegacyMetadata};return;}
+  root.HomePlannerBridge={createController,remapFloor,preserveLegacyMetadata};
+  if(root.document?.currentScript?.hasAttribute('data-homeplanner-manual'))return;
   if(!root.document)return;
   const Model=root.HomePlannerModel;
   if(!Model){

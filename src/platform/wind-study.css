@@ -1,0 +1,6 @@
+.wind-study .wind-evidence { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.wind-study .wind-evidence svg { width: 100%; height: auto; }
+.wind-study .wind-months { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; }
+.wind-study .wind-months label { display: flex; align-items: center; gap: 5px; }
+.wind-study pre { overflow: auto; max-height: 320px; }
+@media (max-width: 780px) { .wind-study .wind-evidence { grid-template-columns: minmax(0, 1fr); } }

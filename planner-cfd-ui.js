@@ -6,6 +6,7 @@
   if (common) module.exports = api;
   else {
     root.HomePlannerCFDUI = api;
+    if (root.document?.currentScript?.hasAttribute('data-homeplanner-manual')) return;
     if (root.document?.readyState === 'loading')
       root.document.addEventListener('DOMContentLoaded', () => api.mount(), { once: true });
     else api.mount();
@@ -72,6 +73,9 @@
         const error = await response.json().catch(() => ({ error: { message: `Local CFD service returned HTTP ${response.status}. ${LOCAL_HELP}` } }));
         throw new Error(error.error?.message || `Local CFD service returned HTTP ${response.status}.`);
       }
+      const contentType = response.headers?.get?.('content-type');
+      if (contentType && !(blob ? contentType.includes('application/zip') : contentType.includes('application/json')))
+        throw new Error('The /api/cfd route returned a page instead of the local CFD service. Native API routing is not connected; no case or engine result was substituted.');
       return blob ? response.blob() : response.json();
     }
     function stopPolling() { if (pollTimer !== null) unschedule(pollTimer); pollTimer = null; }
@@ -483,11 +487,11 @@
       <p class="hp-cfd-help">No extrapolated solution, convergence order or Grid Convergence Index is inferred from two runs.
       Changes to both mesh and timestep cannot be attributed to one alone.</p>`;
   }
-  function mount(document = root.document, runtime = root) {
+  function mount(document = root.document, runtime = root, planner = runtime.HomePlanner) {
     const host = document?.getElementById('workspaceCfd');
     if (!host || host.homePlannerCFD) return host?.homePlannerCFD || null;
     let controller;
-    try { controller = createController(runtime.HomePlanner, runtime); }
+    try { controller = createController(planner, runtime); }
     catch (error) { host.textContent = `Coupled CFD unavailable: ${error.message}`; return null; }
     host.classList.add('hp-cfd');
     const groups = [...new Set(CFD.FIELDS.map(field => field.group))];
@@ -641,23 +645,27 @@
         validationStatus: state.result.validationStatus } : state.manifest || { status: 'not-prepared' }, null, 2);
       by('log').textContent = state.job?.logTail?.join('\n') || 'No job log available.';
     }
+    let mountedDisposed = false;
+    const downloadURLs = new Set();
     function downloadBlob(blob, name) {
+      if (mountedDisposed) return;
       const url = runtime.URL.createObjectURL(blob), anchor = document.createElement('a');
+      downloadURLs.add(url);
       anchor.href = url; anchor.download = name; host.append(anchor); anchor.click(); anchor.remove();
-      runtime.setTimeout(() => runtime.URL.revokeObjectURL(url), 1000);
+      runtime.setTimeout(() => { if (downloadURLs.delete(url)) runtime.URL.revokeObjectURL(url); }, 1000);
     }
-    host.addEventListener('input', event => {
+    const onInput = event => {
       const input = event.target;
       try {
         if (input.dataset.cfdInput) controller.setValue(input.dataset.cfdInput, input.type === 'checkbox' ? input.checked : input.value);
         else if (input.dataset.cfdField) controller.setOpening(input.dataset.cfdOpening, input.dataset.cfdField, input.value || null);
       } catch (error) { controller.reportError(error); }
-    });
-    host.addEventListener('change', event => {
+    };
+    const onChange = event => {
       if (event.target === by('room')) controller.selectRoom(event.target.value);
       if (event.target === by('metric')) { metric = event.target.value; render(controller.getState()); }
-    });
-    host.addEventListener('click', async event => {
+    };
+    const onClick = async event => {
       const button = event.target.closest('button');
       if (!button || !host.contains(button) || button.disabled) return;
       try {
@@ -677,13 +685,27 @@
           downloadBlob(new Blob([JSON.stringify(comparison, null, 2)], { type: 'application/json' }), 'homeplanner-cfd-comparison.json');
         } else if (button.dataset.cfdAction) await controller[button.dataset.cfdAction]();
       } catch (error) { controller.reportError(error); }
-    });
+    };
+    host.addEventListener('input', onInput);
+    host.addEventListener('change', onChange);
+    host.addEventListener('click', onClick);
     const off = controller.subscribe(render);
     render(controller.getState()); host.homePlannerCFD = controller;
-    runtime.addEventListener?.('pagehide', event => {
+    const onPageHide = event => {
       if (event.persisted) { void controller.cancel(); return; }
-      off(); controller.dispose();
-    });
+      controller.dispose();
+    };
+    const baseDispose = controller.dispose;
+    controller.dispose = () => {
+      if (mountedDisposed) return;
+      mountedDisposed = true;
+      off(); host.removeEventListener('input', onInput); host.removeEventListener('change', onChange);
+      host.removeEventListener('click', onClick); runtime.removeEventListener?.('pagehide', onPageHide);
+      for (const url of downloadURLs) runtime.URL.revokeObjectURL(url);
+      downloadURLs.clear(); baseDispose();
+      if (host.homePlannerCFD === controller) delete host.homePlannerCFD;
+    };
+    runtime.addEventListener?.('pagehide', onPageHide);
     return controller;
   }
   return Object.freeze({ createController, mount, plotSvg, verifyResult, bearingSide, conservationMarkup, comparisonMarkup });

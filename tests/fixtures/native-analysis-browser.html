@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Isolated native analysis fixture</title></head>
+<body><div id="fixture"></div><script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { AnalysisTabs } from '/src/platform/AnalysisTabs.tsx'
+import { loadDesignRuntime } from '/src/platform/design-runtime.ts'
+const project = await fetch('/__analysis-fixture.json').then(response => response.json())
+const runtime = await loadDesignRuntime()
+let legacy = structuredClone(project.legacy)
+const planner = runtime.Bridge.createController({
+  capture: () => structuredClone(legacy),
+  restore: value => { legacy = structuredClone(value) },
+  render() {},
+}, runtime.Model)
+planner.importProject(JSON.stringify(project))
+function Fixture() {
+  const [tab, setTab] = React.useState('Light')
+  const [generation, setGeneration] = React.useState(0)
+  const [solarSource, setSolarSource] = React.useState(null)
+  window.__analysisFixture = { planner, setTab, setSolarSource, remount: () => setGeneration(value => value + 1) }
+  return React.createElement(React.Fragment, null,
+    React.createElement('nav', null, ...['Light', 'Airflow', 'Pressure / CFD', 'Thermal & energy', 'Other'].map(name =>
+      React.createElement('button', { key: name, onClick: () => setTab(name) }, name))),
+    React.createElement(AnalysisTabs, { key: generation, planner, activeTab: tab, solarSource, onNavigate: () => setTab('Other') }))
+}
+createRoot(document.getElementById('fixture')).render(React.createElement(Fixture))
+</script></body></html>

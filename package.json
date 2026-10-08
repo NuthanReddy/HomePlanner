@@ -2,15 +2,17 @@
   "name": "homeplanner-react-shell",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "type": "commonjs",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
     "dev": "vite --open /migration-preview.html",
+    "dev:platform": "vite --host 127.0.0.1 --port 5173 --strictPort --open /platform.html",
     "build": "tsc -b && vite build",
     "preview": "vite preview --open /migration-preview.html",
-    "test:adapter": "tsx --test tests/legacy-planner-api.test.cjs"
+    "test:adapter": "tsx --test tests/legacy-planner-api.test.cjs",
+    "test:platform": "tsx --tsconfig tsconfig.app.json --test tests/platform-api.test.ts tests/platform-native-api.test.ts tests/platform-materials.test.tsx tests/platform-wind.test.tsx tests/platform-solar.test.tsx tests/platform-house-sun.test.tsx tests/platform-shared-environment.test.ts tests/platform-design-disciplines.test.ts tests/platform-analysis-solar.test.ts"
   },
   "dependencies": {
     "react": "^19.1.1",

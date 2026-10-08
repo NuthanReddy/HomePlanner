@@ -28,6 +28,15 @@ test('mounting/controller sync and raw typing do not request a service or change
   f.controller.discard();
   assert.equal(Drafts.hasPending(f.bridge), false);
 });
+test('native HTML route fallback is explicit unavailability, never a JSON engine or ZIP case', async t => {
+  const f=fixture(()=>({ok:true,status:200,headers:{get:()=> 'text/html'},json:async()=>{throw new Error('HTML must not be parsed as engine evidence');}}));
+  t.after(()=>f.controller.dispose());
+  await f.controller.checkEngine();
+  assert.equal(f.controller.getState().engine.available,false);
+  assert.match(f.controller.getState().engine.message,/Native API routing is not connected/);
+  assert.equal(f.controller.getState().result,null);
+  assert.equal(f.calls.length,1);
+});
 
 test('explicit Save inputs is one project command and JSON/Undo/Redo preserve nullable inputs and unrelated state', t => {
   const f = fixture(() => response({})); t.after(() => f.controller.dispose());

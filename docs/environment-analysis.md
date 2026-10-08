@@ -141,6 +141,46 @@ Structural/fire/egress/survey review remains necessary.
 
 ## Pure weather API
 
+### Native Python/React weather slice
+
+`backend\wind.py` ports the retained parsers and record-count 16-sector wind
+method below; it does not replace the established Environment workbench or its
+window proposals. It uses Python standard-library CSV/JSON, datetime and
+zoneinfo, not a Ladybug or CFD engine. `WindStudy` and `wind-api.ts` supply the
+native import form, polar chart, numeric sector table and first-100 interval
+preview. The parent workspace must mount the component and import
+`src\platform\wind-study.css`.
+
+Explicit `POST /api/v1/projects/{id}/workspace/wind` accepts `expected_version`,
+`format` (`epw`/`json`), `text`, `calm_threshold_mps`, `months`, `daytime`
+(`all`/`day`/`night`), `day_start_hour`, `day_end_hour` and `clock`
+(`source` fixed UTC offset, or applied `site` IANA clock). Source-clock JSON
+requires declared `timeZoneOffsetHours`; the native adapter does not guess an
+offset. No external retrieval, geolocation or window command is performed.
+Only this endpoint has an 8 MiB JSON-body budget; UTF-8 file text is limited to
+6 MiB and 200,000 records. Ownership, origin/CSRF and workspace-version checks
+apply before and after calculation; client request generations also discard
+changed/cancelled input completions. Drafts are session-only and do not add
+Undo entries or persist weather in the native document.
+
+The response scope is `imported-weather-not-ventilation`, with `ok`,
+`empty-filter` or `missing-wind` status, source/units/coverage/warnings, the rose,
+unweighted valid-speed statistics (including calm and missing directions), an
+input SHA-256 fingerprint, and bounded normalized preview. This Python-specific
+fingerprint is not the legacy project's fingerprint. Percentages use **all
+selected records**, including calm and unusable wind, as denominator; mixed
+interval lengths have an explicit warning. Filters use local interval-end
+clock hours, including repeated DST hours, not astronomical day/night.
+Original TMY source years are preserved. A current sample or even a single
+complete year does not establish annual climate normals or ventilation.
+
+Native validation (disposable fixtures under `tests`, no live project):
+
+```powershell
+.\.venv-platform\Scripts\python.exe -B -m unittest discover -s tests -p test_platform_wind.py -v
+npx tsx --tsconfig tsconfig.app.json --test tests\platform-wind.test.tsx
+```
+
 Browser namespace: `window.EnvironmentData`. CommonJS:
 
 ```js

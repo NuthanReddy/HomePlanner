@@ -158,6 +158,16 @@ test('product heading is shared but regulatory introduction belongs only to Plot
   assert.match(html,/750–2,000 sq m plots: 18–21 m band; extra floors: above 2,000 sq m/);
 });
 
+test('legacy result metrics keep imperial primary values and metric supporting detail',()=>{
+  const start=html.indexOf("$('stats').innerHTML = `");
+  const end=html.indexOf('const totShare = r.totPct',start);
+  assert.ok(start>=0&&end>start,'Find the legacy result-card template');
+  const stats=html.slice(start,end);
+  assert.match(stats,/Net plot area[\s\S]*?sq yd[\s\S]*?sq m/);
+  assert.match(stats,/Buildable footprint[\s\S]*?sq ft[\s\S]*?sq m/);
+  assert.match(stats,/Total built-up[\s\S]*?sq ft[\s\S]*?sq m/);
+});
+
 test('core plot controls and generated road fields have explicit accessible names',()=>{
   for(const id of ['face','dunit','pEW','pNS','use','ffh','plotRate','govRate','flatRate','buildRate','stiltRate','stampPct','gstPct'])
     assert.match(html,new RegExp(`<label[^>]*for="${id}"`),id);

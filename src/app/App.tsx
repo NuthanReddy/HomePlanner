@@ -3,7 +3,7 @@ import type { LegacyPlannerIntegrationError } from '../domain/project/legacy-pla
 import type { PlannerApi } from '../domain/project/planner-api'
 import { PlotPlannerWorkspace } from '../features/plot-planner/PlotPlannerWorkspace'
 import type { PlotPlannerWorkspaceInput } from '../features/plot-planner/types'
-import { PlannerProvider, usePlanner } from './PlannerProvider'
+import { PlannerProvider } from './PlannerProvider'
 import {
   prohibitedWorkspace,
   workspaceDestinations,
@@ -55,34 +55,6 @@ const standalonePlotPlannerBoundary: PlotPlannerWorkspaceInput = {
         'Source-backed references will be connected here without inventing calculations.',
     },
   ],
-  legacyPlannerHref: legacyPlotPlannerHref,
-}
-
-function ConnectedPlotPlannerWorkspace({
-  boundary,
-}: {
-  boundary: PlotPlannerWorkspaceInput
-}) {
-  const { project } = usePlanner()
-  const inputs = boundary.inputs.map((input) =>
-    input.id === 'plot-boundary'
-      ? {
-          id: input.id,
-          label: input.label,
-          status: 'unavailable' as const,
-          reason:
-            'The project authority is connected, but no typed plot-boundary contract is available yet.',
-        }
-      : input,
-  )
-
-  return (
-    <PlotPlannerWorkspace
-      {...boundary}
-      inputs={inputs}
-      project={project}
-    />
-  )
 }
 
 export function App({ plannerApi, integrationDiagnostic }: AppProps) {
@@ -160,23 +132,8 @@ export function App({ plannerApi, integrationDiagnostic }: AppProps) {
         </ul>
       </nav>
 
-      <section className="migration-toolbar" aria-label="Project and floor toolbar">
-        <div>
-          <span className="toolbar-label">Project</span>
-          <strong>Project controls will migrate here</strong>
-        </div>
-        <div>
-          <span className="toolbar-label">Floor</span>
-          <strong>Floor controls will migrate here</strong>
-        </div>
-      </section>
-
       {workspace === 'site' ? (
-        plannerApi ? (
-          <ConnectedPlotPlannerWorkspace boundary={standalonePlotPlannerBoundary} />
-        ) : (
-          <PlotPlannerWorkspace {...standalonePlotPlannerBoundary} />
-        )
+        <PlotPlannerWorkspace {...standalonePlotPlannerBoundary} />
       ) : (
         <section
           className="workspace-preview"
@@ -196,18 +153,6 @@ export function App({ plannerApi, integrationDiagnostic }: AppProps) {
         </section>
       )}
 
-      <footer className="migration-footer">
-        {import.meta.env.DEV ? (
-          <a className="preview-link" href="./index.html">
-            Open the current HomePlanner
-          </a>
-        ) : (
-          <p className="preview-note">
-            The legacy planner remains available from the repository root during
-            local development.
-          </p>
-        )}
-      </footer>
     </main>
   )
 

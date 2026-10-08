@@ -1,5 +1,3 @@
-import type { ProjectSnapshot } from '../../domain/project/types'
-
 export type PlotPlannerInputId =
   | 'plot-boundary'
   | 'setbacks'
@@ -29,6 +27,4 @@ export type PlotPlannerInputContract =
 
 export type PlotPlannerWorkspaceInput = Readonly<{
   inputs: readonly PlotPlannerInputContract[]
-  legacyPlannerHref?: string
-  project?: ProjectSnapshot
 }>

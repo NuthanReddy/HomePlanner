@@ -1,27 +1,12 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #0d1117;
-  color: #e6edf3;
+  background: #ffffff;
+  color: #1f2328;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel-strong: #1c2430;
-  --line: #30363d;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #2f81f7;
-  --success: #3fb950;
-  --warning: #d29922;
-}
-
-:root[data-theme="light"] {
-  color-scheme: light;
-  background: #f6f8fa;
-  color: #1f2328;
-  --bg: #f6f8fa;
+  --bg: #ffffff;
   --panel: #ffffff;
   --panel-strong: #f6f8fa;
   --line: #d0d7de;
@@ -40,9 +25,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top, color-mix(in srgb, var(--accent) 14%, transparent), transparent 38rem),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
 }
 
@@ -54,18 +37,17 @@ a {
 .migration-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  width: min(100% - 32px, 1120px);
-  min-height: 100vh;
+  width: min(100% - 32px, 1440px);
   margin: 0 auto;
-  padding: clamp(20px, 4vw, 44px) 0;
-  gap: 18px;
+  padding: 12px 0;
+  gap: 10px;
 }
 
 .migration-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px;
 }
 
 .preview-eyebrow {
@@ -79,19 +61,17 @@ a {
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.25rem);
-  letter-spacing: -0.045em;
-  line-height: 1;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
 .migration-status,
-.migration-toolbar,
 .integration-diagnostic,
-.workspace-preview,
-.migration-footer {
+.workspace-preview {
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border-radius: 8px;
+  background: var(--panel);
 }
 
 .integration-diagnostic {
@@ -119,9 +99,9 @@ h1 {
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: 330px;
-  padding: 12px 14px;
-  font-size: 0.9rem;
+  max-width: 520px;
+  padding: 7px 10px;
+  font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -176,50 +156,22 @@ h1 {
   outline-offset: -4px;
 }
 
-.migration-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  padding: 14px 18px;
-}
-
-.migration-toolbar > div {
-  display: grid;
-  gap: 3px;
-  min-width: min(100%, 18rem);
-}
-
-.toolbar-label {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .workspace-preview {
-  padding: clamp(24px, 5vw, 44px);
+  padding: 16px;
 }
 
 .workspace-preview h2 {
   margin: 0;
-  font-size: clamp(1.65rem, 4vw, 2.5rem);
-  letter-spacing: -0.035em;
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
 }
 
 .workspace-preview p:not(.preview-eyebrow) {
-  max-width: 58ch;
-  margin: 18px 0 0;
+  max-width: 76ch;
+  margin: 8px 0 0;
   color: var(--muted);
-  font-size: 1.05rem;
-  line-height: 1.65;
-}
-
-.migration-footer {
-  display: flex;
-  align-items: center;
-  min-height: 70px;
-  padding: 14px 18px;
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .preview-link {
@@ -257,17 +209,17 @@ h1 {
 
 .plot-planner-inputs {
   display: grid;
-  gap: 12px;
-  margin: 26px 0;
+  gap: 8px;
+  margin: 14px 0;
   padding: 0;
   list-style: none;
 }
 
 .plot-planner-input {
-  padding: 16px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--panel-strong) 68%, transparent);
+  border-radius: 6px;
+  background: var(--panel-strong);
 }
 
 .plot-planner-input-heading {
@@ -305,34 +257,6 @@ h1 {
   border-style: dashed;
 }
 
-.plot-planner-provenance {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin: 22px 0 0;
-}
-
-.plot-planner-provenance > div {
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--panel-strong) 52%, transparent);
-}
-
-.plot-planner-provenance dt {
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.plot-planner-provenance dd {
-  margin: 5px 0 0;
-  overflow-wrap: anywhere;
-}
-
 .plot-planner-input-link {
   min-height: 36px;
   margin-top: 12px;
@@ -340,29 +264,13 @@ h1 {
   font-size: 0.88rem;
 }
 
-.plot-planner-legacy-link {
-  margin-top: 22px;
-}
-
 @media (max-width: 42rem) {
-  .plot-planner-provenance {
-    grid-template-columns: 1fr;
-  }
-
   .migration-header {
+    align-items: flex-start;
     flex-direction: column;
   }
 
   .migration-status {
     max-width: none;
-  }
-
-  .migration-toolbar {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .migration-toolbar > div {
-    min-width: 0;
   }
 }

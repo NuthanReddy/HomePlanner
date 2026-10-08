@@ -4,6 +4,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
     root.HomePlannerLightUI = api;
+    if (root.document?.currentScript?.hasAttribute('data-homeplanner-manual')) return;
     if (root.document?.readyState === 'loading')
       root.document.addEventListener('DOMContentLoaded', () => api.mount(root.document), { once: true });
     else api.mount(root.document);
@@ -504,6 +505,34 @@
         current().siteSource = 'Copied project site on request; may be a project default. Verify against the actual site before preparing.';
         return copy(value);
       }); },
+      useProjectGlazing() { return attempt(() => {
+        const glazing = bridge.getProject().environment?.glazing;
+        if (typeof glazing?.vlt !== 'number' || !Number.isFinite(glazing.vlt) || glazing.vlt < 0 || glazing.vlt > 1 ||
+          typeof glazing.source !== 'string' || !glazing.source.trim())
+          throw new Error('Save a supplied VLT (0–1) and its source in shared Materials first. SHGC is not visible transmittance.');
+        const windowOptics = { mode: 'visible-transmission', visibleTransmittance: glazing.vlt, source: glazing.source };
+        replace({ ...copy(draft()), windowOptics });
+        return copy(windowOptics);
+      }); },
+      useNativeSolarSelection(readSelection) { return attempt(() => {
+        const supplied = readSelection(), site = supplied?.site;
+        if (!site || typeof supplied.date !== 'string' || typeof supplied.startTime !== 'string' ||
+          !['', 'earlier', 'later'].includes(supplied.startOccurrence) || typeof supplied.source !== 'string')
+          throw new Error('Native Solar selection is incomplete. Calculate a current selection first.');
+        const projectSite = bridge.getProject().site;
+        if (site.latitudeDeg !== projectSite.latitude || site.longitudeDeg !== projectSite.longitude || site.timeZone !== projectSite.timeZone)
+          throw new Error('Solar and shared project Site differ. Review the shared Site first; no coordinates were copied.');
+        const instant = runtime.HomeSun.resolveLocal(supplied.date, supplied.startTime, site.timeZone, supplied.startOccurrence);
+        if (instant.instant.getTime() !== Date.parse(supplied.instantUTC))
+          throw new Error('Solar civil selection and resolved UTC instant differ. Review the repeated-time choice.');
+        replace({ ...copy(draft()), site: copy(site), period: null, samples: [] });
+        current().selection = { ...current().selection, date: supplied.date, startTime: supplied.startTime,
+          startOccurrence: supplied.startOccurrence, endDate: '', endTime: '', endOccurrence: '' };
+        current().siteSource = supplied.source;
+        current().intervalSource = 'unprepared';
+        message = 'Copied current native Solar date, start time, occurrence and matching Site. Choose an end time, then prepare intervals explicitly.';
+        return true;
+      }); },
       useSunPathSelections(doc = document) { return attempt(() => {
         const read = id => doc?.getElementById(id)?.value;
         if (read('sunDate') === undefined || read('sunTime') === undefined)
@@ -648,13 +677,13 @@
     return Object.freeze(api);
   }
 
-  function mount(doc = root.document, runtime = doc?.defaultView || root) {
+  function mount(doc = root.document, runtime = doc?.defaultView || root, planner = runtime.HomePlanner, options = {}) {
     const host = doc?.getElementById('workspaceLightStudy');
     if (!host) return null;
     if (host.lightController) return host.lightController;
     let controller;
     try {
-      controller = createController(runtime.HomePlanner, runtime, doc);
+      controller = createController(planner, runtime, doc);
     }
     catch (cause) { host.textContent = cause.message; return null; }
     host.lightController = controller; host.classList.add('homePlannerLight');
@@ -761,7 +790,8 @@
     const electrical = field(viewControls, 'Show electrical intent (no photometry)', false,
       showElectrical => controller.setVisualization({ showElectrical }), null, 'checkbox', 'light-electrical');
     const nav = button('Open Design / Layout', 'light-design', () => {
-      if (runtime.HomePlannerWorkspace?.navigate) runtime.HomePlannerWorkspace.navigate('design/layout');
+      if (options.navigate) options.navigate('design/layout');
+      else if (runtime.HomePlannerWorkspace?.navigate) runtime.HomePlannerWorkspace.navigate('design/layout');
       else if (doc.getElementById('workspaceNavDesign')) doc.getElementById('workspaceNavDesign').click();
       else showError('Use the Design → Layout navigation to inspect in 3D. Light overlay is opt-in there.');
     });
@@ -818,8 +848,14 @@
       }
       const sun = disclosure('Site, civil time & sun intervals'), sunFields = el('div', '', 'light-fields');
       sun.id = 'light-input-section-sun';
+      const sunPathCopy = button(options.getSolarSelection ? 'Use current Solar selection' : 'Use Sun Path selections', 'light-sun-path',
+        () => options.getSolarSelection ? controller.useNativeSolarSelection(options.getSolarSelection) : controller.useSunPathSelections(doc));
+      if (options.sunPathSelectionsAvailable === false) {
+        sunPathCopy.disabled = true;
+        sunPathCopy.title = 'Native Solar date/time copying is not connected. Use project site and explicit study times.';
+      }
       sun.append(el('p', state.siteSource), button('Use project site', 'light-project-site', () => controller.useProjectSite()),
-        button('Use Sun Path selections', 'light-sun-path', () => controller.useSunPathSelections(doc)), sunFields);
+        sunPathCopy, sunFields);
       sun.append(el('p', 'Location and local time determine the sun direction. Use the saved project site or your Sun Path selections, check them, then choose the study period. Preparing intervals creates the times to calculate; it does not change the house.'));
       field(sunFields, 'Latitude · degrees (unknown until supplied)', state.draft.site?.latitudeDeg,
         latitudeDeg => controller.setSite({ latitudeDeg }), null, 'number', 'light-latitude');
@@ -845,6 +881,7 @@
         el('p', `${state.intervalSource}. Date/site edits discard previously sampled periods; no browser-local time or guessed UTC offset.`));
       const optics = disclosure('Optics, sky quadrature & horizon'), opticFields = el('div', '', 'light-fields'); optics.append(opticFields);
       optics.id = 'light-input-section-optics';
+      optics.append(button('Use shared Materials VLT', 'light-project-glazing', () => controller.useProjectGlazing()));
       optics.append(el('p', 'Ideal-clear studies geometry without glazing losses; it is an assumption, not a claim about your glass. For actual glazing, visible transmittance describes how much visible light passes through it. Get that value from the product data or a measurement, not its heat-gain rating (SHGC).'));
       optics.append(el('p', 'The near-horizon cutoff is an analysis choice: sun directions this close to the horizon are left unresolved rather than reported as reliable shade. Use the threshold specified for your study; the app does not choose one for you.'));
       field(opticFields, 'Window optical model — explicit choice', state.draft.windowOptics?.mode,

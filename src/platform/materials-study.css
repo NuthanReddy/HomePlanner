@@ -1,0 +1,16 @@
+.materials-study .materials-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: .8rem;
+}
+.materials-study label { display: grid; gap: .3rem; }
+.materials-study input, .materials-study textarea { width: 100%; box-sizing: border-box; }
+.materials-study textarea { min-height: 4.5rem; resize: vertical; }
+.materials-study .materials-layer { margin: 1rem 0; min-width: 0; }
+.materials-study .materials-layer legend { overflow-wrap: anywhere; }
+.materials-study .materials-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1rem 0; }
+.materials-study .materials-example { border-bottom: 1px solid #d0d7de; padding: .7rem 0; }
+.materials-study .materials-results { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+.materials-study .materials-results dd { margin: .3rem 0; font-weight: 600; }
+.materials-study pre { overflow: auto; max-height: 28rem; }
+.materials-study [role="alert"] { color: #a4262c; }

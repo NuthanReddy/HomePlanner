@@ -1,0 +1,24 @@
+.native-analysis { min-width: 0; --txt: #20242a; --panel: #fff; --panel2: #f7f8fa; --line: #bbc1c9; }
+.native-analysis [hidden] { display: none !important; }
+.native-analysis-method { margin: 0 0 .5rem; font-size: .82rem; color: #505b68; }
+.native-analysis .homePlannerLight, .native-analysis .hp-airflow, .native-analysis .hp-cfd,
+.native-analysis .env-workspace { padding: 0; margin: 0; max-width: none; }
+.native-analysis h2 { font-size: 1.15rem; }
+.native-analysis input[type="range"] { margin-inline: 0; max-width: 100%; }
+.native-analysis .light-viewport, .native-analysis .hp-airflow-preview { height: clamp(260px, 47vh, 540px); }
+.native-analysis .light-viewport:not(:has(img)), .native-analysis .hp-airflow-preview:not(:has(img)) {
+  height: auto; min-height: 0; padding: 1rem;
+}
+.native-analysis .native-reduced-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, 1fr); gap: 1rem; }
+.native-reduced-grid > * { min-width: 0; }
+.native-reduced form { display: grid; align-content: start; gap: .5rem; }
+.native-reduced textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; }
+.native-reduced pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+.native-reduced-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.native-analysis details > summary { cursor: pointer; min-height: 44px; padding: .7rem 0; }
+.native-analysis .native-pressure-expert { margin-top: 1rem; border-top: 1px solid var(--line); }
+.native-analysis .hp-cfd-overview { grid-template-columns: minmax(0, 1.3fr) minmax(240px, 1fr); }
+@media (max-width: 760px) {
+  .native-analysis .native-reduced-grid, .native-analysis .hp-cfd-overview { grid-template-columns: minmax(0, 1fr); }
+  .native-analysis .light-viewport, .native-analysis .hp-airflow-preview { min-height: 240px; height: 38vh; }
+}

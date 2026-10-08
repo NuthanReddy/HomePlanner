@@ -1,0 +1,27 @@
+.native-design-disciplines { min-width: 0; }
+.native-design-disciplines [hidden] { display: none !important; }
+.native-design-disciplines .discipline-source { font-size: .82rem; margin-block: .35rem .75rem; }
+.native-design-disciplines :is(.hp-structure,.hp-service,.hp-drainage,.hp-views,.hp-facade,.hp-drawings) { max-width: none; padding: .6rem; }
+.native-design-disciplines :is(form,.hp-drawing-controls) { gap: .55rem; }
+.native-design-disciplines :is(.hp-structure-preview,.hp-services-preview,.hp-drainage-preview,.hp-view-preview,.hp-drawing-preview):empty { display: none; }
+.native-design-disciplines img { max-width: 100%; height: auto; }
+.native-design-disciplines pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.native-design-disciplines .discipline-drawings { margin-block: .8rem; }
+.native-design-disciplines .elec-diagram { max-height: 28rem; width: 100%; }
+.native-design-disciplines :is(.elec-panel,.hp-drawing-preview) { min-height: 0; }
+.native-design-disciplines .hp-drainage .hp-service-preview { min-height: 0; }
+.native-design-disciplines .hp-drainage .hp-service-preview > p { padding: .6rem; }
+.native-review-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.native-review-lens { margin-block: .65rem; }
+.native-review-table { max-width: 100%; overflow: auto; }
+.native-review-table table { border-collapse: collapse; width: 100%; min-width: 34rem; }
+.native-review-table :is(th,td) { text-align: left; vertical-align: top; padding: .5rem; border-bottom: 1px solid var(--line,#ccd1d9); }
+.native-review-table th[scope="row"] { width: 52%; font-weight: 500; }
+.native-review-table th details { font-weight: 400; font-size: .85rem; }
+.native-design-disciplines :is(.hp-structure-warning,.hp-service-warning,.hp-facade-warning) { padding: .5rem; font-size: .875rem; }
+.native-design-disciplines button:focus-visible,
+.native-design-disciplines summary:focus-visible { outline: 2px solid var(--acc,#3478a5); outline-offset: 3px; }
+@media (max-width: 55rem) {
+  .native-design-disciplines :is(.elec-layout,.hp-structure-form,.hp-service-form,.hp-facade-form,.hp-view-form) { display: grid; grid-template-columns: minmax(0,1fr); }
+  .native-design-disciplines :is(input,select,textarea) { max-width: 100%; min-width: 0; }
+}

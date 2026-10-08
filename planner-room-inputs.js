@@ -190,7 +190,7 @@
     };
     binding.input.addEventListener('input',stage);
     binding.input.addEventListener('change',stage);
-    binding.input.addEventListener('keydown',event=>{
+    const keydown=event=>{
       if(event.isComposing||event.defaultPrevented)return;
       if(event.key==='Enter'){
         event.preventDefault();event.stopPropagation();
@@ -204,7 +204,13 @@
         if(state.controller)state.controller.discard(binding.input.id);
         else{binding.startupRaw=null;display(binding);}
       }
-    });
+    };
+    binding.input.addEventListener('keydown',keydown);
+    binding.release=()=>{
+      binding.input.removeEventListener('input',stage);
+      binding.input.removeEventListener('change',stage);
+      binding.input.removeEventListener('keydown',keydown);
+    };
     return binding;
   }
 
@@ -317,6 +323,17 @@
     return api;
   }
 
+  function releaseBindings(document=root.document){
+    const state=documentState(document);
+    if(state.controller)return false;
+    for(const binding of state.inputs.values()){
+      binding.release?.();
+      binding.input.value=binding.committed;
+      bindings.delete(binding.input);
+    }
+    state.inputs.clear();
+    return true;
+  }
   function mountView(controller,planner,document,host,state){
     const node=(tag,text)=>{
       const result=document.createElement(tag);
@@ -372,6 +389,7 @@
       destroy(){
         if(destroyed)return;
         destroyed=true;unsubscribe();controller.dispose();state.controller=null;state.handle=null;
+        releaseBindings(document);
         delete host.homePlannerRoomInputs;host.replaceChildren();
       }};
     state.handle=handle;host.homePlannerRoomInputs=controller;
@@ -408,5 +426,5 @@
     }
   }
   return {COUNT_TYPES,RANGE_PAIRS,numeric,parse,validatePatch,validateSpecification,
-    bind,isSetting,readCommitted,readNumber,readCount,writeCommitted,specifications,createController,connect};
+    bind,isSetting,readCommitted,readNumber,readCount,writeCommitted,specifications,createController,connect,releaseBindings};
 });

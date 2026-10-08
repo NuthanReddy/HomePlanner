@@ -1,5 +1,13 @@
 # Sun path
 
+The separate native React Solar tab now restores bounded **site-only** sky,
+seasonal, same-clock, daylight/light-phase and pole charts using Python pvlib.
+See [native chart inventory and method differences](native-solar-charts.md).
+The [native house sunlight section](native-house-sun.md) now also connects
+actual imported Design geometry to the incumbent direct-sun hours kernel.
+Geometry-dependent irradiance is still pending; legacy studies below remain
+available and unchanged. Full Solar migration is not claimed.
+
 **Environment > Sun Path & shading** reuses the locally bundled **SunCalc 2.0.1** script. It does
 not implement astronomical algorithms, fetch weather or require an API key.
 Location detection runs only when **Detect current location** is clicked.

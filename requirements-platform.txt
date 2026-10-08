@@ -1,0 +1,15 @@
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+SQLAlchemy>=2.0,<3
+alembic>=1.14,<2
+psycopg[binary]>=3.2,<4
+pydantic-settings>=2.7,<3
+phonenumbers>=9,<10
+azure-communication-sms>=1.1,<2
+azure-identity>=1.19,<2
+httpx>=0.28,<1
+requests>=2.32,<3
+# Offline coordinate-to-IANA boundary lookup; no location is sent to a provider.
+timezonefinder==6.5.9
+# Reuse the pinned Python utility engines; native Radiance/CFD/EnergyPlus are separate.
+-r requirements-analysis.txt

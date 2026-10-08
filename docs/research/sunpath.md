@@ -6,7 +6,7 @@ the features below have not been implemented by this document.
 Reference: [Simulations4All - Sun Path Diagram Tool: Solar Position Calculator
 for Architecture & Solar Design](https://simulations4all.com/simulations/sun-path-diagram-tool).
 The supplied article is preserved in [Appendix A](#appendix-a-supplied-source-text),
-including its original extracted equation formatting. It is third-party source
+with equation and table formatting normalized for readability. It is third-party source
 material, not HomePlanner documentation or independently established evidence.
 The reviewed findings and implementation requirements take precedence over its
 claims.
@@ -82,10 +82,10 @@ Constant-SHGC gain is not daylight lux or calibrated indoor temperature.
    atmospheric assumptions and absolute angle error. Comparing an adapter with
    its own underlying library checks integration, not independent accuracy.
 2. **Projection terminology.** Stereographic and azimuthal equidistant are
-   different. With altitude `alpha` and horizon radius `R`, equidistant uses
-   `r = R * (90 - alpha) / 90`; stereographic uses
-   `r = R * tan((90 - alpha) / 2)` with degree-to-radian conversion. Both put
-   the zenith at zero and the horizon at `R`, but their intermediate rings
+   different. With altitude $\alpha$ and horizon radius $R$, equidistant uses
+   $r = R\frac{90^\circ - \alpha}{90^\circ}$; stereographic uses
+   $r = R\tan\left(\frac{90^\circ - \alpha}{2}\right)$ with degree-to-radian conversion. Both put
+   the zenith at zero and the horizon at $R$, but their intermediate rings
    differ. Do not relabel the current equidistant plot.
 3. **Solar versus civil time.** Preserve site longitude and IANA timezone
    conversion. A proposed solar-time display must be separately labelled and
@@ -98,7 +98,7 @@ Constant-SHGC gain is not daylight lux or calibrated indoor temperature.
    events. Daily minimum above-horizon samples are not exact sunrise angles.
    Equinox dates do not guarantee exactly zero declination; polar-boundary
    examples require explicit date/year/event conventions.
-5. **Irradiance attribution.** `AM = 1 / sin(alpha)` is the simple plane-parallel
+5. **Irradiance attribution.** $\mathrm{AM} = \frac{1}{\sin(\alpha)}$ is the simple plane-parallel
    approximation, not the full Kasten-Young 1989 expression. The article's
    simplified attenuation formula must not be presented as a verified Hottel
    implementation merely because it is labelled that way. An educational
@@ -107,13 +107,13 @@ Constant-SHGC gain is not daylight lux or calibrated indoor temperature.
 6. **Power versus energy.** W/m2 is irradiance; Wh/m2 or kWh/m2 requires
    integration over time. "Peak" needs a defined domain and surface. A panel's
    incident solar energy is not its electrical yield without area, efficiency,
-   temperature and loss assumptions. `abs(latitude)` is a starting heuristic,
+   temperature and loss assumptions. $\lvert\phi\rvert$ is a starting heuristic,
    not an exact annual optimum.
 7. **Overhang geometry.** Do not adopt the article's
-   `d = h * tan(alpha_summer) / tan(alpha_winter)` as a general sizing rule.
+   $d = h\frac{\tan(\alpha_{\mathrm{summer}})}{\tan(\alpha_{\mathrm{winter}})}$ as a general sizing rule.
    For an ideal horizontal overhang and a sun-facing facade,
-   `tan(profileAngle) = tan(alpha) / cos(A - A_facade)` and the vertical shadow
-   drop is `d * tan(profileAngle)`. Required depth therefore depends on window
+   $\tan(\gamma) = \frac{\tan(\alpha)}{\cos(A - A_{\mathrm{facade}})}$, where $\gamma$
+   is the profile angle, and the vertical shadow drop is $d\tan(\gamma)$. Required depth therefore depends on window
    height, offset, facade bearing and target time; finite width and side sun
    require actual geometry. Winter admission must be checked separately.
 8. **Standards and claims.** Article references to LEED, IES LM-83, EN 17037,
@@ -267,542 +267,161 @@ unimplemented capabilities.
 
 ## Appendix A: supplied source text
 
-The following is the user-supplied 848-line extraction, preserved as received.
+The following is the user-supplied extraction with duplicate equation fragments
+removed and mathematics/typesetting restored. It is not a verbatim transcription.
 Equations, numerical examples, accuracy statements, PASS labels and standards
 claims belong to that source. See the corrections above before using them.
 
-```text
-Sun Path Diagram Tool: Solar Position Calculator for Architecture & Solar Design
+### Sun Path Diagram Tool: Solar Position Calculator for Architecture & Solar Design
 Free sun path diagram calculator with stereographic projection, solar altitude/azimuth computation, shadow analysis, and solar panel tilt optimization. Uses NREL SPA algorithm for precise solar position at any location worldwide. Interactive animated sun path arcs and building shadow visualization.
 
 Sun Path Diagram Tool: Solar Position Calculator for Architecture & Solar Design
 ✓ Verified Content: All equations, formulas, and reference data in this simulation have been verified by the Simulations4All engineering team against authoritative sources including the NREL Solar Position Algorithm (Reda & Andreas, 2004), ASHRAE Fundamentals Handbook (2021), Duffie & Beckman's Solar Engineering of Thermal Processes (4th ed.), and Meeus's Astronomical Algorithms (2nd ed.). See verification & validation
 
-Quick Answer
+### Quick Answer
 How do I find the sun's position at any location and time?
 
-The solar altitude angle 
-α
-α is computed from the fundamental solar geometry equation 
-sin
-⁡
-(
-α
-)
-=
-sin
-⁡
-(
-ϕ
-)
-sin
-⁡
-(
-δ
-)
-+
-cos
-⁡
-(
-ϕ
-)
-cos
-⁡
-(
-δ
-)
-cos
-⁡
-(
-ω
-)
-sin(α)=sin(ϕ)sin(δ)+cos(ϕ)cos(δ)cos(ω), where 
-ϕ
-ϕ is latitude, 
-δ
-δ is the solar declination, and 
-ω
-ω is the hour angle [1]. For example, at latitude 40\textdegree N on the summer solstice (June 21, 
-δ
-=
-23.44
-δ=23.44\textdegree) at solar noon (
-ω
-=
-0
-ω=0), the altitude is 
-α
-=
-90
-−
-40
-+
-23.44
-=
-73.44
-α=90−40+23.44=73.44\textdegree. This calculator implements the Spencer (1971) approximation of the NREL SPA algorithm with animated stereographic projection, shadow analysis, and panel tilt optimization.
+The solar altitude angle $\alpha$ is computed from the fundamental solar geometry equation
 
-Introduction
+$$
+\sin(\alpha) = \sin(\phi)\sin(\delta) + \cos(\phi)\cos(\delta)\cos(\omega),
+$$
+
+where $\phi$ is latitude, $\delta$ is the solar declination, and $\omega$ is the hour angle [1]. For example, at latitude $40^\circ$ N on the summer solstice (June 21, $\delta = 23.44^\circ$) at solar noon ($\omega = 0$), the altitude is $\alpha = 90^\circ - 40^\circ + 23.44^\circ = 73.44^\circ$. This calculator implements the Spencer (1971) approximation of the NREL SPA algorithm with animated stereographic projection, shadow analysis, and panel tilt optimization.
+
+### Introduction
 Here is a surprising efficiency gap that most architects never quantify: a building oriented 15 degrees off optimal solar alignment can lose 10-15% of its potential passive heating gain in winter while simultaneously increasing cooling loads by a comparable margin in summer. Energy in must equal energy out, plus whatever the HVAC system has to compensate for -- and that compensation starts with understanding where the sun actually is. Sun path diagrams sit at the intersection of astronomy, architecture, and energy engineering. They translate the predictable geometry of Earth's orbit into actionable design data: when does direct sunlight hit a south-facing window? How long is the shadow cast by a proposed 30-meter tower on December 21? What tilt angle maximizes annual energy collection on a rooftop solar array?
 
 I first encountered the practical importance of sun path analysis when reviewing daylighting studies for a mixed-use development in Boston. The architects had oriented their building based on street grid alignment, not solar geometry, and the south-facing apartments received barely 2 hours of direct winter sun. In practice, you lose energy to poor orientation more than almost any other single design decision. A 15-degree rotation would have doubled the solar gain. The second law tells us that heat flows spontaneously from warm to cold, and a well-oriented building harnesses that solar influx rather than fighting it with mechanical systems -- think of solar geometry as the ultimate free energy budget that requires zero fuel cost.
 
-The math behind solar position is surprisingly old. The declination equation dates back to astronomical tables from the 18th century, and stereographic projection has been used in celestial navigation since the astrolabe era. What has changed is accessibility. Until the 1990s, architects relied on printed sun path charts for specific latitudes (the classic Olgyay and Olgyay diagrams from 1957). Today, algorithms like the NREL Solar Position Algorithm (SPA) compute solar coordinates to \textpm 0.0003\textdegree accuracy for any point on Earth, any moment in time, across millennia [2]. No real system achieves Carnot efficiency because real buildings have thermal mass, air leakage, and occupant behavior that complicate the energy balance -- but getting the solar geometry right is the essential first step. This tool implements a simplified version of that algorithm optimized for real-time interactive visualization.
+The math behind solar position is surprisingly old. The declination equation dates back to astronomical tables from the 18th century, and stereographic projection has been used in celestial navigation since the astrolabe era. What has changed is accessibility. Until the 1990s, architects relied on printed sun path charts for specific latitudes (the classic Olgyay and Olgyay diagrams from 1957). Today, algorithms like the NREL Solar Position Algorithm (SPA) compute solar coordinates to ±0.0003° accuracy for any point on Earth, any moment in time, across millennia [2]. No real system achieves Carnot efficiency because real buildings have thermal mass, air leakage, and occupant behavior that complicate the energy balance -- but getting the solar geometry right is the essential first step. This tool implements a simplified version of that algorithm optimized for real-time interactive visualization.
 
 Architects use sun path diagrams for passive solar design, daylighting analysis, and shading device geometry. Solar engineers use them to determine optimal panel tilt and orientation, estimate annual energy yield, and identify potential shading obstructions. Photographers time their shoots around golden hour. Urban planners assess shadow impacts on public spaces. The underlying physics is the same for all of these applications.
 
-How to Use This Calculator
-Start with a preset that matches your use case. My First Home loads a residential scenario at 40\textdegree N with south-facing windows on the summer solstice. Solar Panel Planner shifts to 35\textdegree N (Albuquerque) with the equinox selected, showing balanced sun paths for annual optimization. Passive Solar Design sets a winter date to demonstrate low sun angles ideal for thermal mass heating. Try Equator to see the symmetric sun paths that define tropical architecture.
+### How to Use This Calculator
+Start with a preset that matches your use case. My First Home loads a residential scenario at 40° N with south-facing windows on the summer solstice. Solar Panel Planner shifts to 35° N (Albuquerque) with the equinox selected, showing balanced sun paths for annual optimization. Passive Solar Design sets a winter date to demonstrate low sun angles ideal for thermal mass heating. Try Equator to see the symmetric sun paths that define tropical architecture.
 
 Drag the Time slider and watch the sun dot animate along the stereographic path arc. The building shadow visualization updates in real time, showing the shadow length and direction. Change the Month slider to see how the sun arc shifts between solstices. Click Optimize Panel Tilt to generate an annual insolation curve showing the tilt angle that maximizes solar energy at your latitude. Press Export Report for a downloadable HTML document with complete solar position data.
 
 The keyboard arrow keys (left/right) step through time in 15-minute increments. Hold Shift for 1-hour steps. This is particularly useful for studying shadow progression through a winter day.
 
-What Is a Sun Path Diagram?
+### What Is a Sun Path Diagram?
 A sun path diagram is a two-dimensional projection of the sun's apparent path across the sky dome, plotted for a specific latitude. The most common projection is stereographic (also called equidistant azimuthal), where the horizon forms the outer circle, the zenith sits at the center, and concentric rings represent altitude angles at equal angular intervals [3].
 
 Each curved line on the diagram represents the sun's path on one day of the year, typically plotted for the 21st of each month. The outermost arcs correspond to summer (longest paths, highest altitudes) and the innermost arcs to winter (shortest paths, lowest altitudes). Radial lines crossing the monthly arcs mark clock times, creating an analemma-like grid that lets you read off altitude and azimuth for any date and time by interpolation.
 
 The key insight is that sun paths at a given latitude are completely deterministic. The only variables are the date (which determines the solar declination) and the time (which determines the hour angle). Cloud cover, atmospheric refraction, and local horizon obstructions affect how much sunlight actually reaches a surface, but the geometric position of the sun is fixed by orbital mechanics.
 
-How the Calculator Works
-Key Parameters
-Parameter	Symbol	Unit	Reference	Typical Range
-Latitude	
-ϕ
-ϕ	\textdegree	WGS 84	-66 to +66
-Solar declination	
-δ
-δ	\textdegree	Spencer (1971)	-23.45 to +23.45
-Hour angle	
-ω
-ω	\textdegree	Definition	-180 to +180
-Solar altitude	
-α
-α	\textdegree	Eq. (1)	0 to 90
-Solar azimuth	
-A
-A	\textdegree	Eq. (2)	0 to 360
-Equation of Time	EoT	min	Spencer (1971)	-14.3 to +16.4
-Day of year	
-n
-n	day	Calendar	1 to 365
-Building height	
-H
-H	m	User input	3 to 60
-Shadow ratio	
-L
-/
-H
-L/H	--	
-cot
-⁡
-(
-α
-)
-cot(α)	0 to 
-∞
-∞
-Clear-sky irradiance	
-I
-D
-N
-IDN​	W/m\textsuperscript{2}	Hottel (1976)	0 to ~1000
-Panel tilt	
-β
-β	\textdegree	Optimization	0 to 90
-SHGC	--	--	ASHRAE	0.1 to 0.9
+### How the Calculator Works
 
-Show more
-Core Formulas
-Solar Declination (Spencer, 1971): 
-δ
-=
-180
-π
-(
-0.006918
-−
-0.399912
-cos
-⁡
-B
-+
-0.070257
-sin
-⁡
-B
-−
-0.006758
-cos
-⁡
-2
-B
-+
-0.000907
-sin
-⁡
-2
-B
-−
-0.002697
-cos
-⁡
-3
-B
-+
-0.00148
-sin
-⁡
-3
-B
-)
-δ=π180​(0.006918−0.399912cosB+0.070257sinB−0.006758cos2B+0.000907sin2B−0.002697cos3B+0.00148sin3B)
+#### Key Parameters
 
-where 
-B
-=
-(
-n
-−
-1
-)
-⋅
-360
-/
-365
-B=(n−1)⋅360/365 in degrees and 
-n
-n is the day of the year. The maximum declination of 
-±
-23.44
-±23.44\textdegree occurs at the solstices [4].
+| Parameter | Symbol | Unit | Reference | Typical Range |
+| --- | --- | --- | --- | --- |
+| Latitude | $\phi$ | degrees | WGS 84 | -66 to +66 |
+| Solar declination | $\delta$ | degrees | Spencer (1971) | -23.45 to +23.45 |
+| Hour angle | $\omega$ | degrees | Definition | -180 to +180 |
+| Solar altitude | $\alpha$ | degrees | Eq. (1) | 0 to 90 |
+| Solar azimuth | $A$ | degrees | Eq. (2) | 0 to 360 |
+| Equation of Time | $\mathrm{EoT}$ | min | Spencer (1971) | -14.3 to +16.4 |
+| Day of year | $n$ | day | Calendar | 1 to 365 |
+| Building height | $H$ | m | User input | 3 to 60 |
+| Shadow ratio | $L/H$ | -- | $\cot(\alpha)$ | 0 to $\infty$ |
+| Clear-sky irradiance | $I_{\mathrm{DN}}$ | W/m² | Hottel (1976) | 0 to ~1000 |
+| Panel tilt | $\beta$ | degrees | Optimization | 0 to 90 |
+| SHGC | -- | -- | ASHRAE | 0.1 to 0.9 |
 
-Hour Angle: 
-ω
-=
-15
-∘
-×
-(
-t
-solar
-−
-12
-)
-ω=15∘×(tsolar​−12)
+#### Core Formulas
 
-where 
-t
-solar
-tsolar​ is solar time in hours. The hour angle is negative before solar noon (morning) and positive after.
+**Solar Declination (Spencer, 1971):**
 
-Solar Altitude Angle (fundamental equation of solar geometry): 
-sin
-⁡
-(
-α
-)
-=
-sin
-⁡
-(
-ϕ
-)
-sin
-⁡
-(
-δ
-)
-+
-cos
-⁡
-(
-ϕ
-)
-cos
-⁡
-(
-δ
-)
-cos
-⁡
-(
-ω
-)
-sin(α)=sin(ϕ)sin(δ)+cos(ϕ)cos(δ)cos(ω)
+$$
+\begin{aligned}
+\delta = \frac{180}{\pi}\bigl(&0.006918 - 0.399912\cos B + 0.070257\sin B \\
+&- 0.006758\cos(2B) + 0.000907\sin(2B) \\
+&- 0.002697\cos(3B) + 0.00148\sin(3B)\bigr)
+\end{aligned}
+$$
 
-This is the single most important equation in solar engineering. It gives the angle of the sun above the horizon for any latitude 
-ϕ
-ϕ, declination 
-δ
-δ, and hour angle 
-ω
-ω [1].
+where $B = (n - 1)\cdot 360/365$ in degrees and $n$ is the day of the year. The maximum declination of $\pm 23.44^\circ$ occurs at the solstices [4].
 
-Solar Azimuth Angle (measured from north, clockwise): 
-cos
-⁡
-(
-A
-)
-=
-sin
-⁡
-(
-δ
-)
-−
-sin
-⁡
-(
-ϕ
-)
-sin
-⁡
-(
-α
-)
-cos
-⁡
-(
-ϕ
-)
-cos
-⁡
-(
-α
-)
-cos(A)=cos(ϕ)cos(α)sin(δ)−sin(ϕ)sin(α)​
+**Hour Angle:**
 
-For afternoon hours (
-ω
->
-0
-ω>0), the azimuth is 
-A
-=
-360
-∘
-−
-arccos
-⁡
-(
-above
-)
-A=360∘−arccos(above) [5].
+$$
+\omega = 15^\circ \times (t_{\mathrm{solar}} - 12)
+$$
 
-Equation of Time (Spencer, 1971): 
-EoT
-=
-229.18
-(
-0.000075
-+
-0.001868
-cos
-⁡
-B
-−
-0.032077
-sin
-⁡
-B
-−
-0.014615
-cos
-⁡
-2
-B
-−
-0.04089
-sin
-⁡
-2
-B
-)
-EoT=229.18(0.000075+0.001868cosB−0.032077sinB−0.014615cos2B−0.04089sin2B)
+where $t_{\mathrm{solar}}$ is solar time in hours. The hour angle is negative before solar noon (morning) and positive after.
 
-The Equation of Time accounts for Earth's orbital eccentricity and axial tilt, producing a correction of up to 
-±
-16.4
-±16.4 minutes between clock time and solar time [6].
+**Solar Altitude Angle (fundamental equation of solar geometry):**
 
-Sunrise/Sunset Hour Angle: 
-cos
-⁡
-(
-ω
-s
-)
-=
-−
-tan
-⁡
-(
-ϕ
-)
-tan
-⁡
-(
-δ
-)
-cos(ωs​)=−tan(ϕ)tan(δ)
+$$
+\sin(\alpha) = \sin(\phi)\sin(\delta) + \cos(\phi)\cos(\delta)\cos(\omega)
+$$
 
-The day length in hours is 
-2
-ω
-s
-/
-15
-2ωs​/15. When 
-∣
-tan
-⁡
-(
-ϕ
-)
-tan
-⁡
-(
-δ
-)
-∣
->
-1
-∣tan(ϕ)tan(δ)∣>1, there is either no sunrise (polar night) or no sunset (midnight sun).
+This is the single most important equation in solar engineering. It gives the angle of the sun above the horizon for any latitude $\phi$, declination $\delta$, and hour angle $\omega$ [1].
 
-Shadow Length: 
-L
-=
-H
-⋅
-cot
-⁡
-(
-α
-)
-=
-H
-tan
-⁡
-(
-α
-)
-L=H⋅cot(α)=tan(α)H​
+**Solar Azimuth Angle (measured from north, clockwise):**
 
-where 
-H
-H is the object height and 
-α
-α is the solar altitude. At solar noon on the winter solstice in New York (
-α
-≈
-26.6
-α≈26.6\textdegree), a 10 m building casts a shadow of 
-10
-/
-tan
-⁡
-(
-26.6
-)
-=
-20.0
-10/tan(26.6)=20.0 m.
+$$
+\cos(A) = \frac{\sin(\delta) - \sin(\phi)\sin(\alpha)}{\cos(\phi)\cos(\alpha)}
+$$
 
-Clear-Sky Direct Normal Irradiance (Hottel, 1976, simplified): 
-I
-D
-N
-=
-I
-S
-C
-⋅
-0.7
-A
-M
-0.678
-IDN​=ISC​⋅0.7AM0.678
+For afternoon hours ($\omega > 0$), the azimuth is
 
-where 
-I
-S
-C
-=
-1367
-ISC​=1367 W/m\textsuperscript{2} is the solar constant and 
-A
-M
-=
-1
-/
-sin
-⁡
-(
-α
-)
-AM=1/sin(α) is the air mass (Kasten & Young, 1989) [7].
+$$
+A = 360^\circ - \arccos\left(\frac{\sin(\delta) - \sin(\phi)\sin(\alpha)}{\cos(\phi)\cos(\alpha)}\right).
+$$
 
-Panel Tilt Optimization — Angle of Incidence on Tilted Surface: 
-cos
-⁡
-(
-θ
-)
-=
-sin
-⁡
-(
-α
-)
-cos
-⁡
-(
-β
-)
-+
-cos
-⁡
-(
-α
-)
-sin
-⁡
-(
-β
-)
-cos
-⁡
-(
-A
-−
-A
-panel
-)
-cos(θ)=sin(α)cos(β)+cos(α)sin(β)cos(A−Apanel​)
+Reference: [5].
 
-where 
-β
-β is the tilt angle, 
-A
-panel
-Apanel​ is the panel azimuth (typically 180\textdegree for south-facing in the northern hemisphere), and 
-θ
-θ is the incidence angle. The annual-optimal tilt is approximately 
-β
-opt
-≈
-∣
-ϕ
-∣
-βopt​≈∣ϕ∣ for a south-facing fixed panel [8].
+**Equation of Time (Spencer, 1971):**
 
-Design Codes & Standards
+$$
+\begin{aligned}
+\mathrm{EoT} = 229.18\bigl(&0.000075 + 0.001868\cos B - 0.032077\sin B \\
+&- 0.014615\cos(2B) - 0.04089\sin(2B)\bigr)
+\end{aligned}
+$$
+
+The Equation of Time accounts for Earth's orbital eccentricity and axial tilt, producing a correction of up to $\pm 16.4$ minutes between clock time and solar time [6].
+
+**Sunrise/Sunset Hour Angle:**
+
+$$
+\cos(\omega_s) = -\tan(\phi)\tan(\delta)
+$$
+
+The day length in hours is $\frac{2\omega_s}{15}$. When $\lvert\tan(\phi)\tan(\delta)\rvert > 1$, there is either no sunrise (polar night) or no sunset (midnight sun).
+
+**Shadow Length:**
+
+$$
+L = H\cot(\alpha) = \frac{H}{\tan(\alpha)}
+$$
+
+where $H$ is the object height and $\alpha$ is the solar altitude. At solar noon on the winter solstice in New York ($\alpha \approx 26.6^\circ$), a 10 m building casts a shadow of $\frac{10}{\tan(26.6^\circ)} = 20.0$ m.
+
+**Clear-Sky Direct Normal Irradiance (Hottel, 1976, simplified):**
+
+$$
+I_{\mathrm{DN}} = I_{\mathrm{SC}}\cdot 0.7^{\mathrm{AM}^{0.678}}
+$$
+
+where $I_{\mathrm{SC}} = 1367\ \mathrm{W/m^2}$ is the solar constant and $\mathrm{AM} = \frac{1}{\sin(\alpha)}$ is the air mass (Kasten & Young, 1989) [7].
+
+**Panel Tilt Optimization — Angle of Incidence on Tilted Surface:**
+
+$$
+\cos(\theta) = \sin(\alpha)\cos(\beta) + \cos(\alpha)\sin(\beta)\cos(A - A_{\mathrm{panel}})
+$$
+
+where $\beta$ is the tilt angle, $A_{\mathrm{panel}}$ is the panel azimuth (typically $180^\circ$ for south-facing in the northern hemisphere), and $\theta$ is the incidence angle. The annual-optimal tilt is approximately $\beta_{\mathrm{opt}} \approx \lvert\phi\rvert$ for a south-facing fixed panel [8].
+
+### Design Codes & Standards
 Solar position calculations and daylighting design are referenced by several international standards and building codes:
 
-NREL Solar Position Algorithm (SPA) — The authoritative algorithm for computing solar zenith and azimuth angles, published by Reda and Andreas at the National Renewable Energy Laboratory (2004, updated 2008). SPA achieves \textpm 0.0003\textdegree accuracy for the period -2000 to +6000 CE using the Jean Meeus astronomical algorithm framework. Our calculator implements the Spencer (1971) approximation, which is accurate to \textpm 0.01\textdegree and computationally efficient for real-time use [2].
+NREL Solar Position Algorithm (SPA) — The authoritative algorithm for computing solar zenith and azimuth angles, published by Reda and Andreas at the National Renewable Energy Laboratory (2004, updated 2008). SPA achieves ±0.0003° accuracy for the period -2000 to +6000 CE using the Jean Meeus astronomical algorithm framework. Our calculator implements the Spencer (1971) approximation, which is accurate to ±0.01° and computationally efficient for real-time use [2].
 
 ASHRAE Fundamentals Handbook, Chapter 14 — Solar radiation data and methods for computing solar heat gain through fenestration. Defines the SHGC (Solar Heat Gain Coefficient) and provides clear-sky irradiance models for HVAC design calculations. The 2021 edition includes updated solar geometry equations consistent with NREL SPA [9].
 
@@ -814,255 +433,110 @@ EN 17037:2018 Daylight in Buildings — European standard specifying minimum day
 
 IECC 2021 Section C402.4 — Fenestration SHGC requirements that vary by climate zone. Designers use sun path diagrams to determine which windows need exterior shading to meet maximum SHGC limits.
 
-Verification & Validation
+### Verification & Validation
 All computed solar positions have been cross-checked against NREL SPA published test cases, the U.S. Naval Observatory astronomical data, and Meeus (1998) worked examples.
 
-ID	Test Case	Reference	Key Inputs	Expected	Calculated	Error	Status
-TC-001	Summer solstice solar noon altitude, 40\textdegree N	Meeus (1998), Ch. 13	
-ϕ
-=
-40
-ϕ=40\textdegree, Jun 21, 
-ω
-=
-0
-ω=0	73.44\textdegree	73.47\textdegree	0.04%	PASS
-TC-002	Winter solstice solar noon altitude, 40\textdegree N	Meeus (1998), Ch. 13	
-ϕ
-=
-40
-ϕ=40\textdegree, Dec 21, 
-ω
-=
-0
-ω=0	26.56\textdegree	26.53\textdegree	0.04%	PASS
-TC-003	Equinox sunrise azimuth (should be 90\textdegree)	Astronomical identity	
-ϕ
-=
-40
-ϕ=40\textdegree, Mar 21, sunrise	90.0\textdegree	89.98\textdegree	0.02%	PASS
-TC-004	Equinox sunset azimuth (should be 270\textdegree)	Astronomical identity	
-ϕ
-=
-40
-ϕ=40\textdegree, Mar 21, sunset	270.0\textdegree	270.02\textdegree	0.01%	PASS
-TC-005	Equinox day length (should be ~12h)	Astronomical identity	
-ϕ
-=
-40
-ϕ=40\textdegree, Mar 21	12.00 h	12.02 h	0.09%	PASS
-TC-006	Equator summer solstice noon altitude	Direct calculation	
-ϕ
-=
-0
-ϕ=0\textdegree, Jun 21, 
-ω
-=
-0
-ω=0	66.56\textdegree	66.53\textdegree	0.04%	PASS
-TC-007	Arctic Circle midnight sun day length	Astronomical definition	
-ϕ
-=
-66.56
-ϕ=66.56\textdegree, Jun 21	24.0 h	24.0 h	0.00%	PASS
-TC-008	Shadow ratio at 45\textdegree altitude	Trigonometric identity	
-α
-=
-45
-α=45\textdegree, H=10 m	10.0 m	10.0 m	0.00%	PASS
-TC-009	Spencer declination vs. simplified formula	Cross-check	Jun 21 (
-n
-=
-172
-n=172)	23.44\textdegree	23.41\textdegree	0.06%	PASS
-TC-010	Equation of Time, Feb 12	Spencer (1971), Table 1	
-n
-=
-43
-n=43	-14.2 min	-14.18 min	0.08%	PASS
+| ID | Test Case | Reference | Key Inputs | Expected | Calculated | Error | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-001 | Summer solstice solar noon altitude, 40° N | Meeus (1998), Ch. 13 | $\phi = 40^\circ$, Jun 21, $\omega = 0$ | 73.44° | 73.47° | 0.04% | PASS |
+| TC-002 | Winter solstice solar noon altitude, 40° N | Meeus (1998), Ch. 13 | $\phi = 40^\circ$, Dec 21, $\omega = 0$ | 26.56° | 26.53° | 0.04% | PASS |
+| TC-003 | Equinox sunrise azimuth (should be 90°) | Astronomical identity | $\phi = 40^\circ$, Mar 21, sunrise | 90.0° | 89.98° | 0.02% | PASS |
+| TC-004 | Equinox sunset azimuth (should be 270°) | Astronomical identity | $\phi = 40^\circ$, Mar 21, sunset | 270.0° | 270.02° | 0.01% | PASS |
+| TC-005 | Equinox day length (should be ~12h) | Astronomical identity | $\phi = 40^\circ$, Mar 21 | 12.00 h | 12.02 h | 0.09% | PASS |
+| TC-006 | Equator summer solstice noon altitude | Direct calculation | $\phi = 0^\circ$, Jun 21, $\omega = 0$ | 66.56° | 66.53° | 0.04% | PASS |
+| TC-007 | Arctic Circle midnight sun day length | Astronomical definition | $\phi = 66.56^\circ$, Jun 21 | 24.0 h | 24.0 h | 0.00% | PASS |
+| TC-008 | Shadow ratio at 45° altitude | Trigonometric identity | $\alpha = 45^\circ$, $H = 10$ m | 10.0 m | 10.0 m | 0.00% | PASS |
+| TC-009 | Spencer declination vs. simplified formula | Cross-check | Jun 21 ($n = 172$) | 23.44° | 23.41° | 0.06% | PASS |
+| TC-010 | Equation of Time, Feb 12 | Spencer (1971), Table 1 | $n = 43$ | -14.2 min | -14.18 min | 0.08% | PASS |
 
-Show more
-All ten test cases pass with errors below 0.1%. TC-001 and TC-002 confirm solstice noon altitudes against the standard formula 
-α
-noon
-=
-90
-−
-∣
-ϕ
-−
-δ
-∣
-αnoon​=90−∣ϕ−δ∣. TC-003/TC-004 verify the fundamental property that equinox sunrise and sunset azimuths are exactly 90\textdegree and 270\textdegree at all latitudes (small deviation is due to the Spencer approximation not being exact for the equinox date). TC-007 confirms polar day behavior at the Arctic Circle.
+All ten test cases pass with errors below 0.1%. TC-001 and TC-002 confirm solstice noon altitudes against the standard formula $\alpha_{\mathrm{noon}} = 90^\circ - \lvert\phi - \delta\rvert$. TC-003/TC-004 verify the fundamental property that equinox sunrise and sunset azimuths are exactly 90° and 270° at all latitudes (small deviation is due to the Spencer approximation not being exact for the equinox date). TC-007 confirms polar day behavior at the Arctic Circle.
 
-Real-World Applications
-Passive Solar Home Design: An architect designing a home at 38\textdegree N latitude uses the sun path diagram to size south-facing overhangs. On December 21 (
-α
-noon
-≈
-28.5
-αnoon​≈28.5\textdegree), direct sun penetrates deep into the room for passive heating. On June 21 (
-α
-noon
-≈
-75.4
-αnoon​≈75.4\textdegree), the same overhang blocks direct sun entirely. The overhang depth 
-d
-=
-h
-⋅
-tan
-⁡
-(
-α
-summer
-)
-/
-tan
-⁡
-(
-α
-winter
-)
-d=h⋅tan(αsummer​)/tan(αwinter​) balances winter gain against summer overheating [10].
+### Real-World Applications
 
-Solar Panel Farm Orientation: A utility-scale solar installation in Phoenix (33.4\textdegree N) optimizes annual energy yield by tilting panels at approximately 33\textdegree from horizontal, facing due south. The tilt optimization curve shows that deviations of \textpm 10\textdegree from optimal reduce annual yield by only 2-3%, providing design flexibility for terrain constraints. At higher latitudes (e.g., 55\textdegree N in Scotland), the optimal tilt steepens to 55\textdegree and the penalty for east/west-facing panels increases significantly.
+Passive Solar Home Design: An architect designing a home at 38° N latitude uses the sun path diagram to size south-facing overhangs. On December 21 ($\alpha_{\mathrm{noon}} \approx 28.5^\circ$), direct sun penetrates deep into the room for passive heating. On June 21 ($\alpha_{\mathrm{noon}} \approx 75.4^\circ$), the same overhang blocks direct sun entirely. The overhang depth $d = h\cdot\frac{\tan(\alpha_{\mathrm{summer}})}{\tan(\alpha_{\mathrm{winter}})}$ balances winter gain against summer overheating [10].
 
-Urban Shadow Impact Assessment: Before approving a 50-meter office tower in Manhattan (40.7\textdegree N), planners use shadow analysis to determine how many hours of direct sun nearby parks and residential streets will lose. On the winter solstice at solar noon, the shadow extends 50 / tan(26.0\textdegree) = 102 meters. At 3 PM (
-α
-≈
-15
-α≈15\textdegree), it stretches to 187 meters, potentially reaching across an entire city block.
+Solar Panel Farm Orientation: A utility-scale solar installation in Phoenix (33.4° N) optimizes annual energy yield by tilting panels at approximately 33° from horizontal, facing due south. The tilt optimization curve shows that deviations of ±10° from optimal reduce annual yield by only 2-3%, providing design flexibility for terrain constraints. At higher latitudes (e.g., 55° N in Scotland), the optimal tilt steepens to 55° and the penalty for east/west-facing panels increases significantly.
+
+Urban Shadow Impact Assessment: Before approving a 50-meter office tower in Manhattan (40.7° N), planners use shadow analysis to determine how many hours of direct sun nearby parks and residential streets will lose. On the winter solstice at solar noon, the shadow extends $\frac{50}{\tan(26.0^\circ)} = 102$ meters. At 3 PM ($\alpha \approx 15^\circ$), it stretches to 187 meters, potentially reaching across an entire city block.
 
 Daylighting Compliance for LEED: A commercial office project targeting LEED Gold must demonstrate sDA300/50% compliance. The designer uses sun path data to determine which perimeter zones receive sufficient daylight hours. Rooms facing north at high latitudes may need skylights or light shelves to compensate for the low winter sun angles.
 
-Agricultural Growing Season Analysis: A market gardener at 45\textdegree N uses day length data to plan greenhouse supplemental lighting. From November through February, day length drops below 10 hours, requiring 4-6 hours of artificial light to maintain tomato production. The sun path diagram also reveals that a south-facing greenhouse wall receives 5x more solar radiation in January than an east-facing wall at this latitude.
+Agricultural Growing Season Analysis: A market gardener at 45° N uses day length data to plan greenhouse supplemental lighting. From November through February, day length drops below 10 hours, requiring 4-6 hours of artificial light to maintain tomato production. The sun path diagram also reveals that a south-facing greenhouse wall receives 5x more solar radiation in January than an east-facing wall at this latitude.
 
-Photography Planning: A landscape photographer in Los Angeles (34\textdegree N) uses golden hour timing — when the solar altitude is between 0\textdegree and 6\textdegree — to plan shoots. The calculator shows that October 15 golden hour begins at approximately 6:10 AM (sunrise) and ends at 6:45 AM, giving a 35-minute window of warm, directional light.
+Photography Planning: A landscape photographer in Los Angeles (34° N) uses golden hour timing — when the solar altitude is between 0° and 6° — to plan shoots. The calculator shows that October 15 golden hour begins at approximately 6:10 AM (sunrise) and ends at 6:45 AM, giving a 35-minute window of warm, directional light.
 
-Reference Data
-Monthly Solar Declination (21st of Each Month)
-Month	Day of Year	Declination (\textdegree)	Sunrise HA (\textdegree) at 40\textdegree N	Day Length (h) at 40\textdegree N	Noon Altitude (\textdegree) at 40\textdegree N
-January	21	-20.1	70.7	9.4	29.9
-February	52	-11.2	78.5	10.5	38.8
-March	80	-0.4	89.7	12.0	49.6
-April	111	+11.6	101.3	13.5	61.6
-May	141	+20.1	109.5	14.6	70.1
-June	172	+23.4	112.5	15.0	73.4
-July	202	+20.4	109.8	14.6	70.4
-August	233	+12.0	101.6	13.5	62.0
-September	264	+0.8	90.6	12.1	50.8
-October	294	-10.5	79.2	10.6	39.5
-November	325	-19.8	71.0	9.5	30.2
-December	355	-23.4	67.5	9.0	26.6
+### Reference Data
 
-Show more
+#### Monthly Solar Declination (21st of Each Month)
+
+| Month | Day of Year | Declination (°) | Sunrise HA (°) at 40° N | Day Length (h) at 40° N | Noon Altitude (°) at 40° N |
+| --- | --- | --- | --- | --- | --- |
+| January | 21 | -20.1 | 70.7 | 9.4 | 29.9 |
+| February | 52 | -11.2 | 78.5 | 10.5 | 38.8 |
+| March | 80 | -0.4 | 89.7 | 12.0 | 49.6 |
+| April | 111 | +11.6 | 101.3 | 13.5 | 61.6 |
+| May | 141 | +20.1 | 109.5 | 14.6 | 70.1 |
+| June | 172 | +23.4 | 112.5 | 15.0 | 73.4 |
+| July | 202 | +20.4 | 109.8 | 14.6 | 70.4 |
+| August | 233 | +12.0 | 101.6 | 13.5 | 62.0 |
+| September | 264 | +0.8 | 90.6 | 12.1 | 50.8 |
+| October | 294 | -10.5 | 79.2 | 10.6 | 39.5 |
+| November | 325 | -19.8 | 71.0 | 9.5 | 30.2 |
+| December | 355 | -23.4 | 67.5 | 9.0 | 26.6 |
+
 Source: Computed using the Spencer (1971) declination formula, consistent with Duffie & Beckman (2013), Table 1.6.1 [4].
 
-Equation of Time — Monthly Values (21st of Each Month)
-Month	EoT (minutes)	Direction	Physical Cause
-Jan	-11.3	Sun slow	Eccentricity dominant
-Feb	-14.0	Sun slow	Eccentricity dominant
-Mar	-7.5	Sun slow	Transition
-Apr	+1.2	Sun fast	Obliquity dominant
-May	+3.5	Sun fast	Obliquity dominant
-Jun	-1.5	Sun slow	Transition
-Jul	-6.3	Sun slow	Eccentricity dominant
-Aug	-3.3	Sun slow	Transition
-Sep	+6.5	Sun fast	Combined
-Oct	+15.4	Sun fast	Combined
-Nov	+14.2	Sun fast	Eccentricity + obliquity
-Dec	+1.6	Sun fast	Transition
+#### Equation of Time — Monthly Values (21st of Each Month)
 
-Show more
+| Month | EoT (minutes) | Direction | Physical Cause |
+| --- | --- | --- | --- |
+| Jan | -11.3 | Sun slow | Eccentricity dominant |
+| Feb | -14.0 | Sun slow | Eccentricity dominant |
+| Mar | -7.5 | Sun slow | Transition |
+| Apr | +1.2 | Sun fast | Obliquity dominant |
+| May | +3.5 | Sun fast | Obliquity dominant |
+| Jun | -1.5 | Sun slow | Transition |
+| Jul | -6.3 | Sun slow | Eccentricity dominant |
+| Aug | -3.3 | Sun slow | Transition |
+| Sep | +6.5 | Sun fast | Combined |
+| Oct | +15.4 | Sun fast | Combined |
+| Nov | +14.2 | Sun fast | Eccentricity + obliquity |
+| Dec | +1.6 | Sun fast | Transition |
+
 Source: Spencer (1971), verified against USNO solar tables [6].
 
-Frequently Asked Questions
+### Frequently Asked Questions
 Q: How accurate is this calculator compared to the full NREL SPA?
 
-This calculator uses the Spencer (1971) Fourier series approximation for solar declination and the Equation of Time, which achieves accuracy of approximately \textpm 0.01\textdegree for the solar altitude and azimuth. The full NREL SPA (Reda & Andreas, 2004) achieves \textpm 0.0003\textdegree by computing the complete orbital elements including nutation, aberration, and delta-T corrections [2]. For architectural and solar engineering applications — where site survey accuracy, atmospheric refraction, and cloud cover introduce far larger uncertainties — the Spencer approximation is more than sufficient. The full SPA matters for concentrated solar power (CSP) tracking systems where pointing accuracy of arc-minutes is required.
+This calculator uses the Spencer (1971) Fourier series approximation for solar declination and the Equation of Time, which achieves accuracy of approximately ±0.01° for the solar altitude and azimuth. The full NREL SPA (Reda & Andreas, 2004) achieves ±0.0003° by computing the complete orbital elements including nutation, aberration, and delta-T corrections [2]. For architectural and solar engineering applications — where site survey accuracy, atmospheric refraction, and cloud cover introduce far larger uncertainties — the Spencer approximation is more than sufficient. The full SPA matters for concentrated solar power (CSP) tracking systems where pointing accuracy of arc-minutes is required.
 
-Q: Why does the equinox sunrise azimuth deviate slightly from exactly 90\textdegree?
+Q: Why does the equinox sunrise azimuth deviate slightly from exactly 90°?
 
-Two reasons. First, the Spencer (1971) declination formula is a truncated Fourier series that may not produce exactly 
-δ
-=
-0
-δ=0 on the astronomical equinox date. Second, atmospheric refraction bends sunlight upward by approximately 0.57\textdegree at the horizon, making the sun appear to rise slightly earlier and set slightly later than geometric calculations predict [11]. This calculator does not include refraction correction, so any sub-0.1\textdegree deviation in TC-003/TC-004 is due to the declination approximation, not refraction.
+Two reasons. First, the Spencer (1971) declination formula is a truncated Fourier series that may not produce exactly $\delta = 0$ on the astronomical equinox date. Second, atmospheric refraction bends sunlight upward by approximately 0.57° at the horizon, making the sun appear to rise slightly earlier and set slightly later than geometric calculations predict [11]. This calculator does not include refraction correction, so any sub-0.1° deviation in TC-003/TC-004 is due to the declination approximation, not refraction.
 
 Q: How do I determine the optimal solar panel tilt angle for my location?
 
-For a fixed south-facing panel (northern hemisphere) or north-facing panel (southern hemisphere), the annual-optimal tilt angle is approximately equal to the site latitude: 
-β
-opt
-≈
-∣
-ϕ
-∣
-βopt​≈∣ϕ∣ [8]. This balances the high summer sun (when a flatter panel captures more) against the low winter sun (when a steeper panel captures more). Click Optimize Panel Tilt in the calculator to see the exact curve for your latitude. If you want to maximize winter production (e.g., for a heating system), add 10-15\textdegree to the latitude. For summer emphasis (e.g., pool heating), subtract 10-15\textdegree. Two-axis tracking can increase annual yield by 25-40% over a fixed-tilt system, but at significantly higher cost and maintenance [12].
+For a fixed south-facing panel (northern hemisphere) or north-facing panel (southern hemisphere), the annual-optimal tilt angle is approximately equal to the site latitude: $\beta_{\mathrm{opt}} \approx \lvert\phi\rvert$ [8]. This balances the high summer sun (when a flatter panel captures more) against the low winter sun (when a steeper panel captures more). Click Optimize Panel Tilt in the calculator to see the exact curve for your latitude. If you want to maximize winter production (e.g., for a heating system), add 10-15° to the latitude. For summer emphasis (e.g., pool heating), subtract 10-15°. Two-axis tracking can increase annual yield by 25-40% over a fixed-tilt system, but at significantly higher cost and maintenance [12].
 
 Q: What is the shadow ratio and how do architects use it?
 
-The shadow ratio 
-L
-/
-H
-=
-cot
-⁡
-(
-α
-)
-=
-1
-/
-tan
-⁡
-(
-α
-)
-L/H=cot(α)=1/tan(α) gives the shadow length as a multiple of the object height [3]. When 
-α
-=
-45
-α=45\textdegree, the shadow equals the object height (
-L
-/
-H
-=
-1
-L/H=1). At low winter sun angles (
-α
-=
-20
-α=20\textdegree), the ratio jumps to 2.75 — a 10 m building casts a 27.5 m shadow. Architects use this ratio to determine building setbacks: if a zoning ordinance requires that a new tower not shadow the adjacent park at noon on December 21, the minimum setback equals 
-H
-×
-cot
-⁡
-(
-α
-winter noon
-)
-H×cot(αwinter noon​). Urban planners in cities like Vancouver and San Francisco codify shadow limits in their zoning regulations.
+The shadow ratio
+
+$$
+\frac{L}{H} = \cot(\alpha) = \frac{1}{\tan(\alpha)}
+$$
+
+gives the shadow length as a multiple of the object height [3]. When $\alpha = 45^\circ$, the shadow equals the object height ($L/H = 1$). At low winter sun angles ($\alpha = 20^\circ$), the ratio jumps to 2.75 — a 10 m building casts a 27.5 m shadow. Architects use this ratio to determine building setbacks: if a zoning ordinance requires that a new tower not shadow the adjacent park at noon on December 21, the minimum setback equals $H\cot(\alpha_{\text{winter noon}})$. Urban planners in cities like Vancouver and San Francisco codify shadow limits in their zoning regulations.
 
 Q: How does latitude affect the symmetry of the sun path diagram?
 
-At the equator (
-ϕ
-=
-0
-ϕ=0), the summer and winter solstice sun paths are symmetric about the east-west axis, and the equinox path passes directly through the zenith (altitude 90\textdegree at noon). As latitude increases, the diagram shifts: in the northern hemisphere, the summer arc swings northward and the winter arc compresses toward the southern horizon. At the Arctic Circle (
-ϕ
-=
-66.56
-ϕ=66.56\textdegree), the summer solstice arc becomes a complete circle (midnight sun) and the winter solstice sun does not rise at all. The tropics (23.44\textdegree N/S) mark the latitudes where the sun can reach the zenith at solar noon — useful for sizing horizontal shading devices on flat-roofed commercial buildings [3].
+At the equator ($\phi = 0$), the summer and winter solstice sun paths are symmetric about the east-west axis, and the equinox path passes directly through the zenith (altitude 90° at noon). As latitude increases, the diagram shifts: in the northern hemisphere, the summer arc swings northward and the winter arc compresses toward the southern horizon. At the Arctic Circle ($\phi = 66.56^\circ$), the summer solstice arc becomes a complete circle (midnight sun) and the winter solstice sun does not rise at all. The tropics (23.44° N/S) mark the latitudes where the sun can reach the zenith at solar noon — useful for sizing horizontal shading devices on flat-roofed commercial buildings [3].
 
 Q: What is the Equation of Time and why does it matter for sun path calculations?
 
 The Equation of Time (EoT) is the difference between apparent solar time (as measured by a sundial) and mean solar time (as kept by a clock). It varies from approximately -14.2 minutes in mid-February to +16.4 minutes in early November [6]. The EoT arises from two factors: Earth's orbital eccentricity (the orbit is an ellipse, not a circle, so Earth moves faster near perihelion in January) and the obliquity of the ecliptic (the tilt of Earth's axis causes the projection of the sun's motion onto the celestial equator to be non-uniform). For solar design, the EoT matters when converting between clock time and solar time to determine the actual moment of solar noon, which can differ from 12:00 local standard time by up to 30 minutes depending on longitude within the time zone and the date.
 
-References
+### References
 [1] Duffie, J. A., & Beckman, W. A. (2013). Solar Engineering of Thermal Processes (4th ed.). Wiley. ISBN 978-0470873663. Chapter 1: Solar Radiation.
 
 [2] Reda, I., & Andreas, A. (2004). Solar position algorithm for solar radiation applications. Solar Energy, 76(5), 577-589. https://doi.org/10.1016/j.solener.2003.12.003
@@ -1089,28 +563,17 @@ References
 
 [13] National Renewable Energy Laboratory. (2023). National Solar Radiation Database (NSRDB). NREL. https://nsrdb.nrel.gov/
 
-About the Data
-Solar declination values in the reference table are computed using the Spencer (1971) Fourier series approximation, which is accurate to \textpm 0.01\textdegree and consistent with the simplified formula 
-δ
-=
-23.45
-×
-sin
-⁡
-(
-360
-/
-365
-×
-(
-284
-+
-n
-)
-)
-δ=23.45×sin(360/365×(284+n)) widely used in solar engineering textbooks [1]. Equation of Time values follow the Spencer (1971) formula verified against the U.S. Naval Observatory astronomical tables [6]. Clear-sky irradiance uses the Hottel (1976) transmittance model as simplified by Duffie & Beckman [1]. All computed values apply to idealized clear-sky conditions at sea level; actual site irradiance depends on cloud cover, aerosols, altitude, and local horizon obstructions. For project-level energy estimates, use measured solar resource data from NSRDB, Meteonorm, or local meteorological stations.
+### About the Data
 
-How to Cite
+Solar declination values in the reference table are computed using the Spencer (1971) Fourier series approximation, which is accurate to ±0.01° and consistent with the simplified formula
+
+$$
+\delta = 23.45\sin\left(\frac{360}{365}(284 + n)\right)
+$$
+
+widely used in solar engineering textbooks [1]. Equation of Time values follow the Spencer (1971) formula verified against the U.S. Naval Observatory astronomical tables [6]. Clear-sky irradiance uses the Hottel (1976) transmittance model as simplified by Duffie & Beckman [1]. All computed values apply to idealized clear-sky conditions at sea level; actual site irradiance depends on cloud cover, aerosols, altitude, and local horizon obstructions. For project-level energy estimates, use measured solar resource data from NSRDB, Meteonorm, or local meteorological stations.
+
+### How to Cite
 To cite this simulation in an academic or professional report:
 
 Simulations4All Team. (2026). Sun Path Diagram Tool: Solar Position Calculator for Architecture & Solar Design [Interactive simulation]. Simulations4All. https://simulations4all.com/simulations/sun-path-diagram-tool
@@ -1120,4 +583,3 @@ APA 7th edition:
 Simulations4All Team. (2026). Sun path diagram tool: Solar position calculator for architecture & solar design. Simulations4All. https://simulations4all.com/simulations/sun-path-diagram-tool
 
 Note: This tool is for educational and preliminary design purposes. All solar analysis for building permits, energy compliance, or solar installation design must be verified using site-specific solar resource data and reviewed by a licensed professional. Consult ASHRAE Fundamentals, local building codes, and applicable daylighting standards (IES LM-83, EN 17037) for all design decisions.
-```

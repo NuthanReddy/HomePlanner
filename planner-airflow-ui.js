@@ -4,6 +4,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
     root.HomePlannerAirflowUI = api;
+    if (root.document?.currentScript?.hasAttribute('data-homeplanner-manual')) return;
     if (root.document?.readyState === 'loading')
       root.document.addEventListener('DOMContentLoaded', () => api.mount(), { once: true });
     else api.mount();
@@ -596,12 +597,11 @@
     };
   }
 
-  function mount(doc = root.document) {
+  function mount(doc = root.document, runtime = doc?.defaultView || root, planner = runtime.HomePlanner) {
     const host = doc?.getElementById('workspaceAirflow');
     if (!host || host.homePlannerAirflow) return host?.homePlannerAirflow || null;
-    const runtime = doc.defaultView || root;
     let controller;
-    try { controller = createController(runtime.HomePlanner, runtime); }
+    try { controller = createController(planner, runtime); }
     catch (cause) { host.textContent = cause.message; return null; }
     const el = (tag, text = '', className = '') => {
       const node = doc.createElement(tag); node.textContent = text; if (className) node.className = className; return node;
@@ -662,8 +662,8 @@
     const topFields = el('div', '', 'hp-airflow-top-fields');
     const scenarioSelect = field(topFields, 'Scenario', '', id => controller.selectScenario(id), [], 'text', 'hp-airflow-scenario');
     const floorSelect = field(topFields, 'Preview floor', '', id => {
-      if (!runtime.HomePlanner?.execute) throw new Error('Floor navigation requires the project bridge.');
-      runtime.HomePlanner.execute({ type: 'select-floor', id });
+      if (!planner?.execute) throw new Error('Floor navigation requires the project bridge.');
+      planner.execute({ type: 'select-floor', id });
     }, [], 'text', 'hp-airflow-floor');
     const preview = el('div', '', 'hp-airflow-preview'); preview.id = 'hp-airflow-preview';
     preview.setAttribute('role', 'region'); preview.setAttribute('aria-label', 'Airflow plan preview, with accessible result tables below');
@@ -840,7 +840,7 @@
             if (runtime.confirm?.(`Change physical modeled operation from ${plain(current)} to ${nextFraction || 'unknown'}? This edits the project for every scenario. It does not derive free area.`))
               controller.applyOperation(link.opening, nextFraction, true);
           });
-          apply.disabled = !opening || opening.ref.floorId !== state.floorId || !operationCommand(opening.kind) || !runtime.HomePlanner?.execute;
+          apply.disabled = !opening || opening.ref.floorId !== state.floorId || !operationCommand(opening.kind) || !planner?.execute;
           operation.append(apply, el('p', 'Different floor or unsupported opening? Use Design / Layout on its exact floor; then prepare and review again.'));
           row.append(operation);
         } else {

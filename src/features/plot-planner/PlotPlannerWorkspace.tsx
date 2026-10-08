@@ -34,8 +34,6 @@ function InputStatus({ input }: { input: PlotPlannerInputContract }) {
 
 export function PlotPlannerWorkspace({
   inputs,
-  legacyPlannerHref,
-  project,
 }: PlotPlannerWorkspaceInput) {
   return (
     <section
@@ -50,23 +48,6 @@ export function PlotPlannerWorkspace({
         regulations, or author plot geometry.
       </p>
 
-      {project ? (
-        <dl className="plot-planner-provenance" aria-label="Connected project provenance">
-          <div>
-            <dt>Project</dt>
-            <dd>{project.name || 'Unnamed project'}</dd>
-          </div>
-          <div>
-            <dt>Project ID</dt>
-            <dd>{project.id}</dd>
-          </div>
-          <div>
-            <dt>Revision</dt>
-            <dd>{project.revision}</dd>
-          </div>
-        </dl>
-      ) : null}
-
       <ul className="plot-planner-inputs" aria-label="Plot Planner input status">
         {inputs.map((input) => (
           <InputStatus key={input.id} input={input} />
@@ -77,12 +58,6 @@ export function PlotPlannerWorkspace({
         Existing Plot Planner calculations and saved inputs remain authoritative
         in the legacy planner until an explicit migration contract is added.
       </p>
-
-      {legacyPlannerHref ? (
-        <a className="preview-link plot-planner-legacy-link" href={legacyPlannerHref}>
-          Open legacy Plot Planner
-        </a>
-      ) : null}
     </section>
   )
 }

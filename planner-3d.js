@@ -6,6 +6,7 @@
     module.exports = api;
   } else {
     root.HomePlanner3D = api;
+    if(root.document?.currentScript?.hasAttribute('data-homeplanner-manual'))return;
     if (!root.document) return;
     const start = () => {
       const host = root.document.getElementById('planner3d');
@@ -710,8 +711,8 @@
     if (!enginePromise) {
       const base = new URL('.', scriptURL || root.document.baseURI);
       enginePromise = Promise.all([
-        import(new URL('vendor/three/three.module.min.js', base).href),
-        import(new URL('vendor/three/OrbitControls.js', base).href)
+        import(/* @vite-ignore */ new URL('vendor/three/three.module.min.js', base).href),
+        import(/* @vite-ignore */ new URL('vendor/three/OrbitControls.js', base).href)
       ]).then(([THREE, controls]) => ({ THREE, OrbitControls: controls.OrbitControls })).catch(error => {
         enginePromise = null;
         throw new Error(`The local Three.js modules could not load. Keep vendor/three beside index.html, include the local "three" import map, and serve JavaScript MIME types over HTTP/HTTPS. 2D is unaffected. ${String(error.message).slice(0, 180)}`);

@@ -318,8 +318,9 @@ test('legacy outside staircase positions remain recorded but cannot produce an o
 });
 
 test('drag handlers preview without committing intermediate collision positions',()=>{
-  const source=html.match(/function initRoomEditing\([^]*?\n\}/)[0];
-  const previewPart=source.slice(source.indexOf('const applyPending'),source.indexOf("svg.addEventListener('pointerdown'"));
+  const runtime=fs.readFileSync(path.join(__dirname,'..','planner-layout-runtime.js'),'utf8');
+  const source=runtime.match(/function initRoomEditing\([^]*?\n\}/)[0];
+  const previewPart=source.slice(source.indexOf('const applyPending'),source.indexOf("on(svg,'pointerdown'"));
   assert.match(previewPart,/drag\.previewRect=/);
   assert.doesNotMatch(previewPart,/roomCommitEditable/);
   assert.match(source,/roomCommitEditable\(ctx,item,ended\.previewRect/);

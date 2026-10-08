@@ -26,6 +26,33 @@ and the shared active-floor toolbar remain available throughout. See
 
 ## Run locally
 
+### Azure-backed Python / React migration
+
+The new `platform.html` entry point adds a Python HTTP API, phone/SMS
+authentication boundary and account-owned PostgreSQL project metadata. It uses
+Azure SQL Database's free offer as the selected dev/test hosting target; backend
+database migration is pending. The UI follows
+the locked **Site / Design / Analyze / Compare** layout while keeping unavailable
+geometry, simulation and optimization controls explicit. This is an incremental
+foundation, not a completed production migration; the legacy planner below
+remains available. See [platform setup and migration boundaries](docs/python-react-platform.md).
+For offline development, run `.\.venv-platform\Scripts\python.exe -m backend.local`
+and `npm run dev:platform` in separate terminals. The dedicated local SQLite
+database persists metadata, native Site/Costs documents, Undo/Redo and sessions; the clearly labelled development-only
+OTP inbox simulates delivery without paid SMS. Native site-linked Solar/pvlib
+forms and the air-density/PsychroLib utility are available under Analyze; full room-engine
+integration remains pending.
+Native Site includes Python rectangular feasibility, offline location-derived
+time zones and drawn/resizable cuboid/tree surroundings, including across roads.
+Analyze Costs exposes land rates per sq yd, construction rates per sq ft and
+opt-in retained fee schedules with calculation bases. Utilization provides size/aspect curves and
+whole/selected/best-sampled split diagrams. Native Layout 2D/3D and room-linked
+analysis engines remain staged, rather than embedded legacy panels.
+See [architecture and required Azure resources](ARCHITECTURE.md) for service
+inventory, authority boundaries and the planned background-job flow.
+See [billing and free allowances](BILLING.md) for minimal configuration cost
+drivers and the distinction between recurring grants and new-account offers.
+
 Open [`index.html`](index.html) with the accompanying scripts, stylesheets and
 `vendor` folder. The basic browser application has no build or dependency-install step.
 The 2D tools, local data imports and numerical scenarios can operate offline.
@@ -68,7 +95,7 @@ The React preview requires Node.js `^20.19.0` or `>=22.12.0` because it uses
 Vite 7.
 The development command opens
 `http://localhost:5173/migration-preview.html`. Use `npm run build` to type-check
-and bundle only the migration preview entrypoint. Use `npm run test:adapter` for
+and bundle the migration preview and new platform entrypoints. Use `npm run test:adapter` for
 the TypeScript-aware legacy-adapter regression tests. The generated `dist` directory
 is not part of the vanilla application's runtime.
 
